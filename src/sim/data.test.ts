@@ -6,6 +6,8 @@ import { join } from 'node:path'
 import { load } from '../format/builtinModules.testing.ts'
 import { simOf } from '../format/simModel.ts'
 import { LED_COLOURS } from './ledModels.ts'
+import { buildCircuit } from './build.ts'
+import { boardModule, sheet } from './testing.ts'
 
 const DIR = join(import.meta.dirname, '..', '..', 'scripts', 'sim-data')
 export const patches = (): { id: string; sim: Record<string, unknown>; unaccounted?: string[]; review: unknown[] }[] =>
@@ -153,5 +155,33 @@ describe('the SG90 servo (firmware spec 3.4)', () => {
     expect(s.pulseMin.note).toMatch(/1 to 2 ms/)
     expect(s).toMatchObject({ signal: 'PWM', slew: { value: 0.1, unit: 's', provenance: 'datasheet' } })
     expect(simOf(load('servo-sg90'))!.power!.domains).toEqual([{ name: 'VCC', pin: 'VCC', ret: 'GND', nominal: 5 }])
+  })
+})
+
+describe('the Raspberry Pis (firmware spec 3.3)', () => {
+  const PIS = ['rpi-4-model-b', 'rpi-5', 'rpi-zero-2-w']
+  it.each(PIS)('%s: 5V, the input port and 3V3, GPIO2 to GPIO27 on 3V3 with thresholds and pulls', (id) => {
+    const sim = simOf(load(id))!
+    expect(sim.power!.domains.map((d) => d.name).sort()).toEqual(['3V3', '5V', 'USB'])
+    expect(sim.power!.draw!.map((d) => d.domain)).toEqual(['5V'])
+    expect(sim.power!.draw![0].minVolts).toBeDefined()
+    expect(sim.gpio!.domain).toBe('3V3')
+    expect(sim.gpio!.pins).toEqual(Array.from({ length: 26 }, (_, i) => `GPIO${i + 2}`))
+    expect(sim.gpio!.inputLow!.value).toBeLessThan(sim.gpio!.inputHigh!.value)
+    expect(sim.gpio!.pullup!.value).toBeGreaterThan(40_000)
+    expect(sim.gpio!.fixedPullups!.map((f) => [f.pin, f.ohms.value])).toEqual([['GPIO2', 1800], ['GPIO3', 1800]])
+  })
+  it('flags the Pi 5 RP1 thresholds as estimates (partly undocumented)', () => {
+    const g = simOf(load('rpi-5'))!.gpio!
+    expect([g.inputLow!.provenance, g.inputHigh!.provenance]).toEqual(['estimate', 'estimate'])
+  })
+  it('builds GPIO2 and GPIO3 pull-ups as internal resistors, not user resistors', () => {
+    const c = buildCircuit(sheet([{ uid: 'u1', module: 'rpi-4-model-b' }], []))
+    expect(c.devices.filter((d) => d.kind === 'resistor' && d.id.startsWith('u1.pullup.')).map((d) => [d.id, d.kind === 'resistor' && d.role])).toEqual([['u1.pullup.GPIO2', 'internal'], ['u1.pullup.GPIO3', 'internal']])
+  })
+  it('keeps the USB-A ports "not simulated": a USB device on one is listed, with no cable compiled', () => {
+    const c = buildCircuit(sheet([{ uid: 'u1', module: 'rpi-4-model-b' }, { uid: 'u2', module: boardModule({}, 'test-dev') }], [['u1.USB2-1', 'u2.USB']]))
+    expect(c.unsimulated).toContainEqual({ part: 'u2', reason: 'powered from U1 USB2-1, whose USB power is not simulated' })
+    expect(c.usb).toEqual([])
   })
 })

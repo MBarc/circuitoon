@@ -1,0 +1,1228 @@
+{
+  "id": "rpi-4-model-b",
+  "researched": "2026-10-06",
+  "sim": {
+    "limits": [
+      {
+        "of": {
+          "pin": "GPIO2"
+        },
+        "kind": "current",
+        "value": 0.008,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "estimate",
+        "conditions": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+        "note": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPIO3"
+        },
+        "kind": "current",
+        "value": 0.008,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "estimate",
+        "conditions": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+        "note": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPIO4"
+        },
+        "kind": "current",
+        "value": 0.008,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "estimate",
+        "conditions": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+        "note": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPIO5"
+        },
+        "kind": "current",
+        "value": 0.008,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "estimate",
+        "conditions": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+        "note": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPIO6"
+        },
+        "kind": "current",
+        "value": 0.008,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "estimate",
+        "conditions": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+        "note": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPIO7"
+        },
+        "kind": "current",
+        "value": 0.008,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "estimate",
+        "conditions": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+        "note": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPIO8"
+        },
+        "kind": "current",
+        "value": 0.008,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "estimate",
+        "conditions": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+        "note": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPIO9"
+        },
+        "kind": "current",
+        "value": 0.008,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "estimate",
+        "conditions": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+        "note": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPIO10"
+        },
+        "kind": "current",
+        "value": 0.008,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "estimate",
+        "conditions": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+        "note": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPIO11"
+        },
+        "kind": "current",
+        "value": 0.008,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "estimate",
+        "conditions": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+        "note": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPIO12"
+        },
+        "kind": "current",
+        "value": 0.008,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "estimate",
+        "conditions": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+        "note": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPIO13"
+        },
+        "kind": "current",
+        "value": 0.008,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "estimate",
+        "conditions": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+        "note": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPIO14"
+        },
+        "kind": "current",
+        "value": 0.008,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "estimate",
+        "conditions": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+        "note": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPIO15"
+        },
+        "kind": "current",
+        "value": 0.008,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "estimate",
+        "conditions": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+        "note": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPIO16"
+        },
+        "kind": "current",
+        "value": 0.008,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "estimate",
+        "conditions": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+        "note": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPIO17"
+        },
+        "kind": "current",
+        "value": 0.008,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "estimate",
+        "conditions": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+        "note": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPIO18"
+        },
+        "kind": "current",
+        "value": 0.008,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "estimate",
+        "conditions": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+        "note": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPIO19"
+        },
+        "kind": "current",
+        "value": 0.008,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "estimate",
+        "conditions": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+        "note": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPIO20"
+        },
+        "kind": "current",
+        "value": 0.008,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "estimate",
+        "conditions": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+        "note": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPIO21"
+        },
+        "kind": "current",
+        "value": 0.008,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "estimate",
+        "conditions": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+        "note": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPIO22"
+        },
+        "kind": "current",
+        "value": 0.008,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "estimate",
+        "conditions": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+        "note": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPIO23"
+        },
+        "kind": "current",
+        "value": 0.008,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "estimate",
+        "conditions": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+        "note": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPIO24"
+        },
+        "kind": "current",
+        "value": 0.008,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "estimate",
+        "conditions": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+        "note": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPIO25"
+        },
+        "kind": "current",
+        "value": 0.008,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "estimate",
+        "conditions": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+        "note": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPIO26"
+        },
+        "kind": "current",
+        "value": 0.008,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "estimate",
+        "conditions": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+        "note": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board."
+      },
+      {
+        "of": {
+          "pin": "GPIO27"
+        },
+        "kind": "current",
+        "value": 0.008,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "estimate",
+        "conditions": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+        "note": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board."
+      },
+      {
+        "of": {
+          "domain": "3V3"
+        },
+        "kind": "ioTotalCurrent",
+        "value": 0.05,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://datasheets.raspberrypi.com/cm4/cm4-datasheet.pdf",
+        "provenance": "datasheet",
+        "conditions": "sum of all GPIO pin currents, 3.3 V signalling",
+        "note": "\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) CM4 datasheet section 2.5 GPIO (p. 7), same BCM2711: \"You should keep the load on the 28 GPIO pins to below 50mA in total.\""
+      },
+      {
+        "of": {
+          "domain": "5V"
+        },
+        "kind": "vinMax",
+        "value": 6,
+        "source": "https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "datasheet",
+        "conditions": "absolute maximum rating",
+        "note": "Pi 4 datasheet Table 2 Absolute Maximum Ratings (p. 7): VIN 5V Input Voltage, minimum -0.5 V, maximum 6.0 V. Board value."
+      }
+    ],
+    "power": {
+      "domains": [
+        {
+          "name": "5V",
+          "pin": "5V",
+          "ret": "GND",
+          "nominal": 5
+        },
+        {
+          "name": "USB",
+          "pin": "USB-C#vbus",
+          "ret": "USB-C#gnd",
+          "nominal": 5
+        },
+        {
+          "name": "3V3",
+          "pin": "3V3",
+          "ret": "GND",
+          "nominal": 3.3
+        }
+      ],
+      "draw": [
+        {
+          "domain": "5V",
+          "typical": {
+            "value": 0.6,
+            "unit": "A",
+            "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc",
+            "provenance": "datasheet",
+            "note": "Board, not chip. Raspberry Pi documentation, \"Power supply\" section (source file power-supplies.adoc), table \"Typical power requirements\": Raspberry Pi 4 Model B \"Typical bare-board active current consumption\" 600mA; the workload table in the same section gives Raspberry Pi 4B Idle Avg 0.6 A (measured June 2019, Raspberry Pi OS, room temperature, with an HDMI monitor, USB keyboard and mouse, and Ethernet connected)."
+          },
+          "peak": {
+            "value": 1.25,
+            "unit": "A",
+            "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc",
+            "provenance": "datasheet",
+            "note": "Board, not chip. Same section, workload table: Raspberry Pi 4B \"Stress\" Max 1.25 A (Avg 1.2 A); \"Boot\" Max 0.85 A. Measured with an HDMI monitor, USB keyboard and USB mouse attached, so it includes those small USB loads.",
+            "label": "CPU stress"
+          },
+          "minVolts": {
+            "value": 4,
+            "unit": "V",
+            "source": "https://maxlinear.com/document?id=22295 https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-reduced-schematics.pdf",
+            "provenance": "estimate",
+            "note": "Not documented for the board. The PMIC on the Pi 4 reduced schematic (U2, identified as a MaxLinear MxL7704 by its pinout and by the eeNews article) has buck input operational voltage 4.0 to 5.5 V and UVLO rising 3.9 V, hysteresis 210 mV (MxL7704 data sheet Rev 1B, Table 4, p. 2). 4.0 V taken as the brown-out point: below it the 3.3 V and core rails are out of their rated input range. Chip, not board; the board warns earlier, at 4.63 V (see notes)."
+          }
+        }
+      ],
+      "rails": [
+        {
+          "id": "usbc-5v",
+          "inputs": [
+            {
+              "domain": "USB",
+              "via": "direct"
+            }
+          ],
+          "output": "5V",
+          "kind": "switch",
+          "ron": {
+            "value": 0.01,
+            "unit": "ohm",
+            "source": "https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-reduced-schematics.pdf",
+            "provenance": "estimate",
+            "note": "Pi 4 reduced schematic (2019), \"USB-C POWER IN\": J1 VBUS (A4B9, B4A9) is wired straight to the 5V net, with only D1 SMBJ5.0A-TR (TVS to GND) and test points TP1 to TP3 on it; no fuse or switch in series is drawn. 10 mohm stands for the connector and copper (assumed; not measured). The reduced schematic may omit parts."
+          },
+          "reverse": "body-diode"
+        },
+        {
+          "id": "pmic-3v3",
+          "inputs": [
+            {
+              "domain": "5V",
+              "via": "direct"
+            }
+          ],
+          "output": "3V3",
+          "kind": "buck",
+          "vout": {
+            "value": 3.3,
+            "unit": "V",
+            "source": "https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-reduced-schematics.pdf https://maxlinear.com/document?id=22295",
+            "provenance": "datasheet",
+            "note": "Pi 4 datasheet p. 7: \"VDD IO is the GPIO bank voltage which is tied to the on-board 3.3V supply rail\". Reduced schematic: U2 LX1 through L1 4u7 to the 3V3 net (VOUT1 feedback). MxL7704 Buck 1 programmable 3.0 to 3.6 V (data sheet p. 1)."
+          },
+          "efficiency": {
+            "value": 0.88,
+            "unit": "1",
+            "source": "https://maxlinear.com/document?id=22295",
+            "provenance": "estimate",
+            "note": "Read from MxL7704 Figure 3 Buck 1 Efficiency (p. 11), VIN = 5 V, VOUT = 3.3 V, 1.5 MHz, includes inductor losses: about 81 % at 0.1 A, about 89 % at 0.2 A, about 91 % at 0.3 to 0.6 A. 0.88 for a 3V3 load of a few hundred mA. Chip, not board."
+          },
+          "vinMin": {
+            "value": 4,
+            "unit": "V",
+            "source": "https://maxlinear.com/document?id=22295",
+            "provenance": "datasheet",
+            "note": "chip, not board. MxL7704 Table 4 (p. 2): Buck Regulators 1-4 VIN Operational Voltage Range 4.0 to 5.5 V; Input DC voltage 4.0 min, 5.0 typ, 5.5 max."
+          },
+          "vinMax": {
+            "value": 5.5,
+            "unit": "V",
+            "source": "https://maxlinear.com/document?id=22295",
+            "provenance": "datasheet",
+            "note": "chip, not board. MxL7704 Table 4 (p. 2): Buck VIN operational range max 5.5 V (absolute maximum 6 V, Table 1)."
+          },
+          "ioutMax": {
+            "value": 0.6,
+            "unit": "A",
+            "source": "https://datasheets.raspberrypi.com/cm4/cm4-datasheet.pdf",
+            "provenance": "representative",
+            "note": "No 3.3 V header budget is documented for the Pi 4. Representative: Compute Module 4 (same BCM2711, same MXL7704 PMIC per its pin list) datasheet section 5.4 Regulator outputs (p. 25): \"the on-board regulators (+3.3V and +1.8V) can each supply 600mA to devices connected to the CM4\". The chip limit is higher: MxL7704 Buck 1 1.5 A (p. 1), shared with the board's own 3.3 V loads."
+          },
+          "reverse": "body-diode",
+          "offPath": "open"
+        }
+      ]
+    },
+    "gpio": {
+      "domain": "3V3",
+      "pins": [
+        "GPIO2",
+        "GPIO3",
+        "GPIO4",
+        "GPIO5",
+        "GPIO6",
+        "GPIO7",
+        "GPIO8",
+        "GPIO9",
+        "GPIO10",
+        "GPIO11",
+        "GPIO12",
+        "GPIO13",
+        "GPIO14",
+        "GPIO15",
+        "GPIO16",
+        "GPIO17",
+        "GPIO18",
+        "GPIO19",
+        "GPIO20",
+        "GPIO21",
+        "GPIO22",
+        "GPIO23",
+        "GPIO24",
+        "GPIO25",
+        "GPIO26",
+        "GPIO27"
+      ],
+      "outputResistance": {
+        "value": 140,
+        "unit": "ohm",
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf",
+        "provenance": "estimate",
+        "note": "From guaranteed limits, so an upper bound (no IV curves published). BCM2711 table in gpio-on-raspberry-pi.adoc, default drive strength 4 mA: VOL max 0.4 V at IOL 4 mA, 0.4 / 0.004 = 100 ohm; VOH min 2.6 V at IOH 4 mA, (3.3 - 2.6) / 0.004 = 175 ohm; mean 137.5, rounded to 140 ohm. Pi 4 datasheet Table 3 (p. 8) is looser: VOL 0.4 V and VOH VDD IO - 0.4 V at 2 mA, 200 ohm. Chip, not board."
+      },
+      "pullup": {
+        "value": 47000,
+        "unit": "ohm",
+        "source": "https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc",
+        "provenance": "datasheet",
+        "note": "chip, not board. Pi 4 datasheet Table 3 DC Characteristics (p. 8): RPU pull-up resistor min 18, typ 47, max 73 kohm. The BCM2711 table in gpio-on-raspberry-pi.adoc gives 33 to 73 kohm (no typical)."
+      },
+      "pulldown": {
+        "value": 47000,
+        "unit": "ohm",
+        "source": "https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc",
+        "provenance": "datasheet",
+        "note": "chip, not board. Pi 4 datasheet Table 3 (p. 8): RPD pull-down resistor min 18, typ 47, max 73 kohm. gpio-on-raspberry-pi.adoc BCM2711 table: 33 to 73 kohm."
+      },
+      "inputLeakage": {
+        "value": 0.00001,
+        "unit": "A",
+        "source": "https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc",
+        "provenance": "datasheet",
+        "note": "chip, not board. Pi 4 datasheet Table 3 (p. 8): IIL input leakage current max 10 uA at TA = +85 C; the BCM2711 table in gpio-on-raspberry-pi.adoc agrees (10 uA)."
+      },
+      "inputLow": {
+        "value": 0.8,
+        "unit": "V",
+        "source": "https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc",
+        "provenance": "datasheet",
+        "note": "chip, not board. Two sources agree: Pi 4 datasheet Table 3 (p. 8) VIL input low voltage max 0.8 V at VDD IO = 3.3 V (hysteresis enabled); BCM2711 table in gpio-on-raspberry-pi.adoc VIL max 0.8 V."
+      },
+      "inputHigh": {
+        "value": 2,
+        "unit": "V",
+        "source": "https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc",
+        "provenance": "datasheet",
+        "note": "chip, not board. Two sources agree: Pi 4 datasheet Table 3 (p. 8) VIH input high voltage min 2.0 V at VDD IO = 3.3 V (hysteresis enabled); BCM2711 table in gpio-on-raspberry-pi.adoc VIH min 2.0 V."
+      },
+      "fixedPullups": [
+        {
+          "pin": "GPIO2",
+          "ohms": {
+            "value": 1800,
+            "unit": "ohm",
+            "source": "https://datasheets.raspberrypi.com/cm4/cm4-datasheet.pdf https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc",
+            "provenance": "estimate",
+            "note": "Estimate: not on the Pi 4 board documents. The Pi 4 reduced schematic does not draw these resistors. gpio-on-raspberry-pi.adoc: \"Pins GPIO2 and GPIO3 have fixed pull-up resistors\" (no value). Value from the Compute Module 4 datasheet section 2.5 GPIO (p. 7), same BCM2711 GPIO bank: \"GPIO2 and GPIO3 have 1.8k pull up resistors.\" The Zero 2 W reduced schematic draws them as 1.8K (R23, R24). Value carried over from those boards (CM4 datasheet, Zero 2 W schematic); not verified for the Pi 4."
+          }
+        },
+        {
+          "pin": "GPIO3",
+          "ohms": {
+            "value": 1800,
+            "unit": "ohm",
+            "source": "https://datasheets.raspberrypi.com/cm4/cm4-datasheet.pdf https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc",
+            "provenance": "estimate",
+            "note": "Estimate: not on the Pi 4 board documents. The Pi 4 reduced schematic does not draw these resistors. gpio-on-raspberry-pi.adoc: \"Pins GPIO2 and GPIO3 have fixed pull-up resistors\" (no value). Value from the Compute Module 4 datasheet section 2.5 GPIO (p. 7), same BCM2711 GPIO bank: \"GPIO2 and GPIO3 have 1.8k pull up resistors.\" The Zero 2 W reduced schematic draws them as 1.8K (R23, R24). Value carried over from those boards (CM4 datasheet, Zero 2 W schematic); not verified for the Pi 4."
+          }
+        }
+      ]
+    },
+    "usbPorts": {
+      "USB-C": {
+        "gnd": "GND"
+      }
+    }
+  },
+  "notes": [
+    "Under-voltage warning (ruling R8), not a sim field: used by src/run/power.ts PI_UNDER_VOLTAGE. Value 4.63 V. Source: https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc (Raspberry Pi documentation source for the \"Power supply\" section of the Raspberry Pi hardware documentation), heading \"Power supply warnings\", exact wording: \"On all models of Raspberry Pi since the Raspberry Pi B+ (2014) except the Zero range, there is low-voltage detection circuitry that will detect if the supply voltage drops below 4.63 V (±5%). This will result in an entry being added to the kernel log.\" Cross-check: MxL7704 data sheet (https://maxlinear.com/document?id=22295) Table 4 (p. 5), Input Voltage Monitor Flag, VTH_RISING Input Voltage Good Threshold min 4.59, typ 4.63, max 4.7 V; VTH_FALLING 4.52, 4.57, 4.65 V. The rendered page (raspberrypi.com documentation, computers/raspberry-pi) refused scripted fetches (HTTP 403), so the GitHub source of the same documentation is cited.",
+    "Board: Pi 4 reduced schematic https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-reduced-schematics.pdf (dated 18 June 2019): USB-C VBUS -> 5V net (TVS D1 only) -> U2 PMIC; U2 Buck 1 (LX1, L1 4u7) -> 3V3. U2 is unlabelled on the reduced schematic; its pins (VIN_LDO 7, LDO_OUT 8, LX1 27, VOUT1 25, VIN1 28, 5V_SYS 24/31, AN1/AN2 21/22) match the MxL7704 pinout, and https://www.eenewseurope.com/en/what-is-powering-the-new-raspberry-pi-4/ says \"The highly integrated MxL7704 provides all key power rails required by the Raspberry Pi 4\". Raspberry Pi says \"a number of different PMIC devices have been used\" over production (https://pip.raspberrypi.com/documents/RP-004340-WP), so later board revisions may use another PMIC.",
+    "The header 5V pins (J8 pins 2 and 4) and USB-C VBUS are one net on the reduced schematic, so the USB-C to 5V rail is a near-zero switch both ways (reverse \"body-diode\", which a ron switch already conducts in this solver).",
+    "PMIC 3V3 rail reverse \"body-diode\": not documented; a synchronous buck's high-side switch has a body diode from the switch node to VIN. offPath \"open\" (not documented for the MxL7704; a synchronous buck with both switches off).",
+    "No iq on the 3V3 rail: the board draw is a whole-board measurement and already includes the PMIC's own current (MxL7704 5VSYS operating quiescent current 8 mA typ, Table 4 p. 2).",
+    "GPIO pins: GPIO2 to GPIO27. GPIO0 and GPIO1 (ID_SD, ID_SC) are the HAT ID EEPROM pins and stay out (reduced schematic note \"DO NOT USE these pins for anything other than attaching an I2C ID EEPROM\").",
+    "The Pi 4 datasheet (Release 1.1, March 2024) and the BCM2711 table in gpio-on-raspberry-pi.adoc disagree on the output figures and pulls: datasheet default drive 8 mA, VOL/VOH at 2 mA, pulls 18/47/73 kohm; documentation default drive 4 mA, VOL/VOH at 4 mA, pulls 33 to 73 kohm. Thresholds and leakage agree. gpio-pad-controls.adoc: \"On 4-series devices, the current level is half the value shown in the diagram\", which reconciles the drive figures (register value 3 = 8 mA label, about 4 mA on BCM2711).",
+    "Board extras with a sourced number are only the 1.8 kohm GPIO2/GPIO3 pull-ups (fixedPullups). R52 1K8 from 3V3 to GND on the reduced schematic is a load on the PMIC output, included in the measured board draw."
+  ],
+  "unaccounted": [
+    "USB devices on the four USB-A ports: downstream USB current is limited to about 1.1 A (Pi 4 datasheet section 5.3) or 1.2 A (power-supplies.adoc table) in aggregate; the ports stay \"not simulated\".",
+    "Camera and display (CSI/DSI) connectors: the Camera Module needs about 250 mA (power-supplies.adoc), not in the board draw.",
+    "HATs and anything else powered from the 5V or 3V3 header pins beyond the user circuit the sheet draws: the board draw covers the board only.",
+    "The PoE header and a PoE HAT.",
+    "The board draw was measured with an HDMI monitor, USB keyboard, USB mouse and Ethernet attached; HDMI uses about 50 mA (power-supplies.adoc). Other HDMI loads and Wi-Fi/Bluetooth activity are not separated out."
+  ],
+  "review": [
+    {
+      "date": "2026-10-06",
+      "reviewer": "A",
+      "checked": [
+        "sim.limits[0]",
+        "sim.limits[1]",
+        "sim.limits[2]",
+        "sim.limits[3]",
+        "sim.limits[4]",
+        "sim.limits[5]",
+        "sim.limits[6]",
+        "sim.limits[7]",
+        "sim.limits[8]",
+        "sim.limits[9]",
+        "sim.limits[10]",
+        "sim.limits[11]",
+        "sim.limits[12]",
+        "sim.limits[13]",
+        "sim.limits[14]",
+        "sim.limits[15]",
+        "sim.limits[16]",
+        "sim.limits[17]",
+        "sim.limits[18]",
+        "sim.limits[19]",
+        "sim.limits[20]",
+        "sim.limits[21]",
+        "sim.limits[22]",
+        "sim.limits[23]",
+        "sim.limits[24]",
+        "sim.limits[25]",
+        "sim.limits[26]",
+        "sim.limits[27]",
+        "sim.power.domains",
+        "sim.power.draw[0].typical",
+        "sim.power.draw[0].peak",
+        "sim.power.draw[0].minVolts",
+        "sim.power.rails[0].inputs",
+        "sim.power.rails[0].output",
+        "sim.power.rails[0].kind",
+        "sim.power.rails[0].ron",
+        "sim.power.rails[0].reverse",
+        "sim.power.rails[1].inputs",
+        "sim.power.rails[1].output",
+        "sim.power.rails[1].kind",
+        "sim.power.rails[1].vout",
+        "sim.power.rails[1].efficiency",
+        "sim.power.rails[1].vinMin",
+        "sim.power.rails[1].vinMax",
+        "sim.power.rails[1].ioutMax",
+        "sim.power.rails[1].reverse",
+        "sim.power.rails[1].offPath",
+        "sim.gpio.outputResistance",
+        "sim.gpio.pullup",
+        "sim.gpio.pulldown",
+        "sim.gpio.inputLeakage",
+        "sim.gpio.inputLow",
+        "sim.gpio.inputHigh",
+        "sim.gpio.domain",
+        "sim.gpio.pins",
+        "sim.gpio.fixedPullups[0].ohms",
+        "sim.gpio.fixedPullups[1].ohms",
+        "sim.usbPorts",
+        "notes",
+        "unaccounted"
+      ],
+      "corrected": [
+        {
+          "path": "sim.power.draw[0].minVolts.note",
+          "was": "Not documented for the board. The PMIC on the Pi 4 reduced schematic (U2, identified as a MaxLinear MxL7704 by its pinout and by the eeNews article) has buck input operational voltage 4.0 to 5.5 V and UVLO rising 3.9 V, hysteresis 210 mV (MxL7704 data sheet Rev 1B, Table 4, p. 5). 4.0 V taken as the brown-out point: below it the 3.3 V and core rails are out of their rated input range. Chip, not board; the board warns earlier, at 4.63 V (see notes).",
+          "now": "Not documented for the board. The PMIC on the Pi 4 reduced schematic (U2, identified as a MaxLinear MxL7704 by its pinout and by the eeNews article) has buck input operational voltage 4.0 to 5.5 V and UVLO rising 3.9 V, hysteresis 210 mV (MxL7704 data sheet Rev 1B, Table 4, p. 2). 4.0 V taken as the brown-out point: below it the 3.3 V and core rails are out of their rated input range. Chip, not board; the board warns earlier, at 4.63 V (see notes).",
+          "why": "MxL7704 Rev 1B: the UVLO rows of Table 4 are on page 2, not page 5 (page 5 holds the input voltage monitor flag)."
+        },
+        {
+          "path": "sim.power.rails[1].vinMin.note",
+          "was": "chip, not board. MxL7704 Table 4 (p. 5): Buck Regulators 1-4 VIN Operational Voltage Range 4.0 to 5.5 V; Input DC voltage 4.0 min, 5.0 typ, 5.5 max.",
+          "now": "chip, not board. MxL7704 Table 4 (p. 2): Buck Regulators 1-4 VIN Operational Voltage Range 4.0 to 5.5 V; Input DC voltage 4.0 min, 5.0 typ, 5.5 max.",
+          "why": "MxL7704 Rev 1B: Buck VIN operational range and input DC voltage rows are on page 2."
+        },
+        {
+          "path": "sim.power.rails[1].vinMax.note",
+          "was": "chip, not board. MxL7704 Table 4 (p. 5): Buck VIN operational range max 5.5 V (absolute maximum 6 V, Table 1).",
+          "now": "chip, not board. MxL7704 Table 4 (p. 2): Buck VIN operational range max 5.5 V (absolute maximum 6 V, Table 1).",
+          "why": "MxL7704 Rev 1B: Buck VIN operational range row is on page 2."
+        },
+        {
+          "path": "notes[4]",
+          "was": "No iq on the 3V3 rail: the board draw is a whole-board measurement and already includes the PMIC's own current (MxL7704 5VSYS operating quiescent current 8 mA typ, Table 4 p. 5).",
+          "now": "No iq on the 3V3 rail: the board draw is a whole-board measurement and already includes the PMIC's own current (MxL7704 5VSYS operating quiescent current 8 mA typ, Table 4 p. 2).",
+          "why": "MxL7704 Rev 1B: IQ_OPERATING_5VSYS 8 mA is on page 2."
+        },
+        {
+          "path": "sim.gpio.fixedPullups[0].ohms.provenance",
+          "was": "representative",
+          "now": "estimate",
+          "why": "Protocol item 3: a board extra gets a number only from the board's own schematic or a measurement. The 1.8 kohm value is on neither for this board (it comes from a different board's datasheet), so it cannot be representative; kept as an estimate because the brief requires the field."
+        },
+        {
+          "path": "sim.gpio.fixedPullups[0].ohms.note",
+          "was": "The Pi 4 reduced schematic does not draw these resistors. gpio-on-raspberry-pi.adoc: \"Pins GPIO2 and GPIO3 have fixed pull-up resistors\" (no value). Value from the Compute Module 4 datasheet section 2.5 GPIO (p. 7), same BCM2711 GPIO bank: \"GPIO2 and GPIO3 have 1.8k pull up resistors.\" The Zero 2 W reduced schematic draws them as 1.8K (R23, R24).",
+          "now": "Estimate: not on the Pi 4 board documents. The Pi 4 reduced schematic does not draw these resistors. gpio-on-raspberry-pi.adoc: \"Pins GPIO2 and GPIO3 have fixed pull-up resistors\" (no value). Value from the Compute Module 4 datasheet section 2.5 GPIO (p. 7), same BCM2711 GPIO bank: \"GPIO2 and GPIO3 have 1.8k pull up resistors.\" The Zero 2 W reduced schematic draws them as 1.8K (R23, R24). Value carried over from those boards (CM4 datasheet, Zero 2 W schematic); not verified for the Pi 4.",
+          "why": "Says why it is an estimate (protocol item 3)."
+        },
+        {
+          "path": "sim.gpio.fixedPullups[1].ohms.provenance",
+          "was": "representative",
+          "now": "estimate",
+          "why": "Protocol item 3: a board extra gets a number only from the board's own schematic or a measurement. The 1.8 kohm value is on neither for this board (it comes from a different board's datasheet), so it cannot be representative; kept as an estimate because the brief requires the field."
+        },
+        {
+          "path": "sim.gpio.fixedPullups[1].ohms.note",
+          "was": "The Pi 4 reduced schematic does not draw these resistors. gpio-on-raspberry-pi.adoc: \"Pins GPIO2 and GPIO3 have fixed pull-up resistors\" (no value). Value from the Compute Module 4 datasheet section 2.5 GPIO (p. 7), same BCM2711 GPIO bank: \"GPIO2 and GPIO3 have 1.8k pull up resistors.\" The Zero 2 W reduced schematic draws them as 1.8K (R23, R24).",
+          "now": "Estimate: not on the Pi 4 board documents. The Pi 4 reduced schematic does not draw these resistors. gpio-on-raspberry-pi.adoc: \"Pins GPIO2 and GPIO3 have fixed pull-up resistors\" (no value). Value from the Compute Module 4 datasheet section 2.5 GPIO (p. 7), same BCM2711 GPIO bank: \"GPIO2 and GPIO3 have 1.8k pull up resistors.\" The Zero 2 W reduced schematic draws them as 1.8K (R23, R24). Value carried over from those boards (CM4 datasheet, Zero 2 W schematic); not verified for the Pi 4.",
+          "why": "Says why it is an estimate (protocol item 3)."
+        }
+      ],
+      "disputed": [
+        {
+          "path": "sim.limits[0..25] (per-pin current, 0.016 A)",
+          "readings": [
+            "16 mA: power-supplies.adoc and gpio-pad-controls.adoc \"Safe current\" (generic, not tied to the 4-series); Pi 4 datasheet Table 3 note c",
+            "8 mA: BCM2711 table in gpio-on-raspberry-pi.adoc, maximum drive strength 8 mA, and \"On 4-series devices, the current level is half the value shown in the diagram\""
+          ],
+          "note": "Left as the researcher wrote it: already an estimate with both readings in its note. The half-current warning is about the drive-strength diagram, and the safe-current text is not model-specific, so neither reading is decisive; the controller may choose 8 mA if it wants the conservative one."
+        }
+      ]
+    },
+    {
+      "date": "2026-10-06",
+      "reviewer": "B",
+      "checked": [
+        "sim.limits[0]",
+        "sim.limits[1]",
+        "sim.limits[2]",
+        "sim.limits[3]",
+        "sim.limits[4]",
+        "sim.limits[5]",
+        "sim.limits[6]",
+        "sim.limits[7]",
+        "sim.limits[8]",
+        "sim.limits[9]",
+        "sim.limits[10]",
+        "sim.limits[11]",
+        "sim.limits[12]",
+        "sim.limits[13]",
+        "sim.limits[14]",
+        "sim.limits[15]",
+        "sim.limits[16]",
+        "sim.limits[17]",
+        "sim.limits[18]",
+        "sim.limits[19]",
+        "sim.limits[20]",
+        "sim.limits[21]",
+        "sim.limits[22]",
+        "sim.limits[23]",
+        "sim.limits[24]",
+        "sim.limits[25]",
+        "sim.limits[26]",
+        "sim.limits[27]",
+        "sim.power.domains",
+        "sim.power.draw[0].domain",
+        "sim.power.draw[0].typical",
+        "sim.power.draw[0].peak",
+        "sim.power.draw[0].minVolts",
+        "sim.power.rails[0].inputs",
+        "sim.power.rails[0].output",
+        "sim.power.rails[0].kind",
+        "sim.power.rails[0].ron",
+        "sim.power.rails[0].reverse",
+        "sim.power.rails[1].inputs",
+        "sim.power.rails[1].output",
+        "sim.power.rails[1].kind",
+        "sim.power.rails[1].vout",
+        "sim.power.rails[1].efficiency",
+        "sim.power.rails[1].vinMin",
+        "sim.power.rails[1].vinMax",
+        "sim.power.rails[1].ioutMax",
+        "sim.power.rails[1].reverse",
+        "sim.power.rails[1].offPath",
+        "sim.gpio.domain",
+        "sim.gpio.pins",
+        "sim.gpio.outputResistance",
+        "sim.gpio.pullup",
+        "sim.gpio.pulldown",
+        "sim.gpio.inputLeakage",
+        "sim.gpio.inputLow",
+        "sim.gpio.inputHigh",
+        "sim.gpio.fixedPullups[0]",
+        "sim.gpio.fixedPullups[1]",
+        "sim.usbPorts",
+        "notes[0]",
+        "notes[1]",
+        "notes[2]",
+        "notes[3]",
+        "notes[4]",
+        "notes[5]",
+        "notes[6]",
+        "notes[7]",
+        "unaccounted[0]",
+        "unaccounted[1]",
+        "unaccounted[2]",
+        "unaccounted[3]",
+        "unaccounted[4]"
+      ],
+      "corrected": [
+        {
+          "path": "sim.limits[0].value",
+          "was": 0.016,
+          "now": 0.008,
+          "why": "controller ruling: 8 mA as the 4-series maximum drive (BCM2711 table, gpio-on-raspberry-pi.adoc), both readings kept in the note"
+        },
+        {
+          "path": "sim.limits[0].note",
+          "was": "Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". Against it, gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA. 16 mA taken as the damage limit; an estimate because the 4-series wording is ambiguous. Chip, not board.",
+          "now": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.",
+          "why": "controller ruling: note keeps the 16 mA and 8 mA readings and says why 8 mA was chosen"
+        },
+        {
+          "path": "sim.limits[0].conditions",
+          "was": "any drive strength; damage limit, not the drive rating",
+          "now": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+          "why": "controller ruling: the limit is now the 4-series maximum drive, not the 16 mA damage figure"
+        },
+        {
+          "path": "sim.limits[1].value",
+          "was": 0.016,
+          "now": 0.008,
+          "why": "controller ruling: 8 mA as the 4-series maximum drive (BCM2711 table, gpio-on-raspberry-pi.adoc), both readings kept in the note"
+        },
+        {
+          "path": "sim.limits[1].note",
+          "was": "Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". Against it, gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA. 16 mA taken as the damage limit; an estimate because the 4-series wording is ambiguous. Chip, not board.",
+          "now": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.",
+          "why": "controller ruling: note keeps the 16 mA and 8 mA readings and says why 8 mA was chosen"
+        },
+        {
+          "path": "sim.limits[1].conditions",
+          "was": "any drive strength; damage limit, not the drive rating",
+          "now": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+          "why": "controller ruling: the limit is now the 4-series maximum drive, not the 16 mA damage figure"
+        },
+        {
+          "path": "sim.limits[2].value",
+          "was": 0.016,
+          "now": 0.008,
+          "why": "controller ruling: 8 mA as the 4-series maximum drive (BCM2711 table, gpio-on-raspberry-pi.adoc), both readings kept in the note"
+        },
+        {
+          "path": "sim.limits[2].note",
+          "was": "Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". Against it, gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA. 16 mA taken as the damage limit; an estimate because the 4-series wording is ambiguous. Chip, not board.",
+          "now": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.",
+          "why": "controller ruling: note keeps the 16 mA and 8 mA readings and says why 8 mA was chosen"
+        },
+        {
+          "path": "sim.limits[2].conditions",
+          "was": "any drive strength; damage limit, not the drive rating",
+          "now": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+          "why": "controller ruling: the limit is now the 4-series maximum drive, not the 16 mA damage figure"
+        },
+        {
+          "path": "sim.limits[3].value",
+          "was": 0.016,
+          "now": 0.008,
+          "why": "controller ruling: 8 mA as the 4-series maximum drive (BCM2711 table, gpio-on-raspberry-pi.adoc), both readings kept in the note"
+        },
+        {
+          "path": "sim.limits[3].note",
+          "was": "Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". Against it, gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA. 16 mA taken as the damage limit; an estimate because the 4-series wording is ambiguous. Chip, not board.",
+          "now": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.",
+          "why": "controller ruling: note keeps the 16 mA and 8 mA readings and says why 8 mA was chosen"
+        },
+        {
+          "path": "sim.limits[3].conditions",
+          "was": "any drive strength; damage limit, not the drive rating",
+          "now": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+          "why": "controller ruling: the limit is now the 4-series maximum drive, not the 16 mA damage figure"
+        },
+        {
+          "path": "sim.limits[4].value",
+          "was": 0.016,
+          "now": 0.008,
+          "why": "controller ruling: 8 mA as the 4-series maximum drive (BCM2711 table, gpio-on-raspberry-pi.adoc), both readings kept in the note"
+        },
+        {
+          "path": "sim.limits[4].note",
+          "was": "Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". Against it, gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA. 16 mA taken as the damage limit; an estimate because the 4-series wording is ambiguous. Chip, not board.",
+          "now": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.",
+          "why": "controller ruling: note keeps the 16 mA and 8 mA readings and says why 8 mA was chosen"
+        },
+        {
+          "path": "sim.limits[4].conditions",
+          "was": "any drive strength; damage limit, not the drive rating",
+          "now": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+          "why": "controller ruling: the limit is now the 4-series maximum drive, not the 16 mA damage figure"
+        },
+        {
+          "path": "sim.limits[5].value",
+          "was": 0.016,
+          "now": 0.008,
+          "why": "controller ruling: 8 mA as the 4-series maximum drive (BCM2711 table, gpio-on-raspberry-pi.adoc), both readings kept in the note"
+        },
+        {
+          "path": "sim.limits[5].note",
+          "was": "Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". Against it, gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA. 16 mA taken as the damage limit; an estimate because the 4-series wording is ambiguous. Chip, not board.",
+          "now": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.",
+          "why": "controller ruling: note keeps the 16 mA and 8 mA readings and says why 8 mA was chosen"
+        },
+        {
+          "path": "sim.limits[5].conditions",
+          "was": "any drive strength; damage limit, not the drive rating",
+          "now": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+          "why": "controller ruling: the limit is now the 4-series maximum drive, not the 16 mA damage figure"
+        },
+        {
+          "path": "sim.limits[6].value",
+          "was": 0.016,
+          "now": 0.008,
+          "why": "controller ruling: 8 mA as the 4-series maximum drive (BCM2711 table, gpio-on-raspberry-pi.adoc), both readings kept in the note"
+        },
+        {
+          "path": "sim.limits[6].note",
+          "was": "Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". Against it, gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA. 16 mA taken as the damage limit; an estimate because the 4-series wording is ambiguous. Chip, not board.",
+          "now": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.",
+          "why": "controller ruling: note keeps the 16 mA and 8 mA readings and says why 8 mA was chosen"
+        },
+        {
+          "path": "sim.limits[6].conditions",
+          "was": "any drive strength; damage limit, not the drive rating",
+          "now": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+          "why": "controller ruling: the limit is now the 4-series maximum drive, not the 16 mA damage figure"
+        },
+        {
+          "path": "sim.limits[7].value",
+          "was": 0.016,
+          "now": 0.008,
+          "why": "controller ruling: 8 mA as the 4-series maximum drive (BCM2711 table, gpio-on-raspberry-pi.adoc), both readings kept in the note"
+        },
+        {
+          "path": "sim.limits[7].note",
+          "was": "Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". Against it, gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA. 16 mA taken as the damage limit; an estimate because the 4-series wording is ambiguous. Chip, not board.",
+          "now": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.",
+          "why": "controller ruling: note keeps the 16 mA and 8 mA readings and says why 8 mA was chosen"
+        },
+        {
+          "path": "sim.limits[7].conditions",
+          "was": "any drive strength; damage limit, not the drive rating",
+          "now": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+          "why": "controller ruling: the limit is now the 4-series maximum drive, not the 16 mA damage figure"
+        },
+        {
+          "path": "sim.limits[8].value",
+          "was": 0.016,
+          "now": 0.008,
+          "why": "controller ruling: 8 mA as the 4-series maximum drive (BCM2711 table, gpio-on-raspberry-pi.adoc), both readings kept in the note"
+        },
+        {
+          "path": "sim.limits[8].note",
+          "was": "Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". Against it, gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA. 16 mA taken as the damage limit; an estimate because the 4-series wording is ambiguous. Chip, not board.",
+          "now": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.",
+          "why": "controller ruling: note keeps the 16 mA and 8 mA readings and says why 8 mA was chosen"
+        },
+        {
+          "path": "sim.limits[8].conditions",
+          "was": "any drive strength; damage limit, not the drive rating",
+          "now": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+          "why": "controller ruling: the limit is now the 4-series maximum drive, not the 16 mA damage figure"
+        },
+        {
+          "path": "sim.limits[9].value",
+          "was": 0.016,
+          "now": 0.008,
+          "why": "controller ruling: 8 mA as the 4-series maximum drive (BCM2711 table, gpio-on-raspberry-pi.adoc), both readings kept in the note"
+        },
+        {
+          "path": "sim.limits[9].note",
+          "was": "Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". Against it, gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA. 16 mA taken as the damage limit; an estimate because the 4-series wording is ambiguous. Chip, not board.",
+          "now": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.",
+          "why": "controller ruling: note keeps the 16 mA and 8 mA readings and says why 8 mA was chosen"
+        },
+        {
+          "path": "sim.limits[9].conditions",
+          "was": "any drive strength; damage limit, not the drive rating",
+          "now": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+          "why": "controller ruling: the limit is now the 4-series maximum drive, not the 16 mA damage figure"
+        },
+        {
+          "path": "sim.limits[10].value",
+          "was": 0.016,
+          "now": 0.008,
+          "why": "controller ruling: 8 mA as the 4-series maximum drive (BCM2711 table, gpio-on-raspberry-pi.adoc), both readings kept in the note"
+        },
+        {
+          "path": "sim.limits[10].note",
+          "was": "Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". Against it, gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA. 16 mA taken as the damage limit; an estimate because the 4-series wording is ambiguous. Chip, not board.",
+          "now": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.",
+          "why": "controller ruling: note keeps the 16 mA and 8 mA readings and says why 8 mA was chosen"
+        },
+        {
+          "path": "sim.limits[10].conditions",
+          "was": "any drive strength; damage limit, not the drive rating",
+          "now": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+          "why": "controller ruling: the limit is now the 4-series maximum drive, not the 16 mA damage figure"
+        },
+        {
+          "path": "sim.limits[11].value",
+          "was": 0.016,
+          "now": 0.008,
+          "why": "controller ruling: 8 mA as the 4-series maximum drive (BCM2711 table, gpio-on-raspberry-pi.adoc), both readings kept in the note"
+        },
+        {
+          "path": "sim.limits[11].note",
+          "was": "Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". Against it, gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA. 16 mA taken as the damage limit; an estimate because the 4-series wording is ambiguous. Chip, not board.",
+          "now": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.",
+          "why": "controller ruling: note keeps the 16 mA and 8 mA readings and says why 8 mA was chosen"
+        },
+        {
+          "path": "sim.limits[11].conditions",
+          "was": "any drive strength; damage limit, not the drive rating",
+          "now": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+          "why": "controller ruling: the limit is now the 4-series maximum drive, not the 16 mA damage figure"
+        },
+        {
+          "path": "sim.limits[12].value",
+          "was": 0.016,
+          "now": 0.008,
+          "why": "controller ruling: 8 mA as the 4-series maximum drive (BCM2711 table, gpio-on-raspberry-pi.adoc), both readings kept in the note"
+        },
+        {
+          "path": "sim.limits[12].note",
+          "was": "Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". Against it, gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA. 16 mA taken as the damage limit; an estimate because the 4-series wording is ambiguous. Chip, not board.",
+          "now": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.",
+          "why": "controller ruling: note keeps the 16 mA and 8 mA readings and says why 8 mA was chosen"
+        },
+        {
+          "path": "sim.limits[12].conditions",
+          "was": "any drive strength; damage limit, not the drive rating",
+          "now": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+          "why": "controller ruling: the limit is now the 4-series maximum drive, not the 16 mA damage figure"
+        },
+        {
+          "path": "sim.limits[13].value",
+          "was": 0.016,
+          "now": 0.008,
+          "why": "controller ruling: 8 mA as the 4-series maximum drive (BCM2711 table, gpio-on-raspberry-pi.adoc), both readings kept in the note"
+        },
+        {
+          "path": "sim.limits[13].note",
+          "was": "Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". Against it, gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA. 16 mA taken as the damage limit; an estimate because the 4-series wording is ambiguous. Chip, not board.",
+          "now": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.",
+          "why": "controller ruling: note keeps the 16 mA and 8 mA readings and says why 8 mA was chosen"
+        },
+        {
+          "path": "sim.limits[13].conditions",
+          "was": "any drive strength; damage limit, not the drive rating",
+          "now": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+          "why": "controller ruling: the limit is now the 4-series maximum drive, not the 16 mA damage figure"
+        },
+        {
+          "path": "sim.limits[14].value",
+          "was": 0.016,
+          "now": 0.008,
+          "why": "controller ruling: 8 mA as the 4-series maximum drive (BCM2711 table, gpio-on-raspberry-pi.adoc), both readings kept in the note"
+        },
+        {
+          "path": "sim.limits[14].note",
+          "was": "Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". Against it, gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA. 16 mA taken as the damage limit; an estimate because the 4-series wording is ambiguous. Chip, not board.",
+          "now": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.",
+          "why": "controller ruling: note keeps the 16 mA and 8 mA readings and says why 8 mA was chosen"
+        },
+        {
+          "path": "sim.limits[14].conditions",
+          "was": "any drive strength; damage limit, not the drive rating",
+          "now": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+          "why": "controller ruling: the limit is now the 4-series maximum drive, not the 16 mA damage figure"
+        },
+        {
+          "path": "sim.limits[15].value",
+          "was": 0.016,
+          "now": 0.008,
+          "why": "controller ruling: 8 mA as the 4-series maximum drive (BCM2711 table, gpio-on-raspberry-pi.adoc), both readings kept in the note"
+        },
+        {
+          "path": "sim.limits[15].note",
+          "was": "Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". Against it, gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA. 16 mA taken as the damage limit; an estimate because the 4-series wording is ambiguous. Chip, not board.",
+          "now": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.",
+          "why": "controller ruling: note keeps the 16 mA and 8 mA readings and says why 8 mA was chosen"
+        },
+        {
+          "path": "sim.limits[15].conditions",
+          "was": "any drive strength; damage limit, not the drive rating",
+          "now": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+          "why": "controller ruling: the limit is now the 4-series maximum drive, not the 16 mA damage figure"
+        },
+        {
+          "path": "sim.limits[16].value",
+          "was": 0.016,
+          "now": 0.008,
+          "why": "controller ruling: 8 mA as the 4-series maximum drive (BCM2711 table, gpio-on-raspberry-pi.adoc), both readings kept in the note"
+        },
+        {
+          "path": "sim.limits[16].note",
+          "was": "Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". Against it, gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA. 16 mA taken as the damage limit; an estimate because the 4-series wording is ambiguous. Chip, not board.",
+          "now": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.",
+          "why": "controller ruling: note keeps the 16 mA and 8 mA readings and says why 8 mA was chosen"
+        },
+        {
+          "path": "sim.limits[16].conditions",
+          "was": "any drive strength; damage limit, not the drive rating",
+          "now": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+          "why": "controller ruling: the limit is now the 4-series maximum drive, not the 16 mA damage figure"
+        },
+        {
+          "path": "sim.limits[17].value",
+          "was": 0.016,
+          "now": 0.008,
+          "why": "controller ruling: 8 mA as the 4-series maximum drive (BCM2711 table, gpio-on-raspberry-pi.adoc), both readings kept in the note"
+        },
+        {
+          "path": "sim.limits[17].note",
+          "was": "Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". Against it, gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA. 16 mA taken as the damage limit; an estimate because the 4-series wording is ambiguous. Chip, not board.",
+          "now": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.",
+          "why": "controller ruling: note keeps the 16 mA and 8 mA readings and says why 8 mA was chosen"
+        },
+        {
+          "path": "sim.limits[17].conditions",
+          "was": "any drive strength; damage limit, not the drive rating",
+          "now": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+          "why": "controller ruling: the limit is now the 4-series maximum drive, not the 16 mA damage figure"
+        },
+        {
+          "path": "sim.limits[18].value",
+          "was": 0.016,
+          "now": 0.008,
+          "why": "controller ruling: 8 mA as the 4-series maximum drive (BCM2711 table, gpio-on-raspberry-pi.adoc), both readings kept in the note"
+        },
+        {
+          "path": "sim.limits[18].note",
+          "was": "Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". Against it, gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA. 16 mA taken as the damage limit; an estimate because the 4-series wording is ambiguous. Chip, not board.",
+          "now": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.",
+          "why": "controller ruling: note keeps the 16 mA and 8 mA readings and says why 8 mA was chosen"
+        },
+        {
+          "path": "sim.limits[18].conditions",
+          "was": "any drive strength; damage limit, not the drive rating",
+          "now": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+          "why": "controller ruling: the limit is now the 4-series maximum drive, not the 16 mA damage figure"
+        },
+        {
+          "path": "sim.limits[19].value",
+          "was": 0.016,
+          "now": 0.008,
+          "why": "controller ruling: 8 mA as the 4-series maximum drive (BCM2711 table, gpio-on-raspberry-pi.adoc), both readings kept in the note"
+        },
+        {
+          "path": "sim.limits[19].note",
+          "was": "Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". Against it, gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA. 16 mA taken as the damage limit; an estimate because the 4-series wording is ambiguous. Chip, not board.",
+          "now": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.",
+          "why": "controller ruling: note keeps the 16 mA and 8 mA readings and says why 8 mA was chosen"
+        },
+        {
+          "path": "sim.limits[19].conditions",
+          "was": "any drive strength; damage limit, not the drive rating",
+          "now": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+          "why": "controller ruling: the limit is now the 4-series maximum drive, not the 16 mA damage figure"
+        },
+        {
+          "path": "sim.limits[20].value",
+          "was": 0.016,
+          "now": 0.008,
+          "why": "controller ruling: 8 mA as the 4-series maximum drive (BCM2711 table, gpio-on-raspberry-pi.adoc), both readings kept in the note"
+        },
+        {
+          "path": "sim.limits[20].note",
+          "was": "Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". Against it, gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA. 16 mA taken as the damage limit; an estimate because the 4-series wording is ambiguous. Chip, not board.",
+          "now": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.",
+          "why": "controller ruling: note keeps the 16 mA and 8 mA readings and says why 8 mA was chosen"
+        },
+        {
+          "path": "sim.limits[20].conditions",
+          "was": "any drive strength; damage limit, not the drive rating",
+          "now": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+          "why": "controller ruling: the limit is now the 4-series maximum drive, not the 16 mA damage figure"
+        },
+        {
+          "path": "sim.limits[21].value",
+          "was": 0.016,
+          "now": 0.008,
+          "why": "controller ruling: 8 mA as the 4-series maximum drive (BCM2711 table, gpio-on-raspberry-pi.adoc), both readings kept in the note"
+        },
+        {
+          "path": "sim.limits[21].note",
+          "was": "Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". Against it, gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA. 16 mA taken as the damage limit; an estimate because the 4-series wording is ambiguous. Chip, not board.",
+          "now": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.",
+          "why": "controller ruling: note keeps the 16 mA and 8 mA readings and says why 8 mA was chosen"
+        },
+        {
+          "path": "sim.limits[21].conditions",
+          "was": "any drive strength; damage limit, not the drive rating",
+          "now": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+          "why": "controller ruling: the limit is now the 4-series maximum drive, not the 16 mA damage figure"
+        },
+        {
+          "path": "sim.limits[22].value",
+          "was": 0.016,
+          "now": 0.008,
+          "why": "controller ruling: 8 mA as the 4-series maximum drive (BCM2711 table, gpio-on-raspberry-pi.adoc), both readings kept in the note"
+        },
+        {
+          "path": "sim.limits[22].note",
+          "was": "Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". Against it, gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA. 16 mA taken as the damage limit; an estimate because the 4-series wording is ambiguous. Chip, not board.",
+          "now": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.",
+          "why": "controller ruling: note keeps the 16 mA and 8 mA readings and says why 8 mA was chosen"
+        },
+        {
+          "path": "sim.limits[22].conditions",
+          "was": "any drive strength; damage limit, not the drive rating",
+          "now": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+          "why": "controller ruling: the limit is now the 4-series maximum drive, not the 16 mA damage figure"
+        },
+        {
+          "path": "sim.limits[23].value",
+          "was": 0.016,
+          "now": 0.008,
+          "why": "controller ruling: 8 mA as the 4-series maximum drive (BCM2711 table, gpio-on-raspberry-pi.adoc), both readings kept in the note"
+        },
+        {
+          "path": "sim.limits[23].note",
+          "was": "Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". Against it, gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA. 16 mA taken as the damage limit; an estimate because the 4-series wording is ambiguous. Chip, not board.",
+          "now": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.",
+          "why": "controller ruling: note keeps the 16 mA and 8 mA readings and says why 8 mA was chosen"
+        },
+        {
+          "path": "sim.limits[23].conditions",
+          "was": "any drive strength; damage limit, not the drive rating",
+          "now": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+          "why": "controller ruling: the limit is now the 4-series maximum drive, not the 16 mA damage figure"
+        },
+        {
+          "path": "sim.limits[24].value",
+          "was": 0.016,
+          "now": 0.008,
+          "why": "controller ruling: 8 mA as the 4-series maximum drive (BCM2711 table, gpio-on-raspberry-pi.adoc), both readings kept in the note"
+        },
+        {
+          "path": "sim.limits[24].note",
+          "was": "Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". Against it, gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA. 16 mA taken as the damage limit; an estimate because the 4-series wording is ambiguous. Chip, not board.",
+          "now": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.",
+          "why": "controller ruling: note keeps the 16 mA and 8 mA readings and says why 8 mA was chosen"
+        },
+        {
+          "path": "sim.limits[24].conditions",
+          "was": "any drive strength; damage limit, not the drive rating",
+          "now": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+          "why": "controller ruling: the limit is now the 4-series maximum drive, not the 16 mA damage figure"
+        },
+        {
+          "path": "sim.limits[25].value",
+          "was": 0.016,
+          "now": 0.008,
+          "why": "controller ruling: 8 mA as the 4-series maximum drive (BCM2711 table, gpio-on-raspberry-pi.adoc), both readings kept in the note"
+        },
+        {
+          "path": "sim.limits[25].note",
+          "was": "Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". Against it, gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA. 16 mA taken as the damage limit; an estimate because the 4-series wording is ambiguous. Chip, not board.",
+          "now": "Controller ruling: 8 mA chosen as the 4-series maximum drive. Two readings. 16 mA: \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\"; Pi 4 datasheet Table 3 note c (p. 8): \"Maximum drive strength (16mA)\". 8 mA: gpio-pad-controls.adoc warns \"On 4-series devices, the current level is half the value shown in the diagram\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.",
+          "why": "controller ruling: note keeps the 16 mA and 8 mA readings and says why 8 mA was chosen"
+        },
+        {
+          "path": "sim.limits[25].conditions",
+          "was": "any drive strength; damage limit, not the drive rating",
+          "now": "any drive strength; the 4-series maximum drive strength taken as the per-pin limit",
+          "why": "controller ruling: the limit is now the 4-series maximum drive, not the 16 mA damage figure"
+        }
+      ],
+      "disputed": []
+    }
+  ]
+}
