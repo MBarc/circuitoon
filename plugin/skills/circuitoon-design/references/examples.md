@@ -23,6 +23,7 @@ Every example is laid out with the default: wires (`--labels none`), labels only
 - `battery-switch`: none.
 - `tilt-sensors-8`: five readability warnings: two `crossings-high` and three `wires-crowded`, where the signal wires of switches 1, 2, 6 and 7 cross the block's ground drops and run beside each other on their way to the ESP32's header. No electrical warnings.
 - `spirit-typewriter/1-main`: none. The displays are never read, so their `SDO(MISO)` pins are in `nc` and only the SD card drives MISO (see "SPI MISO" in `SKILL.md`).
+- `spirit-typewriter/1-main` ships with SW1 open on purpose, so `sim` (and the simulation group of `gate`) reports one folded "not powered in the current state because SW1 is open" warning; set SW1 to closed to simulate the sheet running.
 - The spirit-typewriter sheets: readability warnings only (listed in its README), and no electrical warnings.
 
 Every gate also prints the same "not checked" list: current and heat, bus addresses, floating configuration inputs, firmware, timing, mechanical fit, mains, and the correctness of each part beyond its sources. Pass that list on every time.
