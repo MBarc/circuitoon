@@ -173,6 +173,12 @@ export function powerPart(b: Builder, p: PartInstance, m: ModuleDef): void {
           },
         })
     }
+  // Fixed pull-ups on the board (firmware spec 3.3, ruling R3): always there, whatever the code does.
+  if (g && io)
+    for (const fp of g.fixedPullups ?? []) {
+      const node = b.tap(p.uid, fp.pin)
+      if (node) b.add({ kind: 'resistor', id: `${p.uid}.pullup.${fp.pin}`, part: p.uid, a: io.pin, b: node, ohms: P(fp.ohms, `gpio.fixedPullups.${fp.pin}`), role: 'internal' })
+    }
   // Spec 3.5, as for a battery: the imax override replaces the module's sourceCurrent limit.
   if (imaxOver === null) return b.partLimits(p, m)
   b.partLimits(p, m, ['sourceCurrent'])
@@ -199,6 +205,12 @@ export function usbLinks(b: Builder, d: Diagram): void {
     }
     if (!simOf(hm)?.power) {
       b.unsimulated(dev.part.uid, `powered from ${b.ref(host.part.uid)} over USB, which has no power data`)
+      continue
+    }
+    // A host port that no power domain feeds (a Pi's USB-A ports, firmware spec 3.3): it powers
+    // nothing here, exactly as before the host had power data.
+    if (!simOf(hm)!.power!.domains.some((x) => x.pin === `${host.name}#vbus`)) {
+      b.unsimulated(dev.part.uid, `powered from ${b.ref(host.part.uid)} ${host.name}, whose USB power is not simulated`)
       continue
     }
     if (!b.simulated(host.part.uid)) {

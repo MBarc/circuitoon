@@ -51,7 +51,13 @@ export interface Rail {
 }
 export interface SourceSpec { domain: string; voltage: 'param:voltage' | Quantity; rInternal: Quantity; imax?: Quantity }
 export interface PowerSpec { domains: PowerDomain[]; draw?: Draw[]; rails?: Rail[]; source?: SourceSpec }
-export interface GpioSpec { domain: string; pins: string[]; outputResistance: Quantity; pullup?: Quantity; pulldown?: Quantity; inputLeakage?: Quantity }
+export interface GpioSpec { domain: string; pins: string[]; outputResistance: Quantity; pullup?: Quantity; pulldown?: Quantity; inputLeakage?: Quantity
+  /** Logic thresholds (firmware spec 3.3): below inputLow reads 0, above inputHigh reads 1. */
+  inputLow?: Quantity
+  inputHigh?: Quantity
+  /** Always-present pull-ups to the GPIO domain on the board itself (the Pi's 1.8 kohm on GPIO2 and GPIO3), ruling R3. */
+  fixedPullups?: { pin: string; ohms: Quantity }[]
+}
 export interface SimSpec {
   /** Physics: diode is, n, rs; rInternal; contactResistance; dcr. */
   modelParams?: Record<string, Quantity>
@@ -257,13 +263,27 @@ export function validateSim(raw: Record<string, unknown>, names: Set<string>, er
     const g = s.gpio
     if (!isObj(g)) errors.push(`${w}: must be an object`)
     else {
-      keys(g, ['domain', 'pins', 'outputResistance', 'pullup', 'pulldown', 'inputLeakage'], w)
+      keys(g, ['domain', 'pins', 'outputResistance', 'pullup', 'pulldown', 'inputLeakage', 'inputLow', 'inputHigh', 'fixedPullups'], w)
       if (typeof g.domain !== 'string' || !domainNames.has(g.domain)) errors.push(`${w}.domain: no domain "${show(g.domain)}" in ${at}.power.domains`)
       if (!Array.isArray(g.pins) || !g.pins.length) errors.push(`${w}.pins: required, a list of GPIO pin names`)
       else g.pins.forEach((n, i) => { if (typeof n !== 'string' || !names.has(n)) errors.push(`${w}.pins[${i}]: no pin "${show(n)}"`) })
       quantity(g.outputResistance, `${w}.outputResistance`, 'ohm', { positive: true })
       for (const k of ['pullup', 'pulldown']) if (g[k] !== undefined) quantity(g[k], `${w}.${k}`, 'ohm', { positive: true })
       if (g.inputLeakage !== undefined) quantity(g.inputLeakage, `${w}.inputLeakage`, 'A')
+      for (const k of ['inputLow', 'inputHigh']) if (g[k] !== undefined) quantity(g[k], `${w}.${k}`, 'V', { positive: true })
+      const lo = val(g.inputLow)
+      const hi = val(g.inputHigh)
+      if (lo !== undefined && hi !== undefined && lo >= hi) errors.push(`${w}.inputLow: must be below inputHigh`)
+      if (g.fixedPullups !== undefined) {
+        const gpioPins = Array.isArray(g.pins) ? g.pins : []
+        ;(Array.isArray(g.fixedPullups) ? g.fixedPullups : [null]).forEach((fp, i) => {
+          const at2 = `${w}.fixedPullups[${i}]`
+          if (!isObj(fp)) return void errors.push(`${at2}: must be { "pin", "ohms" }`)
+          keys(fp, ['pin', 'ohms'], at2)
+          if (typeof fp.pin !== 'string' || !gpioPins.includes(fp.pin)) errors.push(`${at2}.pin: "${show(fp.pin)}" is not one of the GPIO pins`)
+          quantity(fp.ohms, `${at2}.ohms`, 'ohm', { positive: true })
+        })
+      }
     }
   }
 

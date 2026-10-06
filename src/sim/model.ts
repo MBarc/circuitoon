@@ -58,7 +58,7 @@ export interface GpioDevice {
 }
 
 export type Device =
-  | { kind: 'resistor'; id: string; part: string; a: string; b: string; ohms: Param; role: 'resistor' | 'contact' | 'cable' | 'rail-input' | 'switch-rail' }
+  | { kind: 'resistor'; id: string; part: string; a: string; b: string; ohms: Param; role: 'resistor' | 'contact' | 'cable' | 'rail-input' | 'switch-rail' | 'internal' }
   | { kind: 'diode'; id: string; part: string; a: string; k: string; model: DiodeModel; role: 'led' | 'rail-input' | 'switch-rail' }
   | { kind: 'cell'; id: string; part: string; p: string; n: string; int: string; volts: Param; rInternal: Param; imax?: Param; role: 'cell' | 'external'; domain?: string }
   | { kind: 'capacitor'; id: string; part: string; a: string; b: string; farads: number }

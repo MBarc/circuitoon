@@ -943,7 +943,10 @@ function validateSim(raw, names, errors) {
 				"outputResistance",
 				"pullup",
 				"pulldown",
-				"inputLeakage"
+				"inputLeakage",
+				"inputLow",
+				"inputHigh",
+				"fixedPullups"
 			], w);
 			if (typeof g.domain !== "string" || !domainNames.has(g.domain)) errors.push(`${w}.domain: no domain "${show(g.domain)}" in ${at}.power.domains`);
 			if (!Array.isArray(g.pins) || !g.pins.length) errors.push(`${w}.pins: required, a list of GPIO pin names`);
@@ -953,6 +956,20 @@ function validateSim(raw, names, errors) {
 			quantity(g.outputResistance, `${w}.outputResistance`, "ohm", { positive: true });
 			for (const k of ["pullup", "pulldown"]) if (g[k] !== void 0) quantity(g[k], `${w}.${k}`, "ohm", { positive: true });
 			if (g.inputLeakage !== void 0) quantity(g.inputLeakage, `${w}.inputLeakage`, "A");
+			for (const k of ["inputLow", "inputHigh"]) if (g[k] !== void 0) quantity(g[k], `${w}.${k}`, "V", { positive: true });
+			const lo = val(g.inputLow);
+			const hi = val(g.inputHigh);
+			if (lo !== void 0 && hi !== void 0 && lo >= hi) errors.push(`${w}.inputLow: must be below inputHigh`);
+			if (g.fixedPullups !== void 0) {
+				const gpioPins = Array.isArray(g.pins) ? g.pins : [];
+				(Array.isArray(g.fixedPullups) ? g.fixedPullups : [null]).forEach((fp, i) => {
+					const at2 = `${w}.fixedPullups[${i}]`;
+					if (!isObj(fp)) return void errors.push(`${at2}: must be { "pin", "ohms" }`);
+					keys(fp, ["pin", "ohms"], at2);
+					if (typeof fp.pin !== "string" || !gpioPins.includes(fp.pin)) errors.push(`${at2}.pin: "${show(fp.pin)}" is not one of the GPIO pins`);
+					quantity(fp.ohms, `${at2}.ohms`, "ohm", { positive: true });
+				});
+			}
 		}
 	}
 	if (s.usbPorts !== void 0) {
@@ -92605,6 +92622,18 @@ function powerPart(b, p, m) {
 			}
 		});
 	}
+	if (g && io) for (const fp of g.fixedPullups ?? []) {
+		const node = b.tap(p.uid, fp.pin);
+		if (node) b.add({
+			kind: "resistor",
+			id: `${p.uid}.pullup.${fp.pin}`,
+			part: p.uid,
+			a: io.pin,
+			b: node,
+			ohms: P(fp.ohms, `gpio.fixedPullups.${fp.pin}`),
+			role: "internal"
+		});
+	}
 	if (imaxOver === null) return b.partLimits(p, m);
 	b.partLimits(p, m, ["sourceCurrent"]);
 	b.limit({
@@ -92631,6 +92660,10 @@ function usbLinks(b, d) {
 		}
 		if (!simOf(hm)?.power) {
 			b.unsimulated(dev.part.uid, `powered from ${b.ref(host.part.uid)} over USB, which has no power data`);
+			continue;
+		}
+		if (!simOf(hm).power.domains.some((x) => x.pin === `${host.name}#vbus`)) {
+			b.unsimulated(dev.part.uid, `powered from ${b.ref(host.part.uid)} ${host.name}, whose USB power is not simulated`);
 			continue;
 		}
 		if (!b.simulated(host.part.uid)) {
