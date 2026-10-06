@@ -38,6 +38,10 @@ describe('self-hosted fonts (spec 2.5)', () => {
   it('preloads the two above-the-fold faces and ships the OFL', () => {
     for (const f of ['atkinson-hyperlegible-latin-400-normal.woff2', 'fredoka-latin-600-normal.woff2'])
       expect(html).toContain(`<link rel="preload" href="/circuitoon/fonts/${f}" as="font" type="font/woff2" crossorigin />`)
-    expect(readFileSync('public/fonts/OFL.txt', 'utf8')).toMatch(/SIL OPEN FONT LICENSE/i)
+    const ofl = readFileSync('public/fonts/OFL.txt', 'utf8')
+    expect(ofl).toMatch(/SIL OPEN FONT LICENSE/i)
+    // OFL 1.1 condition 2: each redistributed font's copyright notice.
+    expect(ofl).toMatch(/Braille Institute/)
+    expect(ofl).toMatch(/Fredoka Project/)
   })
 })

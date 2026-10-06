@@ -1,5 +1,9 @@
-Atkinson Hyperlegible (Braille Institute of America) and Fredoka (Milena Brandao, Hafontia), from @fontsource 5.3.0. Both under the SIL Open Font License 1.1:
+Fonts in this folder, from @fontsource 5.3.0, both under the SIL Open Font License 1.1 (text below):
 
+Atkinson Hyperlegible:
+Copyright 2020 Braille Institute of America, Inc. AtkinsonHyperlegible-Italic.ttf: Copyright 2020 Braille Institute of America, Inc. AtkinsonHyperlegible-Bold.ttf: Copyright 2020 Braille Institute of America, Inc. AtkinsonHyperlegible-BoldItalic.ttf: Copyright 2020 Braille Institute of America, Inc.
+
+Fredoka:
 Copyright 2016 The Fredoka Project Authors (https://github.com/hafontia/Fredoka-One)
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
