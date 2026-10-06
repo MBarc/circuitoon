@@ -2,7 +2,8 @@
 // checks each against the sha256 compiled in, and runs offline afterwards; --py-dir is checked the
 // same way; a version that is no longer published says so in the spec's words.
 import { describe, expect, it } from 'vitest'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import PY from './pyManifest.json' with { type: 'json' }
@@ -33,6 +34,13 @@ describe('the CLI Python runtime (spec 2.7)', () => {
     const offline = site({ missing: true })
     await ensurePy({ cacheDir, fetch: offline.fetch })
     expect(offline.calls).toEqual([])
+  })
+  it('two first runs at once share one empty cache safely', async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), 'py-cache-'))
+    const [a, b] = await Promise.all([ensurePy({ cacheDir, fetch: site().fetch }), ensurePy({ cacheDir, fetch: site().fetch })])
+    expect(a.dir).toBe(b.dir)
+    for (const f of PY.files) expect(createHash('sha256').update(readFileSync(join(a.dir, f.name))).digest('hex')).toBe(f.sha256)
+    expect(readdirSync(a.dir).filter((n) => n.endsWith('.part'))).toEqual([])
   })
   it('says the runtime is no longer published on a 404', async () => {
     await expect(ensurePy({ cacheDir: mkdtempSync(join(tmpdir(), 'py-cache-')), fetch: site({ missing: true }).fetch })).rejects.toThrow(NO_LONGER_PUBLISHED)

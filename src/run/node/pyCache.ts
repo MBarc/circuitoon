@@ -3,8 +3,8 @@
 // against the sha256 compiled in (pyManifest.json), and keeps them in the user's cache directory;
 // later runs are offline. --py-dir uses a local copy, checked the same way. Requests carry nothing
 // about the user (Node's default User-Agent).
-import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { createHash, randomUUID } from 'node:crypto'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, sep } from 'node:path'
 import PY from '../pyManifest.json' with { type: 'json' }
@@ -46,8 +46,19 @@ export async function ensurePy(o: { pyDir?: string; cacheDir?: string; fetch?: t
     if (!res.ok) throw new Error(`could not download ${url} (HTTP ${res.status}); the first run needs the network, or pass --py-dir`)
     const bytes = new Uint8Array(await res.arrayBuffer())
     if (sha(bytes) !== f.sha256) throw new Error(`${f.name} does not match this plugin's Pyodide ${PY.version} (its sha256 differs); try again later`)
-    writeFileSync(join(dir, `${f.name}.part`), bytes)
-    renameSync(join(dir, `${f.name}.part`), join(dir, f.name))
+    const tmp = join(dir, `${f.name}.${process.pid}.${randomUUID()}.part`)
+    try {
+      writeFileSync(tmp, bytes)
+      try {
+        renameSync(tmp, join(dir, f.name))
+      } catch (e) {
+        if (!good(dir, f)) throw e // a concurrent run may have installed the same verified file first
+      }
+    } finally {
+      rmSync(tmp, { force: true })
+    }
   }
+  const bad = PY.files.find((f) => !good(dir, f))
+  if (bad) throw new Error(`${bad.name} does not match this plugin's Pyodide ${PY.version} (its sha256 differs); try again later`)
   return ready(dir)
 }
