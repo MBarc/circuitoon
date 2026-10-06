@@ -17,6 +17,7 @@ import { type MyPart, importPart, myParts, partFileText, updateSheetModule } fro
 import { PART_FILE, cleanBaseName, downloadText, saveWithPicker, type SavePicker } from './files.ts'
 import { ExportDialog } from './ExportDialog.tsx'
 import { copyText, submissionUrl, submitToLibrary } from './partSubmit.ts'
+import { markUnsaved } from '../isolation.ts'
 import './editor.css'
 import './partMaker.css'
 
@@ -325,7 +326,10 @@ export function Editor({ initial, warnings, onClose, onDirty }: { initial: Diagr
   // the effect's cleanup ("is not a function") once an edit made the sheet dirty.
   useEffect(() => {
     onDirty?.(dirty)
+    markUnsaved(dirty)
   }, [dirty, onDirty])
+  // Closing the sheet leaves nothing unsaved behind.
+  useEffect(() => () => markUnsaved(false), [])
   const parts = usePartMaker(store, canvasApi)
   // Only the tool: the whole state would re-render the editor (and the canvas) on every change.
   const simTool = useSyncExternalStore(store.subscribe, () => store.getState().simTool)
