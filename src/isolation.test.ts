@@ -19,21 +19,28 @@ async function swHeaders(url: string): Promise<Headers> {
   return (await answer!).headers
 }
 
-/** The page half with the inline config from index.html; resolves to whether the page reloaded. */
-async function pageReloads(unsaved: boolean): Promise<boolean> {
+/**
+ * The page half with the inline config from index.html, loaded at `start`; before the (asynchronous)
+ * reload fires, the app clears the share link's hash as EditorApp does. Resolves to the URL the page
+ * reloads at, or null when it does not reload.
+ */
+async function pageReload(unsaved: boolean, start = 'https://mbarc.github.io/circuitoon/#/editor?d=abc'): Promise<string | null> {
   const config = /<script>(window\.coi[\s\S]*?)<\/script>/.exec(html)![1]
-  let reloaded = false
+  let reloadedAt: string | null = null
   const registration = { active: {}, addEventListener() {} }
+  const location = { href: start, reload: () => void (reloadedAt = location.href) }
   const window: Record<string, unknown> = {
-    crossOriginIsolated: false, isSecureContext: true, __circuitoonUnsaved: unsaved,
-    location: { reload: () => void (reloaded = true) }, document: { currentScript: { src: '/circuitoon/coi-serviceworker.js' } },
+    crossOriginIsolated: false, isSecureContext: true, __circuitoonUnsaved: unsaved, location,
+    history: { replaceState: (_s: unknown, _t: string, url: string) => void (location.href = new URL(url, location.href).href) },
+    document: { currentScript: { src: '/circuitoon/coi-serviceworker.js' } },
   }
   const navigator = { serviceWorker: { controller: null, register: async () => registration } }
   const ctx = vm.createContext({ window, navigator, console })
   vm.runInContext(config, ctx)
   vm.runInContext(sw, ctx)
+  location.href = 'https://mbarc.github.io/circuitoon/#/editor'
   await new Promise((r) => setTimeout(r, 0))
-  return reloaded
+  return reloadedAt
 }
 
 describe('cross-origin isolation (spec 2.5)', () => {
@@ -50,8 +57,11 @@ describe('cross-origin isolation (spec 2.5)', () => {
     expect(html).toMatch(/quiet:\s*true/)
   })
   it('reloads to take control, but never over an unsaved diagram', async () => {
-    expect(await pageReloads(false)).toBe(true)
-    expect(await pageReloads(true)).toBe(false)
+    expect(await pageReload(false)).not.toBeNull()
+    expect(await pageReload(true)).toBeNull()
+  })
+  it('reloads at the URL the page loaded with, so a share link the app already cleared survives', async () => {
+    expect(await pageReload(false)).toBe('https://mbarc.github.io/circuitoon/#/editor?d=abc')
   })
   it('serves require-corp and same-origin, and the CSP on the code worker script only', async () => {
     const page = await swHeaders('https://mbarc.github.io/circuitoon/index.html')
