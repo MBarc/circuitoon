@@ -1,6 +1,10 @@
 // The code worker's Python side, shared by both workers and the in-process test harness: our files
 // into Pyodide's file system, a fresh interpreter state per run, and running the script through
 // _circuitoon.main. Worker side: nothing Vite-specific.
+import { makeHw, realClock } from '../bridge.ts'
+import { H, INPUT, boardMemory, takeLine } from '../memory.ts'
+import type { FromCode, ToCode } from '../protocol.ts'
+import { sandbox } from './sandbox.ts'
 
 /** What we use of Pyodide's API. */
 export interface PyodideLike {
@@ -36,4 +40,77 @@ export function resetModules(py: PyodideLike): void {
 export function runMain(py: PyodideLike, source: string, file: string): 'done' | 'stopped' | 'error' {
   const g = py.toPy({ SRC: source, FILE: file })
   return py.runPython('import _circuitoon\n_circuitoon.main(SRC, FILE)', { globals: g }) as 'done' | 'stopped' | 'error'
+}
+
+export type LoadPy = (indexURL: string, lock: string) => Promise<PyodideLike>
+const why = (e: unknown) => (e instanceof Error ? e.message : String(e))
+
+/** Serial output (spec 5.3): lines collected and posted at most every 16 ms, and at every yield point. */
+function outBuffer(post: (m: FromCode) => void) {
+  let buf: { stream: 'out' | 'err'; text: string } | null = null
+  let last = 0
+  const flush = () => {
+    if (buf) post({ type: 'out', ...buf })
+    buf = null
+    last = performance.now()
+  }
+  return {
+    flush,
+    push(stream: 'out' | 'err', line: string) {
+      if (buf && buf.stream !== stream) flush()
+      buf = { stream, text: (buf?.text ?? '') + line + '\n' }
+      if (performance.now() - last >= 16) flush()
+    },
+  }
+}
+
+/**
+ * The code worker (firmware spec 2.6, 5.2 to 5.4), shared by the browser and Node workers: on
+ * 'start', load Pyodide (the caller's loader), remove the network and storage from the scope, write
+ * our Python files, register circuitoon_hw, run the script, and say how it ended. One run per worker:
+ * Reset starts a fresh one (spec 5.4).
+ */
+export function serveCode(post: (m: FromCode) => void, listen: (cb: (m: ToCode) => void) => void, loadPy: LoadPy): void {
+  listen((m) => {
+    if (m.type !== 'start') return
+    void (async () => {
+      let py: PyodideLike
+      try {
+        py = await loadPy(m.py.indexURL, m.py.lock)
+      } catch (e) {
+        return post({ type: 'fatal', error: why(e) })
+      }
+      sandbox(globalThis)
+      const mem = boardMemory(m.sab)
+      const check = () => py.checkInterrupt()
+      // Task 18 adds the virtual clock for mode 'virtual'.
+      const clock = realClock(mem, check)
+      const out = outBuffer(post)
+      const hw = makeHw(mem, clock, { board: m.board, onPrompt: (text) => post({ type: 'prompt', text }), flush: out.flush })
+      py.setStdout({ batched: (s) => out.push('out', s) })
+      py.setStderr({ batched: (s) => out.push('err', s) })
+      // sys.stdin.readline() (spec 5.3): waits for a line, running no callbacks.
+      py.setStdin({
+        stdin: () => {
+          Atomics.store(mem.i32, H.inputState, INPUT.waiting)
+          post({ type: 'prompt', text: '' })
+          while (Atomics.load(mem.i32, H.inputState) !== INPUT.ready) clock.block(Infinity)
+          return `${takeLine(mem)}\n`
+        },
+      })
+      py.setInterruptBuffer(new Int32Array(m.sab, H.interrupt * 4, 1))
+      installFiles(py, m.files)
+      py.registerJsModule('circuitoon_hw', hw)
+      post({ type: 'ready' })
+      let status: 'done' | 'stopped' | 'error'
+      try {
+        status = runMain(py, m.source, m.file)
+      } catch (e) {
+        out.push('err', why(e))
+        status = 'error'
+      }
+      out.flush()
+      post({ type: 'exit', status })
+    })()
+  })
 }
