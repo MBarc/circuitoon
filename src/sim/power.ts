@@ -154,7 +154,10 @@ export function powerPart(b: Builder, p: PartInstance, m: ModuleDef): void {
   const io = g && domains.get(g.domain)
   if (g && io)
     for (const pin of g.pins) {
-      const state = gpioState(p, m, pin)
+      // A running board's state wins over the saved one (spec 4.1); a PWM pin keeps its duty.
+      const run = b.runPin(p.uid, pin)
+      const state = run === undefined ? gpioState(p, m, pin) : typeof run === 'string' ? run : 'pwm'
+      const duty = run !== undefined && typeof run !== 'string' ? run.pwm : undefined
       b.gpio({ part: p.uid, pin, state, domain: g.domain, key: nodeKey(p.uid, pin) })
       if (state === null) {
         b.unsimulated(p.uid, `pin ${pin}: output-only pin with no state set`)
@@ -166,7 +169,7 @@ export function powerPart(b: Builder, p: PartInstance, m: ModuleDef): void {
       // resistance that leaks that current at the domain's nominal voltage.
       if (node)
         b.add({
-          kind: 'gpio', id: `${p.uid}.gpio.${pin}`, part: p.uid, pin, node, vdd: io.pin, ret: io.ret, domain: g.domain, state,
+          kind: 'gpio', id: `${p.uid}.gpio.${pin}`, part: p.uid, pin, node, vdd: io.pin, ret: io.ret, domain: g.domain, state, ...(duty !== undefined ? { duty } : {}),
           params: {
             outputResistance: R(g.outputResistance, 'outputResistance'),
             ...(g.pullup ? { pullup: R(g.pullup, 'pullup') } : {}),

@@ -91185,27 +91185,28 @@ var netNode = (name) => `net:${name}`;
 * the IO domain (high) or to its return (low), a pull, else the input leakage to the return.
 * `leak` marks the leakage, which is never a DC path (spec 2).
 */
-function gpioBranch(d) {
+function gpioBranch(d, pins) {
 	const p = d.params;
-	if (d.state === "high") return {
+	const state = d.state === "pwm" ? pins?.[d.id] ?? "high" : d.state;
+	if (state === "high") return {
 		a: d.vdd,
 		b: d.node,
 		ohms: p.outputResistance,
 		leak: false
 	};
-	if (d.state === "low") return {
+	if (state === "low") return {
 		a: d.node,
 		b: d.ret,
 		ohms: p.outputResistance,
 		leak: false
 	};
-	if (d.state === "input-pullup" && p.pullup) return {
+	if (state === "input-pullup" && p.pullup) return {
 		a: d.vdd,
 		b: d.node,
 		ohms: p.pullup,
 		leak: false
 	};
-	if (d.state === "input-pulldown" && p.pulldown) return {
+	if (state === "input-pulldown" && p.pulldown) return {
 		a: d.node,
 		b: d.ret,
 		ohms: p.pulldown,
@@ -91277,6 +91278,7 @@ function deviceNodes(d) {
 /** The resistive pairs, conducting both ways: resistors, closed contacts and a GPIO's state resistor (never its leakage). */
 function resistive(d) {
 	if (d.kind === "resistor" || d.kind === "switch" && d.closed) return [[d.a, d.b]];
+	if (d.kind === "gpio" && d.state === "pwm") return [[d.vdd, d.node], [d.node, d.ret]];
 	const g = d.kind === "gpio" ? gpioBranch(d) : null;
 	return g && !g.leak ? [[g.a, g.b]] : [];
 }
@@ -91668,7 +91670,7 @@ function compile(c, cls, a) {
 			case "resistor": return [resistor(d.id, d.a, d.b, d.ohms)];
 			case "switch": return d.closed ? [resistor(d.id, d.a, d.b, d.ron)] : [];
 			case "gpio": {
-				const g = gpioBranch(d);
+				const g = gpioBranch(d, a.pins);
 				return g ? [resistor(d.id, g.a, g.b, g.ohms)] : [];
 			}
 			case "capacitor": {
@@ -92623,7 +92625,9 @@ function powerPart(b, p, m) {
 	const g = sim.gpio;
 	const io = g && domains.get(g.domain);
 	if (g && io) for (const pin of g.pins) {
-		const state = gpioState(p, m, pin);
+		const run = b.runPin(p.uid, pin);
+		const state = run === void 0 ? gpioState(p, m, pin) : typeof run === "string" ? run : "pwm";
+		const duty = run !== void 0 && typeof run !== "string" ? run.pwm : void 0;
 		b.gpio({
 			part: p.uid,
 			pin,
@@ -92647,6 +92651,7 @@ function powerPart(b, p, m) {
 			ret: io.ret,
 			domain: g.domain,
 			state,
+			...duty !== void 0 ? { duty } : {},
 			params: {
 				outputResistance: R(g.outputResistance, "outputResistance"),
 				...g.pullup ? { pullup: R(g.pullup, "pullup") } : {},
@@ -92997,6 +93002,9 @@ var Builder = class {
 			...info.plug?.profiles.flatMap((pr) => pr.contacts.map((c) => c.pin)) ?? []
 		]);
 		return this.d.connections.some((c) => [c.from, c.to].some((e) => e.part === p.uid && ac.has(e.pin)));
+	}
+	runPin(uid, pin) {
+		return this.opts.runPins?.[uid]?.[pin];
 	}
 	isMoving(uid) {
 		return this.opts.moving?.includes(uid) ?? false;
@@ -93939,7 +93947,7 @@ function runDrafts(c, cls, raw, corner) {
 				};
 			}
 			if (l.kind === "ioTotalCurrent") {
-				const outs = c.gpio.filter((g) => g.part === l.part && g.domain === name && (g.state === "high" || g.state === "low"));
+				const outs = c.gpio.filter((g) => g.part === l.part && g.domain === name && (g.state === "high" || g.state === "low" || g.state === "pwm"));
 				const sum = outs.reduce((s, g) => s + Math.abs(pinI(g.part, g.pin) ?? 0), 0);
 				const pins = outs.filter((g) => Math.abs(pinI(g.part, g.pin) ?? 0) > 0).map((g) => ({
 					part: g.part,

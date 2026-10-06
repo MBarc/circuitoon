@@ -343,7 +343,7 @@ export function runDrafts(c: Circuit, cls: Classification, raw: RawRun, corner: 
         return { value: x, what: (q) => `${r} ${name} is at ${q}`, unit: 'V' }
       }
       if (l.kind === 'ioTotalCurrent') {
-        const outs = c.gpio.filter((g) => g.part === l.part && g.domain === name && (g.state === 'high' || g.state === 'low'))
+        const outs = c.gpio.filter((g) => g.part === l.part && g.domain === name && (g.state === 'high' || g.state === 'low' || g.state === 'pwm'))
         const sum = outs.reduce((s, g) => s + Math.abs(pinI(g.part, g.pin) ?? 0), 0)
         const pins = outs.filter((g) => Math.abs(pinI(g.part, g.pin) ?? 0) > 0).map((g) => ({ part: g.part, pin: g.pin }))
         return { value: sum, what: (q) => `${r}'s GPIO pins on ${name} carry ${q} in all`, unit: 'A', ...(pins.length ? { pins } : {}) }

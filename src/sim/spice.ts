@@ -105,7 +105,7 @@ export function compile(c: Circuit, cls: Classification, a: Analysis): Compiled 
       case 'switch':
         return d.closed ? [resistor(d.id, d.a, d.b, d.ron)] : []
       case 'gpio': {
-        const g = gpioBranch(d)
+        const g = gpioBranch(d, a.pins)
         return g ? [resistor(d.id, g.a, g.b, g.ohms)] : []
       }
       case 'capacitor': {

@@ -10,7 +10,7 @@ import { analyseMainsCached } from '../format/mains.ts'
 import { convertersInState } from '../format/mainsRules.ts'
 import { mainsOf } from '../format/mainsModel.ts'
 import { type Quantity, simOf, withLibraryData } from '../format/simModel.ts'
-import { contactPosition, isActive, simOverride, switchGroups } from '../format/simState.ts'
+import { type RunPinState, type RunPins, contactPosition, isActive, simOverride, switchGroups } from '../format/simState.ts'
 import { paramValue } from '../format/values.ts'
 import { sheetNets } from '../agent/extract.ts'
 import { naturalCompare } from '../agent/order.ts'
@@ -23,6 +23,8 @@ import { powerPart, usbLinks } from './power.ts'
 
 export interface BuildOptions {
   held?: { part: string; group: string } | null
+  /** A running board's GPIO states (firmware spec 2.3, 4.1): transient, like `held`; never saved. */
+  runPins?: RunPins
   /** Servos whose horn is travelling (firmware spec 2.3): they draw their moving current. Transient, never saved. */
   moving?: string[]
   /** The built-in parts, whose `electrical.sim` the simulator reads (default: the library). */
@@ -256,6 +258,9 @@ export class Builder {
     return this.d.connections.some((c) => [c.from, c.to].some((e) => e.part === p.uid && ac.has(e.pin)))
   }
 
+  runPin(uid: string, pin: string): RunPinState | undefined {
+    return this.opts.runPins?.[uid]?.[pin]
+  }
   isMoving(uid: string): boolean {
     return this.opts.moving?.includes(uid) ?? false
   }

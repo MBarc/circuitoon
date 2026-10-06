@@ -17,7 +17,8 @@ export const netNode = (name: string): string => `net:${name}`
 export type Basis = Provenance | 'user' | 'topology'
 export type Corner = 'typical' | 'peak'
 /** Only `op` in this slice; a union so transient can be added later (spec 2). `classify` takes only the kind. */
-export type Analysis = { kind: 'op'; corner: Corner }
+/** `pins`: the level of each PWM GPIO device (by id) in this run (firmware spec 4.2); a PWM pin not named is high. */
+export type Analysis = { kind: 'op'; corner: Corner; pins?: Record<string, 'high' | 'low'> }
 /** A resolved number with its provenance and the label findings list it under ("led.D1.limits.current"). */
 export interface Param { value: number; basis: Provenance | 'user'; label: string; note?: string }
 export interface DiodeModel { is: number; n: number; rs: number }
@@ -53,7 +54,9 @@ export interface SwitchDevice { kind: 'switch'; id: string; part: string; group:
  * `leakage` is the input leakage as a resistance (derived), absent when the board states none.
  */
 export interface GpioDevice {
-  kind: 'gpio'; id: string; part: string; pin: string; node: string; vdd: string; ret: string; domain: string; state: GpioState
+  kind: 'gpio'; id: string; part: string; pin: string; node: string; vdd: string; ret: string; domain: string
+  /** `pwm`: a running board's PWM pin (firmware spec 4.2); `duty` its quantised duty. */
+  state: GpioState | 'pwm'; duty?: number
   params: { outputResistance: Param; pullup?: Param; pulldown?: Param; leakage?: Param }
 }
 
@@ -73,12 +76,14 @@ export type Device =
  * the IO domain (high) or to its return (low), a pull, else the input leakage to the return.
  * `leak` marks the leakage, which is never a DC path (spec 2).
  */
-export function gpioBranch(d: GpioDevice): { a: string; b: string; ohms: Param; leak: boolean } | null {
+export function gpioBranch(d: GpioDevice, pins?: Analysis['pins']): { a: string; b: string; ohms: Param; leak: boolean } | null {
   const p = d.params
-  if (d.state === 'high') return { a: d.vdd, b: d.node, ohms: p.outputResistance, leak: false }
-  if (d.state === 'low') return { a: d.node, b: d.ret, ohms: p.outputResistance, leak: false }
-  if (d.state === 'input-pullup' && p.pullup) return { a: d.vdd, b: d.node, ohms: p.pullup, leak: false }
-  if (d.state === 'input-pulldown' && p.pulldown) return { a: d.node, b: d.ret, ohms: p.pulldown, leak: false }
+  // A PWM pin (firmware spec 4.2) is high or low in each run, as the analysis says.
+  const state = d.state === 'pwm' ? (pins?.[d.id] ?? 'high') : d.state
+  if (state === 'high') return { a: d.vdd, b: d.node, ohms: p.outputResistance, leak: false }
+  if (state === 'low') return { a: d.node, b: d.ret, ohms: p.outputResistance, leak: false }
+  if (state === 'input-pullup' && p.pullup) return { a: d.vdd, b: d.node, ohms: p.pullup, leak: false }
+  if (state === 'input-pulldown' && p.pulldown) return { a: d.node, b: d.ret, ohms: p.pulldown, leak: false }
   return p.leakage ? { a: d.node, b: d.ret, ohms: p.leakage, leak: true } : null
 }
 
@@ -87,7 +92,7 @@ export interface PinTap { part: string; pin: string; net: string; node: string }
 export interface SimDomain { part: string; name: string; pin: string; ret: string; nominal: number }
 /** A limit to check results against, resolved to a part. */
 export interface ResolvedLimit { part: string; of: Limit['of']; kind: LimitKind | 'fuse'; value: Param; conditions?: string }
-export interface GpioPin { part: string; pin: string; state: GpioState | null; domain: string; key: string }
+export interface GpioPin { part: string; pin: string; state: GpioState | 'pwm' | null; domain: string; key: string }
 /** A USB link that carries power: the cable's two conductor devices and the host port's limit. */
 export interface UsbPath { host: string; hostPort: string; device: string; devicePort: string; vbus: string; gnd: string; limit: Param }
 export interface SimPart { uid: string; ref: string; designator: string; module: string; name: string; model: string }

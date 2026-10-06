@@ -53,6 +53,9 @@ export function deviceNodes(d: Device): string[] {
 /** The resistive pairs, conducting both ways: resistors, closed contacts and a GPIO's state resistor (never its leakage). */
 function resistive(d: Device): [string, string][] {
   if (d.kind === 'resistor' || (d.kind === 'switch' && d.closed)) return [[d.a, d.b]]
+  // A PWM pin is high in some runs and low in others: it conducts both ways for classification, so
+  // the classification is the same at both levels (firmware spec 4.2).
+  if (d.kind === 'gpio' && d.state === 'pwm') return [[d.vdd, d.node], [d.node, d.ret]]
   const g = d.kind === 'gpio' ? gpioBranch(d) : null
   return g && !g.leak ? [[g.a, g.b]] : []
 }
