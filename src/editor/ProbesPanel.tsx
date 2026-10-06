@@ -9,7 +9,7 @@ import { useState } from 'react'
 import { formatValue } from '../format/values.ts'
 import { SIM_TITLES } from '../sim/display.ts'
 import { removeProbe, renameProbe } from '../sim/probes.ts'
-import type { CurrentReading, DomainBudget } from '../sim/results.ts'
+import type { CurrentReading, DomainBudget, Reading } from '../sim/results.ts'
 import { CommitInput } from './Inspector.tsx'
 import { partText, probeColor, readingText } from './ProbeLayer.tsx'
 import { currentFindings, shownResult } from './SimLayer.tsx'
@@ -17,9 +17,10 @@ import { type EditorStore, useEditorState } from './store.ts'
 
 const OUTSIDE = 'outside the model'
 const sig = (x: number) => Number(x.toPrecision(3))
-type Pair = { typical: CurrentReading; peak: CurrentReading }
+type Pair = { typical: CurrentReading | Reading; peak: CurrentReading | Reading }
 const isOutside = (r: Pair) => [r.typical, r.peak].some((x) => x.kind === 'value' && x.trust === 'outside-model')
-const ampsText = (r: Pair) => {
+const KIND = { source: 'source', rail: 'rail output', domain: 'domain' } as const
+const ampsText = (r: { typical: CurrentReading; peak: CurrentReading }) => {
   const one = (x: CurrentReading) => (x.kind === 'value' ? formatValue(sig(Math.abs(x.value)), 'A') : 'not solved')
   const [t, p] = [one(r.typical), one(r.peak)]
   return t === p ? t : `${t} (peak ${p})`
@@ -33,7 +34,7 @@ export interface SupplyRow { name: string; volts: string; load: string; own?: st
  * can be 0 on a pass-through VIN), with the part's own draw apart. Outside the model, no numbers.
  */
 export function supplyRow(b: DomainBudget): SupplyRow {
-  const outside = isOutside(b.amps) || (b.ownDraw !== undefined && isOutside(b.ownDraw))
+  const outside = isOutside(b.volts) || isOutside(b.amps) || (b.ownDraw !== undefined && isOutside(b.ownDraw))
   const amps = ampsText(b.amps)
   const load = outside ? OUTSIDE : b.kind === 'source' ? `delivering ${amps}` : b.kind === 'domain' ? `through the pin ${amps}` : amps
   return {
@@ -71,6 +72,13 @@ function cellLines(text: string) {
   )
 }
 
+/** A fetched notice's text, or '' when the server answered with something else (an HTML fallback page). */
+export async function noticeText(r: { headers: { get(name: string): string | null }; text(): Promise<string> }): Promise<string> {
+  const text = await r.text()
+  const type = r.headers.get('content-type') ?? ''
+  return type.startsWith('text/plain') || !text.trimStart().startsWith('<') ? text : ''
+}
+
 type About = { engine: { ngspice?: string; build?: string; release?: string } | null; notice: string | null }
 
 export function ProbesPanel({ store }: { store: EditorStore }) {
@@ -99,11 +107,16 @@ export function ProbesPanel({ store }: { store: EditorStore }) {
         : !shown
           ? 'No readings: the simulator could not solve this sheet.'
           : null
+  // After a delete, focus goes to the next probe's Delete (now at the same place), else the heading.
+  const remove = (id: string, i: number) => {
+    store.commit(removeProbe(store.getState().diagram, id))
+    requestAnimationFrame(() => (document.querySelectorAll<HTMLElement>('.probe-list .danger')[i] ?? document.getElementById('probes-heading'))?.focus())
+  }
   const load = (open: boolean) => {
     if (!open || about) return
     setAbout({ engine: null, notice: null })
     const get = (file: string) => fetch(`${base}${file}`, { cache: 'no-cache' }).then((r) => (r.ok ? r : Promise.reject(new Error(`HTTP ${r.status}`))))
-    void Promise.all([get('engine.json').then((r) => r.json() as Promise<About['engine']>).catch(() => ({})), get('NOTICE.txt').then((r) => r.text()).catch(() => '')])
+    void Promise.all([get('engine.json').then((r) => r.json() as Promise<About['engine']>).catch(() => ({})), get('NOTICE.txt').then(noticeText).catch(() => '')])
       .then(([engine, notice]) => setAbout({ engine, notice }))
   }
   return (
@@ -128,7 +141,7 @@ export function ProbesPanel({ store }: { store: EditorStore }) {
                     <span className="probe-where">{where}</span>
                   </div>
                   <p className="probe-reading">
-                    {p.at.pin === undefined ? partText(r?.part) : readingText(r?.voltage)}
+                    <span className="probe-value">{p.at.pin === undefined ? partText(r?.part) : readingText(r?.voltage)}</span>
                     {shown?.stale && <span className="probe-stale"> (stale)</span>}
                   </p>
                   {typical?.kind === 'value' && <p className="hint probe-ref">to {typical.reference}</p>}
@@ -141,7 +154,7 @@ export function ProbesPanel({ store }: { store: EditorStore }) {
                   )}
                   <CommitInput id={`probe-name-${p.id}`} label="Name" value={p.name ?? ''} onCommit={(name) => store.commit(renameProbe(store.getState().diagram, p.id, name))} />
                 </div>
-                <button type="button" className="tool small danger" aria-label={`Delete probe ${p.id}${p.name ? `, ${p.name}` : ''}`} onClick={() => store.commit(removeProbe(store.getState().diagram, p.id))}>Delete</button>
+                <button type="button" className="tool small danger" aria-label={`Delete probe ${p.id}${p.name ? `, ${p.name}` : ''}`} onClick={() => remove(p.id, i)}>Delete</button>
               </li>
             )
           })}
@@ -161,7 +174,7 @@ export function ProbesPanel({ store }: { store: EditorStore }) {
                   const row = supplyRow(b)
                   return (
                     <tr key={b.id} className={row.outside ? 'outside' : undefined} data-supply={b.kind}>
-                      <th scope="row">{row.name}</th>
+                      <th scope="row">{row.name}<span className="sr-only">, {KIND[b.kind]}</span></th>
                       <td>{cellLines(row.volts)}</td>
                       <td>{cellLines(row.load)}{row.own && <span className="own-draw">{cellLines(row.own)}</span>}</td>
                       <td>{row.limit}</td>
@@ -192,8 +205,8 @@ export function ProbesPanel({ store }: { store: EditorStore }) {
         <section className="sim-notes" aria-labelledby="probes-notes-title">
           <h3 id="probes-notes-title">Notes</h3>
           <ul>
-            {notes.map((f) => (
-              <li key={f.code}>
+            {notes.map((f, i) => (
+              <li key={`${f.code}|${f.corner ?? ''}|${i}`}>
                 <strong>{SIM_TITLES[f.code]}</strong>: {f.message}
                 {f.code === 'sim-estimate' && f.parts.length > 0 && <span className="note-parts">Parts: {refs(f.parts)}</span>}
               </li>

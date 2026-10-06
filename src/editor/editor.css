@@ -490,6 +490,9 @@ button.wordmark { background: none; border: 0; padding: 0; cursor: pointer; }
 /* The Probes panel (Task 37): in the inspector's place while the Probe tool is on, a little wider
    for the Supplies table. Probes are small sticker cards, then a plain table, the notes and About. */
 @media (min-width: 901px) {
+  .editor:has(.probes-panel) { grid-template-columns: 220px minmax(0, 1fr) 340px; }
+}
+@media (min-width: 1200px) {
   .editor:has(.probes-panel) { grid-template-columns: 220px minmax(0, 1fr) 440px; }
 }
 .probes-panel h2 { margin: 0; font: 600 20px/1.2 "Fredoka", system-ui, sans-serif; }
@@ -508,7 +511,9 @@ button.wordmark { background: none; border: 0; padding: 0; cursor: pointer; }
 .probe-body .field { grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; font-size: 13px; }
 .probe-body .field input { padding: 3px 6px; font-size: 13px; background: var(--panel); }
 .probe-pins { margin: 0; padding-left: 16px; font-size: 13px; font-variant-numeric: tabular-nums; }
-.probes-panel.stale .probe-reading, .probes-panel.stale .supplies td { opacity: 0.55; }
+/* Stale: only the main-colour numbers dim (to .75, still well over 4.5:1); muted text keeps its
+   contrast, and the status line and "(stale)" say it in words. */
+.probes-panel.stale .probe-value, .probes-panel.stale .supplies .typ { opacity: 0.75; }
 .supplies, .sim-notes, .about-sim { display: grid; gap: 6px; border-top: 1.5px solid var(--rule); padding-top: 10px; }
 .supplies h3, .sim-notes h3 { margin: 0; font: 600 16px/1.2 "Fredoka", system-ui, sans-serif; }
 .supplies h4 { margin: 0; font: 600 14px/1.2 "Fredoka", system-ui, sans-serif; color: var(--muted); }
