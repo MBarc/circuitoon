@@ -97,13 +97,15 @@ describe('topological findings', () => {
     expect(est.message).toMatch(/^\d+ values? in this result (is an estimate|are estimates), for U2\.$/)
   })
   it('names who a parameter is about in plain words', () => {
-    expect(['esp32-devkitc-v4.U1.rails.ldo.rout', 'led-colours.red.absMaxCurrent', 'usb-default.2.0', 'battery-9v.BT1.limits.sourceCurrent'].map(subjectOf)).toEqual(['U1', 'a red LED', 'a USB 2.0 port', 'BT1'])
+    expect(['esp32-devkitc-v4.U1.rails.ldo.rout', 'led-colours.red.absMaxCurrent', 'usb-default.2.0', 'battery-9v.BT1.limits.sourceCurrent', 'cable.w3.vbus', 'plug.w4.gnd'].map(subjectOf)).toEqual(['U1', 'a red LED', 'a USB 2.0 port', 'BT1', 'a USB cable', 'a USB plug'])
     expect(subjectsOf(['battery-9v.BT2.x', 'battery-9v.BT10.y', 'battery-9v.BT2.z'])).toBe('BT2 and BT10')
   })
 })
 
 describe('finalize (spec 4.5, 5.2)', () => {
-  const p = (basis: 'user' | 'datasheet' | 'representative' | 'estimate') => ({ value: 1, basis, label: `x.${basis}` })
+  // Labels as build.ts and power.ts make them.
+  const LABELS = { user: 'resistor.R1.resistance', datasheet: 'esp32-devkitc-v4.U1.draw.3V3.minVolts', representative: 'led-colours.red.absMaxCurrent', estimate: 'battery-9v.BT1.limits.sourceCurrent' }
+  const p = (basis: 'user' | 'datasheet' | 'representative' | 'estimate') => ({ value: 1, basis, label: LABELS[basis] })
   const draft = (over: Partial<Draft>): Draft => ({ code: 'sim-brownout', severity: 'error', parts: ['u1'], message: 'U1 3V3 is at 2.5 V, below the 3 V it needs: it browns out.', inputs: [p('datasheet')], key: 'k', ...over })
   it('keeps a datasheet error at typical an error (it blocks)', () => {
     expect(finalize([draft({ corner: 'typical' })], '')[0]).toMatchObject({ severity: 'error', basis: 'datasheet', corner: 'typical' })
@@ -117,7 +119,10 @@ describe('finalize (spec 4.5, 5.2)', () => {
     const [f] = finalize([draft({ corner: 'typical', inputs: [p('estimate')] }), draft({ corner: 'peak', inputs: [p('estimate')] })], '')
     expect(f.severity).toBe('warning')
     expect(f.message).toMatch(/^Likely: /)
-    expect(f.message).toContain('This is decided on estimated values for estimate.')
+    expect(f.message).toContain('This is decided on estimated values for BT1.')
+    // A USB link's conductors are named as such, never by their connection uid.
+    const [usb] = finalize([draft({ corner: 'typical', inputs: [{ value: 0.1, basis: 'estimate', label: 'cable.w7.vbus' }, { value: 0.1, basis: 'estimate', label: 'plug.w8.gnd' }] })], '')
+    expect(usb.message).toContain('This is decided on estimated values for a USB cable and a USB plug.')
     expect(finalize([draft({ corner: 'typical' }), draft({ corner: 'peak' })], '')).toHaveLength(1)
   })
   it('words a solver failure without SPICE vocabulary, naming the parts on the nets it reported', () => {
@@ -163,13 +168,13 @@ describe('Phase D fixes (topology)', () => {
 })
 
 describe('finalize: an over-abs-max past twice a representative limit (Phase D ruling)', () => {
-  const lim = (basis: 'representative' | 'estimate') => ({ value: 0.03, basis, label: `led.${basis}` })
+  const lim = (basis: 'representative' | 'estimate') => ({ value: 0.03, basis, label: basis === 'representative' ? 'led-colours.red.absMaxCurrent' : 'led.D1.limits.absMaxCurrent.part' })
   const abs = (overBy: number, basis: 'representative' | 'estimate' = 'representative'): Draft =>
     ({ code: 'sim-over-abs-max', severity: 'error', parts: ['d1'], message: 'D1 carries 90 mA, above its 30 mA absolute maximum: damage is likely.', inputs: [lim(basis)], key: 'k', corner: 'typical', overBy })
   it('stays a blocking error past 2x, saying it is decided on representative values', () => {
     const [f] = finalize([abs(3)], '')
     expect(f).toMatchObject({ severity: 'error', basis: 'representative' })
-    expect(f.message).toBe('D1 carries 90 mA, above its 30 mA absolute maximum: damage is likely. This is decided on typical values for representative, but it is more than twice the limit.')
+    expect(f.message).toBe('D1 carries 90 mA, above its 30 mA absolute maximum: damage is likely. This is decided on typical values for a red LED, but it is more than twice the limit.')
   })
   it('is a "likely" warning at 2x or under, on an estimate whatever the ratio, and at peak', () => {
     expect(finalize([abs(1.5)], '')[0]).toMatchObject({ severity: 'warning', message: expect.stringMatching(/^Likely: /) })

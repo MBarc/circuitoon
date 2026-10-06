@@ -163,6 +163,10 @@ describe('value findings', () => {
   it('a USB host port asked for more than it gives', async () => {
     const r = await analyse(sheet([{ uid: 'h1', module: hostModule() }, { uid: 'u1', module: boardModule(), values: { 'sim.draw.3V3.typical': { value: 0.6, unit: 'A' } } }], [['h1.USB', 'u1.USB']]))
     expect(of(r, 'sim-over-limit').some((f) => f.message.includes('over USB to U1'))).toBe(true)
+    // Plain words: no message names the link's connection uid (w1) or a cable or plug parameter path
+    // (the cable's resistance is representative, so the estimate note leaves it out; finalize's test
+    // covers the "decided on" sentence naming "a USB cable").
+    for (const f of r.findings) expect(f.message).not.toMatch(/\bw1\b|cable\.|plug\./)
   }, 60_000)
   it('a board behind an open switch, ground shared: not powered, naming the switch (ruling R30)', async () => {
     const r = await analyse(sheet([{ uid: 'bt1', module: cellModule(5, 0.05) }, { uid: 's1', module: 'rocker-switch-kcd1' }, { uid: 'u1', module: boardModule() }],

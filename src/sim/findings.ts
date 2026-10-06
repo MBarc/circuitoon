@@ -198,12 +198,14 @@ const ORDER = { error: 0, warning: 1, note: 2 } as const
 
 /**
  * Who a parameter's label is about, in plain words (spec 5.2): the part ref of `<module>.<ref>.<path>`,
- * "a red LED" for the per-colour table, "a USB 2.0 port" for the USB default. The label itself
+ * "a red LED" for the per-colour table, "a USB 2.0 port" for the USB default, "a USB cable" or "a
+ * USB plug" for a link's conductors (power.ts: `cable.<connection uid>.vbus`). The label itself
  * stays in the finding's `inputs`.
  */
 export function subjectOf(label: string): string {
   const [head, second] = label.split('.')
   if (head === 'led-colours' && second) return `a ${second} LED`
+  if (head === 'cable' || head === 'plug') return `a USB ${head}`
   if (head === 'usb-default') return `a USB ${label.slice(head.length + 1)} port`
   return second ?? label
 }
