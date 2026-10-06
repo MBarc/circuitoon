@@ -92,4 +92,13 @@ describe('the virtual clock (spec 7, ruling R16)', () => {
       expect(printed(r)).toBe('1.5\n')
     }
   }, 120_000)
+  it('stops a board blocked in a sleep under a driver that never grants', async () => {
+    let blocked!: () => void
+    const waiting = new Promise<void>((r) => (blocked = r))
+    const r = runNode('import time\ntime.sleep(30)\nprint("woke")\n', { mode: 'virtual', on: (m) => m.type === 'block' && blocked() })
+    await waiting
+    expect(await r.run.stop()).toBe('stopped')
+    expect(await r.exited).toBe('stopped')
+    expect(printed(r)).toBe('')
+  }, 60_000)
 })
