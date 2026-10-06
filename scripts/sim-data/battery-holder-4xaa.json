@@ -31,7 +31,7 @@
     "The holder is not the cell: the values assume the cell named in each note; a user enters their actual cell on the part (spec 3.5)."
   ],
   "unaccounted": [
-    "Contact and lead resistance of the holder itself (springs, tabs, wires): no datasheet for a generic holder, so it is not added to rInternal."
+    "Contact and lead resistance of the holder itself (springs, tabs, wires): no datasheet for a generic holder, so it is not added to the internal resistance."
   ],
   "review": [
     {

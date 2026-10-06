@@ -827,11 +827,11 @@
         }
       },
       "unaccounted": [
-        "ATmega16U2 USB-UART (U3) on +5V: no idle current on the schematic and no measurement (its own datasheet was not consulted for this patch).",
-        "Green ON LED from +5V through RN4C and RN4D (1 kohm each, in parallel, 500 ohm) to GND: the schematic gives the resistors, not the LED; roughly (5 V - 2 V) / 500 ohm = 6 mA for a green LED Vf of about 2 V (LED part unknown).",
-        "TX and RX LEDs (1 kohm each from +5V, driven by the 16U2 when serial traffic flows) and the \"L\" LED (1 kohm RN2A, driven by U5B from D13).",
-        "LMV358 dual op-amp U5 supply current on +5V.",
-        "VIN sense divider RN1A + RN1B (10 kohm + 10 kohm) from VIN to GND: VIN / 20 kohm, 0.45 mA at 9 V (arithmetic from the schematic)."
+        "The board's ATmega16U2 USB-UART bridge on +5V: no idle current on the schematic and no measurement (its own datasheet was not consulted).",
+        "The board's green ON LED from +5V through two 1 kohm resistors in parallel (500 ohm) to GND: the schematic gives the resistors, not the LED; roughly (5 V - 2 V) / 500 ohm = 6 mA for a green LED Vf of about 2 V (LED part unknown).",
+        "The board's TX and RX LEDs (1 kohm each from +5V, lit by the USB-UART bridge when serial traffic flows) and the \"L\" LED (1 kohm, driven by the board's op-amp from D13).",
+        "The board's LMV358 dual op-amp supply current on +5V.",
+        "The board's VIN sense divider (10 kohm + 10 kohm) from VIN to GND: VIN / 20 kohm, 0.45 mA at 9 V (arithmetic from the schematic)."
       ]
     }
   },

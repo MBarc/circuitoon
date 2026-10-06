@@ -763,9 +763,9 @@
         }
       },
       "unaccounted": [
-        "CP2102N USB-UART bridge (U1), VDD and REGIN on VDD33: no idle current on the schematic and no measurement.",
-        "Red power LED D1 + R2 2 kohm from EXT_5V (the 5V domain) to GND: the schematic gives the resistor, not the current (roughly (5 V - LED Vf) / 2 kohm, about 1.4 to 1.6 mA for a red LED Vf of 1.8 to 2.2 V, LED part unknown).",
-        "VBUS sense divider R25 22.1 kohm + R26 47.5 kohm from VBUS to GND: about 5 V / 69.6 kohm = 72 uA on the USB domain (arithmetic from the schematic, not modelled).",
+        "The board's CP2102N USB-UART bridge, on the 3.3 V supply: no idle current on the schematic and no measurement.",
+        "The board's red power LED and its 2 kohm resistor from the 5V supply to GND: the schematic gives the resistor, not the current (roughly (5 V - LED Vf) / 2 kohm, about 1.4 to 1.6 mA for a red LED Vf of 1.8 to 2.2 V, LED part unknown).",
+        "The board's USB voltage sense divider (22.1 kohm + 47.5 kohm) from USB 5 V to GND: about 5 V / 69.6 kohm = 72 uA on the USB domain (arithmetic from the schematic, not modelled).",
         "Module extras beyond the chip (SPI flash, crystal): the draw values are the chip's."
       ]
     }

@@ -539,10 +539,10 @@
         }
       },
       "unaccounted": [
-        "W25Q16JV QSPI flash (U3) on 3V3: no number from the schematic or a measurement (it shares the RP2040 IOVDD budget for its pin currents).",
-        "Green LED D2 on GPIO25, through R3 470 ohm per the BOM (designator pairing read from the BOM, not traced on the schematic): drawn only when firmware lights it; about (3.3 V - 2 V) / 470 ohm = 2.8 mA (LED Vf assumed).",
-        "VBUS sense divider R10 5.6 kohm + R1 10 kohm to GND: about 5 V / 15.6 kohm = 0.32 mA on VBUS (arithmetic from the schematic).",
-        "VSYS sense divider R5 200 kohm + R6 100 kohm: about 4.7 V / 300 kohm = 16 uA; 3V3_EN 100 kohm pull-up to VSYS (no current unless 3V3_EN is pulled low, then VSYS / 100 kohm).",
+        "The board's W25Q16JV flash chip on 3V3: no number from the schematic or a measurement (it shares the RP2040 IOVDD budget for its pin currents).",
+        "The board's green LED on GPIO25, through a 470 ohm resistor (paired from the parts list, not traced on the schematic): drawn only when firmware lights it; about (3.3 V - 2 V) / 470 ohm = 2.8 mA (LED Vf assumed).",
+        "The board's USB voltage sense divider (5.6 kohm + 10 kohm) to GND: about 5 V / 15.6 kohm = 0.32 mA on VBUS (arithmetic from the schematic).",
+        "The board's VSYS sense divider (200 kohm + 100 kohm): about 4.7 V / 300 kohm = 16 uA; 3V3_EN 100 kohm pull-up to VSYS (no current unless 3V3_EN is pulled low, then VSYS / 100 kohm).",
         "Crystal oscillator and the RP2040 at clocks other than BOOTSEL's 48 MHz: the draw uses the BOOTSEL figures."
       ]
     }

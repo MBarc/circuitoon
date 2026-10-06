@@ -229,7 +229,7 @@
       "unaccounted": [
         "Charge-indicator LEDs (four in the module art): IP5306 LED indicator current is 4 mA in V1.31 (p. 6) but 10 mA in Chinese V1.3 and 25 mA in the I2C datasheet, and the LEDs are lit only for a while after a key press or while charging. Not modelled.",
         "Flashlight LED driver on KEY (25 mA, V1.31 p. 6): whether the module fits a flashlight LED is not known; not modelled.",
-        "Boost operating current (IBAT 3 mA typ at VBAT = 3.7 V) is folded into the efficiency estimate rather than added as iq, because the solver's iq is drawn whether the boost is on or off.",
+        "Boost operating current (3 mA typ from a 3.7 V battery) is counted in the efficiency estimate rather than as a separate idle draw, because a separate idle draw would be counted even while the boost is off.",
         "Efficiency variation with load and battery voltage: one point (0.88) is used for the whole range."
       ]
     }
