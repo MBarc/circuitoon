@@ -56,6 +56,13 @@ describe('floating classification', () => {
     expect(pinState(c, cls, nodeKey('r1', '1'))).toBe('floating')
     expect(pinState(c, cls, nodeKey('d1', 'A'))).toBe('floating')
   })
+  it("references a USB-powered island to the device's ground net, not the host's cable end", () => {
+    const c = buildCircuit(sheet([{ uid: 'h1', module: 'computer-usb-port' }, { uid: 'u1', module: 'esp32-devkit-v1-30' }], [['h1.USB', 'u1.USB']]))
+    const cls = classify(c)
+    expect(cls.islands).toHaveLength(1)
+    expect(cls.islands[0].reference).toBe(netNode(c.pinNet[nodeKey('u1', 'GND')]))
+    expect(cls.islands[0].reference).not.toContain('USB_GND')
+  })
   it('references each island to the return of its strongest source', () => {
     const c = buildCircuit(sheet([
       { uid: 'b1', module: cellModule(3.7, 0.05, 'cell-a') }, { uid: 'b2', module: cellModule(5, 0.05, 'cell-b') }, R('r1'), R('r2'),

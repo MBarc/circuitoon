@@ -13,7 +13,7 @@
 // driven is unpowered (R30 names the open switch that would power it). Islands keep the undirected
 // grouping (dcFind), for numerics and reference naming only: each island holding a source is
 // referenced to the return of its source with the largest imax, else the highest open-circuit
-// voltage, ties by part uid. Pure.
+// voltage, ties by part uid; a USB host's return reads as the device's ground net past the cable. Pure.
 import { naturalCompare } from '../agent/order.ts'
 import { type Analysis, type Circuit, type Device, gpioBranch, netNode } from './model.ts'
 
@@ -219,6 +219,13 @@ export function classify(c: Circuit, analysis: Kind = OP): Classification {
     if (list) list.push(cell)
     else byRoot.set(r, [cell])
   }
+  // A USB host's return is its cable end (H1_USB_GND); the island reads to the far end, the
+  // device's own ground net, which is what a probe on the sheet names.
+  const groundOf = (n: string) => {
+    const net = c.taps.find((t) => t.node === n)?.net
+    const cable = net === undefined ? undefined : c.devices.find((d) => d.kind === 'resistor' && d.role === 'cable' && d.id.endsWith('.gnd') && d.a === netNode(net))
+    return cable?.kind === 'resistor' ? cable.b : n
+  }
   const strongest = (list: Cell[]) =>
     [...list].sort((a, b) => (b.imax?.value ?? -1) - (a.imax?.value ?? -1) || b.volts.value - a.volts.value || naturalCompare(a.part, b.part) || (a.id < b.id ? -1 : 1))[0]
   const members = new Map<string, string[]>()
@@ -232,7 +239,7 @@ export function classify(c: Circuit, analysis: Kind = OP): Classification {
   const islands: Island[] = [...byRoot.entries()]
     .map(([root, list]) => ({ ref: strongest(list), nodes: members.get(root) ?? [] }))
     .sort((a, b) => naturalCompare(a.ref.part, b.ref.part) || (a.ref.id < b.ref.id ? -1 : 1))
-    .map(({ ref, nodes: ns }) => ({ reference: ref.n, source: ref.id, nodes: ns }))
+    .map(({ ref, nodes: ns }) => ({ reference: groundOf(ref.n), source: ref.id, nodes: ns }))
   const islandOf = new Map<string, number>()
   islands.forEach((isl, i) => isl.nodes.forEach((n) => islandOf.set(n, i)))
   return { ...reach(c, [], analysis), islands, islandOf }
