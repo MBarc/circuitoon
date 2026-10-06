@@ -6,7 +6,7 @@ Sep 24, 2026 · @Michael
 
 ## Overview
 
-Circuitoon is Lucidchart specialized for electronics wiring diagrams: drag cartoon pictures of real modules onto a canvas, wire pin to pin, and move anything while the wires follow.
+Circuitoon is a diagramming tool specialized for electronics wiring diagrams: drag cartoon pictures of real modules onto a canvas, wire pin to pin, and move anything while the wires follow.
 
 **Problem.** Hobbyist wiring diagrams today are either hand-built static drawings or tools that assume you can find a good photo or footprint for every module. The hand-built Spirit Typewriter wiring sheet shows the kind of output Circuitoon should make for any project: it reads clearly (part pictures, pins in real order, colored nets, wire hops, breadboard rails) but every coordinate was placed by hand. Moving one part means redrawing every wire.
 
@@ -17,7 +17,7 @@ Circuitoon is Lucidchart specialized for electronics wiring diagrams: drag carto
 - An art studio to draw your own cartoon module out of colored rectangles, because good pictures of most modules do not exist.
 - A diagram file (JSON) that is the source of truth: parts plus connections. Export to JSON or PDF.
 
-**Pitch:** "Lucidchart for wiring diagrams." Pictorial, not symbolic: parts look like the physical thing (Fritzing breadboard view, Wokwi), not IEEE schematic symbols (KiCad).
+**Pitch:** "A drag-and-drop diagramming tool for wiring diagrams." Pictorial, not symbolic: parts look like the physical thing (Fritzing breadboard view, Wokwi), not IEEE schematic symbols (KiCad).
 
 ## Goals and non-goals
 
@@ -53,7 +53,7 @@ Each release is usable on its own; V2 and V3 build on data V1 already stores.
 
 ## V1 canvas and interaction
 
-Parts and wires are both first-class objects you click, drag, select and delete, exactly as shapes and connectors behave in Lucidchart.
+Parts and wires are both first-class objects you click, drag, select and delete, exactly as shapes and connectors behave in a general diagramming tool.
 
 **Canvas**
 
