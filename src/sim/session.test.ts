@@ -165,3 +165,65 @@ describe('solve when the engine fails or is unavailable', () => {
     }
   })
 })
+
+/** An engine whose every runAll takes 3 ticks of a manual clock. */
+function slowEngine() {
+  let tick = 0
+  const waiting: { due: number; done: () => void }[] = []
+  const run: Engine['run'] = (_c, _a, revision) => new Promise<RunOutcome>((res) => waiting.push({ due: tick + 3, done: () => res({ status: 'ok', revision, raw: { v: {}, pins: {}, dev: {} }, ms: 1 }) }))
+  const engine: Engine = {
+    host: { runs: 0, info: { name: 'ngspice', version: '45.2', build: 'fake' } } as unknown as EngineHost,
+    init: async () => ({ name: 'ngspice', version: '45.2', build: 'fake' }),
+    run,
+    runAll: async (c, analyses, revision) => {
+      const out = await run(c, analyses[0], revision)
+      return analyses.map(() => out)
+    },
+    dispose() {},
+  }
+  const advance = async () => {
+    tick++
+    for (const w of waiting.filter((x) => x.due <= tick)) {
+      waiting.splice(waiting.indexOf(w), 1)
+      w.done()
+    }
+    for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0))
+  }
+  return { engine, advance, now: () => tick }
+}
+
+describe('SimSession running mode (firmware spec 2.4)', () => {
+  it('delivers a result at least every 4 ticks while a request comes every tick and solves take 3', async () => {
+    const s0 = slowEngine()
+    const delivered: number[] = []
+    const s = new SimSession(s0.engine, () => delivered.push(s0.now()))
+    s.setRunning(true)
+    for (let rev = 1; rev <= 40; rev++) {
+      s.request(led, rev)
+      await s0.advance()
+    }
+    expect(delivered.length).toBeGreaterThan(5)
+    const gaps = delivered.slice(1).map((t, i) => t - delivered[i])
+    expect(Math.max(...gaps, delivered[0])).toBeLessThanOrEqual(4)
+  })
+  it('keeps the old rule when nothing runs: continuous requests deliver nothing until they stop', async () => {
+    const s0 = slowEngine()
+    const delivered: number[] = []
+    const s = new SimSession(s0.engine, () => delivered.push(s0.now()))
+    for (let rev = 1; rev <= 20; rev++) {
+      s.request(led, rev)
+      await s0.advance()
+    }
+    expect(delivered).toEqual([])
+    for (let i = 0; i < 8; i++) await s0.advance()
+    expect(delivered).toHaveLength(1)
+  })
+  it('hands the request options back with the outcome', async () => {
+    const g = gatedEngine()
+    const got: unknown[] = []
+    const s = new SimSession(g.engine, (_o, _c, opts) => got.push(opts?.runSeq))
+    s.request(led, 1, { runSeq: { u1: 7 } })
+    await g.flush()
+    expect(got).toEqual([{ u1: 7 }])
+  })
+})

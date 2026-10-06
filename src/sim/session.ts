@@ -12,8 +12,8 @@ import { mixRaws, pwmPlan } from './pwm.ts'
 import { type SimOutcome, type SimResult, budget, probeReadings, readRun } from './results.ts'
 import type { RawRun } from './spice.ts'
 
-/** BuildOptions (held group, library) plus probes beyond the diagram's saved ones (the CLI's). */
-export interface SolveOptions extends BuildOptions { probes?: Probe[] }
+/** BuildOptions (held group, library, run pin states) plus probes beyond the diagram's saved ones (the CLI's), and the code sequences the run pin states were sampled at (handed back with the outcome). */
+export interface SolveOptions extends BuildOptions { probes?: Probe[]; runSeq?: Record<string, number> }
 
 export async function solve(d: Diagram, engine: Engine, revision: number, opts: SolveOptions = {}): Promise<{ outcome: SimOutcome; circuit: Circuit }> {
   const c = buildCircuit(d, opts)
@@ -67,16 +67,27 @@ export async function solve(d: Diagram, engine: Engine, revision: number, opts: 
 export class SimSession {
   private engine: Engine
   /** The circuit is absent when the solve threw before one was built. */
-  private onOutcome: (o: SimOutcome, c?: Circuit) => void
+  private onOutcome: (o: SimOutcome, c?: Circuit, opts?: SolveOptions) => void
   private pending: { d: Diagram; revision: number; opts: SolveOptions } | null = null
   private running = false
   private latest = 0
   private stopped = false
+  private runMode = false
+  private delivered = 0
   private lastGood: { revision: number; result: SimResult } | null = null
 
-  constructor(engine: Engine, onOutcome: (o: SimOutcome, c?: Circuit) => void) {
+  constructor(engine: Engine, onOutcome: (o: SimOutcome, c?: Circuit, opts?: SolveOptions) => void) {
     this.engine = engine
     this.onOutcome = onOutcome
+  }
+
+  /**
+   * Running mode (firmware spec 2.4), while any board runs: a finished solve is delivered when it is
+   * newer than the last one delivered, so a request every sample never starves the display. Off, the
+   * existing rule holds: only the latest request is delivered.
+   */
+  setRunning(on: boolean): void {
+    this.runMode = on
   }
 
   request(d: Diagram, revision: number, opts: SolveOptions = {}): void {
@@ -100,10 +111,12 @@ export class SimSession {
         // unhandled rejection, and the loop goes on to any request that arrived meanwhile.
         outcome = { status: 'failed', revision: job.revision, finding: noConvergence(null, String(e), []), findings: [] }
       }
-      if (this.stopped || job.revision !== this.latest) continue
+      if (this.stopped) continue
+      if (this.runMode ? job.revision <= this.delivered : job.revision !== this.latest) continue
+      this.delivered = job.revision
       if (outcome.status === 'ok') this.lastGood = { revision: job.revision, result: outcome.result }
       try {
-        this.onOutcome(outcome.status === 'failed' && this.lastGood ? { ...outcome, lastGood: this.lastGood } : outcome, circuit)
+        this.onOutcome(outcome.status === 'failed' && this.lastGood ? { ...outcome, lastGood: this.lastGood } : outcome, circuit, job.opts)
       } catch (e) {
         // A throwing callback is the caller's bug: logged, never allowed to wedge the loop.
         console.error('SimSession: onOutcome threw', e)
