@@ -55,4 +55,11 @@ describe('gpiozero PWM devices (spec 5.1, 2.2)', () => {
     const r = await runScript(`${head}for make in (${bad.map((b) => `lambda: ${b}`).join(', ')}):\n    try:\n        make()\n    except Exception:\n        pass\nPWMLED(18)\nPWMLED(17)\nPWMLED(27)\nPWMLED(22)\nprint('ok')\n`)
     expect(r.out).toBe('ok\n')
   })
+  it('refuses a PWM frequency that is not a number above 0, as a ValueError', async () => {
+    const err = async (body: string) => (await runScript(head + body)).err.trim().split('\n').pop()
+    for (const [f, shown] of [["float('nan')", 'nan'], ["float('inf')", 'inf'], ['0', '0'], ['-5', '-5']])
+      expect(await err(`PWMOutputDevice(18, frequency=${f})`)).toBe(`ValueError: PWM frequency must be a number greater than 0, not ${shown}`)
+    expect(await err("led = PWMLED(18)\nled.frequency = float('nan')")).toBe('ValueError: PWM frequency must be a number greater than 0, not nan')
+    expect(await err("PWMLED(18).value = float('nan')")).toBe('gpiozero.OutputDeviceBadValue: PWM value must be between 0 and 1')
+  })
 })

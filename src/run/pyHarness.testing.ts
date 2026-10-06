@@ -7,7 +7,7 @@ import type { BoardKind } from './boards.ts'
 import { makeHw, testClock } from './bridge.ts'
 import { H, INPUT, MODE, type PinIn, boardMemory, readOut, writeIn, writeLine } from './memory.ts'
 import { PY_FILES } from './pyFiles.ts'
-import { type PyodideLike, installFiles, resetModules, runMain } from './worker/serve.ts'
+import { type PyodideLike, installFiles, pyValueError, resetModules, runMain } from './worker/serve.ts'
 
 export type ScriptInput = { atMs: number; bcm: number; level: 0 | 1 } | { atMs: number; line: string }
 export interface Trace { t: number; bcm: number; mode?: number; latch?: 0 | 1; pwm?: { active: boolean; duty: number; freq: number } }
@@ -52,7 +52,7 @@ export async function runScript(source: string, o: { inputs?: ScriptInput[]; unt
   }
   interruptBuffer[0] = 0
   const clock = testClock({ onStep, limitMs: o.untilMs ?? 60_000, stop: () => { interruptBuffer[0] = 2; p.checkInterrupt() } })
-  const hw = makeHw(m, clock, { board: o.board ?? 'pi4', onPrompt: (text) => res.prompts.push(text), flush: () => {} })
+  const hw = makeHw(m, clock, { board: o.board ?? 'pi4', onPrompt: (text) => res.prompts.push(text), flush: () => {}, fail: pyValueError(p) })
   // Record what the code does to its pins, at the run time it does it.
   const traced = {
     ...hw,

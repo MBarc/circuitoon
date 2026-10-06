@@ -36,6 +36,24 @@ describe('the code worker (spec 5.3, 5.4)', () => {
     expect(await r.exited).toBe('error')
     expect(out(r.messages, 'err')).toContain('File "blink.py", line 2, in <module>')
   }, 60_000)
+  it('raises a Python ValueError when code writes a bad value through circuitoon_hw', async () => {
+    const r = runNode('import circuitoon_hw\ntry:\n    circuitoon_hw.setup(17, 99)\nexcept ValueError as e:\n    print(e)\n')
+    expect(await r.exited).toBe('done')
+    expect(out(r.messages)).toBe('pin mode must be a whole number from 0 to 4, not 99\n')
+  }, 60_000)
+  it('interrupts once when Stop is pressed twice, so cleanup in finally finishes', async () => {
+    let first: Promise<string> | null = null
+    let second: Promise<string> | null = null
+    const r = runNode("import time\ntry:\n    print('go')\n    while True:\n        time.sleep(0.05)\nfinally:\n    print('cleaning')\n    time.sleep(0.3)\n    print('cleaned')\n", {
+      on: (m, run) => {
+        if (m.type === 'out' && m.text.includes('go') && !first) first = run.stop()
+        if (m.type === 'out' && m.text.includes('cleaning') && !second) second = run.stop()
+      },
+    })
+    expect(await r.exited).toBe('stopped')
+    expect([await first, await second]).toEqual(['stopped', 'stopped'])
+    expect(out(r.messages)).toBe('go\ncleaning\ncleaned\n')
+  }, 60_000)
   it('resumes input() with a line from the host', async () => {
     const r = runNode("print('Hi', input('Name? '))\n", { on: (m, run) => m.type === 'prompt' && writeLine(run.memory, 'Ada') })
     expect(await r.exited).toBe('done')

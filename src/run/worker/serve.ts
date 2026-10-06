@@ -43,6 +43,11 @@ export function runMain(py: PyodideLike, source: string, file: string): 'done' |
   return py.runPython('import _circuitoon\n_circuitoon.main(SRC, FILE)', { globals: g }) as 'done' | 'stopped' | 'error'
 }
 
+/** makeHw's `fail`: raises a Python ValueError with `message` (a Python exception thrown through JS arrives in Python as itself). */
+export function pyValueError(py: PyodideLike): (message: string) => never {
+  return py.runPython('def _circuitoon_value_error(message):\n    raise ValueError(message)\n_circuitoon_value_error') as (message: string) => never
+}
+
 export type LoadPy = (indexURL: string, lock: string) => Promise<PyodideLike>
 const why = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
@@ -86,7 +91,7 @@ export function serveCode(post: (m: FromCode) => void, listen: (cb: (m: ToCode) 
       const check = () => py.checkInterrupt()
       const clock = m.mode === 'virtual' ? virtualClock(mem, post, check) : realClock(mem, check)
       const out = outBuffer(post)
-      const hw = makeHw(mem, clock, { board: m.board, onPrompt: (text) => post({ type: 'prompt', text }), flush: out.flush })
+      const hw = makeHw(mem, clock, { board: m.board, onPrompt: (text) => post({ type: 'prompt', text }), flush: out.flush, fail: pyValueError(py) })
       py.setStdout({ batched: (s) => out.push('out', s) })
       py.setStderr({ batched: (s) => out.push('err', s) })
       // sys.stdin.readline() (spec 5.3): waits for a line, running no callbacks.

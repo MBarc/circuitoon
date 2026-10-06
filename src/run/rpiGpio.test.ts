@@ -65,4 +65,13 @@ describe('RPi.GPIO (spec 5.1)', () => {
     expect(five.err).toBe('RPi.GPIO does not work on a real Pi 5; use gpiozero, or install rpi-lgpio\n')
     expect((await runScript('import RPi.GPIO as GPIO\n')).err).toBe('')
   })
+  it('refuses a PWM frequency that is not a number above 0', async () => {
+    const err = async (body: string) => (await runScript(`${head}GPIO.setmode(GPIO.BCM)\nGPIO.setup(18, GPIO.OUT)\n${body}`)).err.trim().split('\n').pop()
+    expect(await err("GPIO.PWM(18, float('nan')).start(50)")).toBe('ValueError: PWM frequency must be a number greater than 0, not nan')
+    expect(await err("GPIO.PWM(18, float('inf')).start(50)")).toBe('ValueError: PWM frequency must be a number greater than 0, not inf')
+    expect(await err("p = GPIO.PWM(18, 50)\np.start(50)\np.ChangeFrequency(float('nan'))")).toBe('ValueError: PWM frequency must be a number greater than 0, not nan')
+    expect(await err('GPIO.PWM(18, 0)')).toBe('ValueError: frequency must be greater than 0.0')
+    expect(await err('GPIO.PWM(18, -5)')).toBe('ValueError: frequency must be greater than 0.0')
+    expect(await err("GPIO.PWM(18, 50).start(float('nan'))")).toBe('ValueError: dutycycle must have a value from 0.0 to 100.0')
+  })
 })

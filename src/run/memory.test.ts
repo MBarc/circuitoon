@@ -20,7 +20,7 @@ describe('board memory (spec 2.2)', () => {
       expect(readIn(m, b)).toEqual({ level: b % 2, rising: 10 + b, falling: 20 + b, status: 'value', volts: b / 10 })
     }
     expect([Atomics.load(m.i32, H.solvedThrough), m.f64[F.clockMs], m.f64[F.startMs], Atomics.load(m.i32, H.outSeq) % 2, Atomics.load(m.i32, H.inSeq) % 2]).toEqual([7, 1.5, 99, 0, 0])
-    expect(readAllOut(m)).toHaveLength(NPINS)
+    expect(readAllOut(m).rows).toHaveLength(NPINS)
   })
   it('wraps counters as uint32, so differences stay right across the wrap', () => {
     const m = boardMemory()
@@ -59,6 +59,22 @@ describe('board memory (spec 2.2)', () => {
     // The writer must have advanced through the loop, or torn === 0 would prove nothing.
     expect(seen.size).toBeGreaterThan(100)
     expect(torn).toBe(0)
+  })
+  it('reads the code sequence in the same snapshot as the modes it numbers', async () => {
+    const m = boardMemory()
+    const w = new Worker(new URL('./memoryWriter.testing.ts', import.meta.url), { workerData: { sab: m.sab, setup: true } })
+    while (Atomics.load(m.i32, H.codeSeq) === 0) await new Promise((r) => setTimeout(r, 5))
+    let wrong = 0
+    const seen = new Set<number>()
+    for (let i = 0; i < 20_000; i++) {
+      const { rows, codeSeq } = readAllOut(m)
+      if (rows[6].mode !== (codeSeq % 2 ? MODE.pullup : MODE.input)) wrong++
+      seen.add(codeSeq)
+    }
+    Atomics.store(m.i32, H.wake, -1)
+    await w.terminate()
+    expect(seen.size).toBeGreaterThan(100)
+    expect(wrong).toBe(0)
   })
 })
 

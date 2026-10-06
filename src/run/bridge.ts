@@ -41,15 +41,22 @@ export const QUANTUM_MS = 0.01
 
 /**
  * The CLI's clock (spec 7, ruling R16): the board keeps its own time, stepping 10 us per call; a wait
- * posts where it is and until when, and waits for the driver, which sets F.clockMs (where the board
- * may move to) and F.horizonMs (when a pin read must sync next) before waking it.
+ * posts where it is and until when, and waits for the driver's grant (memory.ts grant: F.clockMs, where
+ * the board may move to; F.horizonMs, when a pin read must sync next; then H.grant bumped and a wake).
+ * Other wakes (an input write, a line, before the grant) are ignored unless Stop is set, so the board
+ * never moves on a clock the driver has not finished writing. A read after setup syncs too, so its
+ * solve comes at the same instant even inside the horizon.
  */
 export function virtualClock(m: BoardMemory, post: (msg: FromCode) => void, checkInterrupt: () => void): RunClock {
   let t = 0
   const sync = (untilMs: number) => {
-    const seen = Atomics.load(m.i32, H.wake)
+    const g = Atomics.load(m.i32, H.grant)
     post({ type: 'block', nowMs: t, untilMs })
-    Atomics.wait(m.i32, H.wake, seen)
+    for (;;) {
+      const seen = Atomics.load(m.i32, H.wake)
+      if (Atomics.load(m.i32, H.grant) !== g || Atomics.load(m.i32, H.interrupt)) break
+      Atomics.wait(m.i32, H.wake, seen)
+    }
     t = Math.max(t, m.f64[F.clockMs])
     checkInterrupt()
   }
@@ -61,7 +68,7 @@ export function virtualClock(m: BoardMemory, post: (msg: FromCode) => void, chec
     },
     block: (untilMs) => sync(untilMs),
     poll() {
-      if (t >= m.f64[F.horizonMs]) sync(t)
+      if (t >= m.f64[F.horizonMs] || Atomics.load(m.i32, H.codeSeq) > Atomics.load(m.i32, H.solvedThrough)) sync(t)
     },
   }
 }
@@ -96,18 +103,33 @@ export function testClock(o: { onStep: (tMs: number) => void; limitMs: number; s
   return c
 }
 
-/** The JS functions Python's stand-ins call (spec 5.1). Pins are BCM numbers 0..27. */
-export function makeHw(m: BoardMemory, clock: RunClock, o: { board: BoardKind; onPrompt: (text: string) => void; flush: () => void }) {
-  const pin = (bcm: number) => {
-    if (!(Number.isInteger(bcm) && bcm >= 0 && bcm < NPINS)) throw new RangeError(`there is no GPIO${bcm}`)
+/** A number as Python prints it, for error messages. */
+const py = (x: unknown) => (typeof x !== 'number' ? String(x) : Number.isNaN(x) ? 'nan' : x === Infinity ? 'inf' : x === -Infinity ? '-inf' : String(x))
+
+/**
+ * The JS functions Python's stand-ins call (spec 5.1). Pins are BCM numbers 0..27. User code can call
+ * them directly (import circuitoon_hw), so every value bound for the shared memory the editor reads is
+ * checked here: `fail` raises a Python ValueError (the worker passes pyValueError); without it a
+ * RangeError is thrown.
+ */
+export function makeHw(m: BoardMemory, clock: RunClock, o: { board: BoardKind; onPrompt: (text: string) => void; flush: () => void; fail?: (message: string) => never }) {
+  const check = (ok: boolean, message: () => string) => {
+    if (ok) return
+    if (o.fail) o.fail(message())
+    throw new RangeError(message())
   }
+  const pin = (bcm: number) => check(Number.isInteger(bcm) && bcm >= 0 && bcm < NPINS, () => `there is no GPIO${py(bcm)}`)
   const nowUs = () => Math.round(clock.now() * 1000) >>> 0
   return {
     /** A mode or pull change (spec 2.2): bumps the code sequence; leaving output drops the latch and the PWM descriptor. */
     setup(bcm: number, mode: number) {
       pin(bcm)
-      writeLocked(m, H.outSeq, () => setOut(m, bcm, { mode: mode as ModeCode, ...(mode !== MODE.output ? { latch: 0, pwmActive: false } : {}) }))
-      Atomics.add(m.i32, H.codeSeq, 1)
+      check(Number.isInteger(mode) && mode >= MODE.unused && mode <= MODE.output, () => `pin mode must be a whole number from 0 to 4, not ${py(mode)}`)
+      writeLocked(m, H.outSeq, () => {
+        setOut(m, bcm, { mode: mode as ModeCode, ...(mode !== MODE.output ? { latch: 0, pwmActive: false } : {}) })
+        // Inside the same write, so a reader never pairs this sequence with the old mode (readAllOut).
+        Atomics.add(m.i32, H.codeSeq, 1)
+      })
     },
     /** A plain write: the latch, and the bit-bang counters (edges, high time) the sampler reads. */
     output(bcm: number, value: number) {
@@ -140,6 +162,8 @@ export function makeHw(m: BoardMemory, clock: RunClock, o: { board: BoardKind; o
     /** The declared PWM descriptor (spec 2.2): nothing toggles the pin. */
     pwm(bcm: number, active: boolean, duty: number, freq: number) {
       pin(bcm)
+      check(Number.isFinite(duty), () => `PWM duty cycle must be a number, not ${py(duty)}`)
+      check(Number.isFinite(freq) && freq > 0, () => `PWM frequency must be a number greater than 0, not ${py(freq)}`)
       writeLocked(m, H.outSeq, () => setOut(m, bcm, { pwmActive: !!active, duty: Math.min(1, Math.max(0, duty)), freq }))
     },
     rising: (bcm: number) => readLocked(m, H.inSeq, () => readIn(m, bcm).rising),
@@ -152,6 +176,7 @@ export function makeHw(m: BoardMemory, clock: RunClock, o: { board: BoardKind; o
     epoch: () => (clock.epochMs + clock.now()) / 1000,
     /** Python's scheduler: wait until run time `untilS` seconds (negative: until woken). */
     block(untilS: number) {
+      check(untilS < 0 || Number.isFinite(untilS), () => `wait time must be a finite number, not ${py(untilS)}`)
       clock.block(untilS < 0 ? Infinity : untilS * 1000)
     },
     /** A yield point: real time of the last one (the never-pauses check), whether timers or callbacks wait, and an output flush. */

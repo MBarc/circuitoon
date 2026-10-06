@@ -35,6 +35,7 @@ export class BoardRun {
   private o: BoardRunOptions
   private worker: CodeWorkerLike | null = null
   private ended!: () => void
+  private stopping: Promise<'stopped' | 'terminated'> | null = null
 
   constructor(o: BoardRunOptions) {
     this.o = o
@@ -66,18 +67,25 @@ export class BoardRun {
     this.ended()
   }
 
-  /** Stop (spec 5.4): KeyboardInterrupt now; terminated if not finished after 1 s. */
+  /**
+   * Stop (spec 5.4): KeyboardInterrupt now; terminated if not finished after 1 s. Once: a second
+   * Stop gets the first one's result and never interrupts the script's except or finally cleanup.
+   */
   async stop(): Promise<'stopped' | 'terminated' | 'ended'> {
+    if (this.stopping) return this.stopping
     const w = this.worker
     if (!w) return 'ended'
     if (this.status !== 'starting' && this.status !== 'running') {
       w.terminate()
       return 'ended'
     }
-    interrupt(this.memory)
-    const how = await Promise.race([this.done.then(() => 'stopped' as const), new Promise<'terminated'>((r) => setTimeout(() => r('terminated'), this.o.stopGraceMs ?? 1000))])
-    w.terminate()
-    if (how === 'terminated') this.finish('stopped')
-    return how
+    this.stopping = (async () => {
+      interrupt(this.memory)
+      const how = await Promise.race([this.done.then(() => 'stopped' as const), new Promise<'terminated'>((r) => setTimeout(() => r('terminated'), this.o.stopGraceMs ?? 1000))])
+      w.terminate()
+      if (how === 'terminated') this.finish('stopped')
+      return how
+    })()
+    return this.stopping
   }
 }

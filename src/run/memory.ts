@@ -7,7 +7,7 @@
 // numbers, the input() line state and the clock doubles. Counters are wrapping uint32: read them as
 // differences, `(now - then) >>> 0`. Worker side too: nothing Vite-specific.
 //
-// Byte layout: header ints 0..35, header doubles 64..95, pin table ints 128..1023 (8 per pin), pin
+// Byte layout: header ints 0..39, header doubles 64..95, pin table ints 128..1023 (8 per pin), pin
 // doubles 1024..1471 (duty, freq per pin), input ints 2048..2495 (4 per pin), input doubles
 // 2560..2783 (volts per pin), the input line 4096..8191.
 export const NPINS = 28
@@ -16,8 +16,12 @@ export type ModeCode = (typeof MODE)[keyof typeof MODE]
 export const IN_STATUS = { none: 0, value: 1, floating: 2, undefined: 3 } as const
 export type InStatus = keyof typeof IN_STATUS
 export const INPUT = { idle: 0, waiting: 1, ready: 2 } as const
-/** Header Int32 slots. `interrupt` is Pyodide's interrupt buffer (2 = SIGINT). */
-export const H = { wake: 0, interrupt: 1, outSeq: 2, inSeq: 3, solvedThrough: 4, codeSeq: 5, inputState: 6, inputLen: 7, pending: 8 } as const
+/**
+ * Header Int32 slots. `interrupt` is Pyodide's interrupt buffer (2 = SIGINT). `grant` counts the
+ * virtual-time driver's grants (ruling R16): a virtual wait moves on only when it changes, never on
+ * another wake.
+ */
+export const H = { wake: 0, interrupt: 1, outSeq: 2, inSeq: 3, solvedThrough: 4, codeSeq: 5, inputState: 6, inputLen: 7, pending: 8, grant: 9 } as const
 /** Header Float64 slots: the virtual clock and the driver's horizon (ms of run time), the last yield (epoch ms, real time) and the run's start (epoch ms). */
 export const F = { clockMs: 8, horizonMs: 9, lastYieldMs: 10, startMs: 11 } as const
 const OUT_I = 32
@@ -98,9 +102,9 @@ export function setIn(m: BoardMemory, bcm: number, p: PinIn): void {
   m.f64[IN_F + bcm] = p.volts
 }
 
-/** Every pin's row, read under the seqlock. */
-export function readAllOut(m: BoardMemory): PinOut[] {
-  return readLocked(m, H.outSeq, () => Array.from({ length: NPINS }, (_, b) => readOut(m, b)))
+/** Every pin's row and the code sequence that numbers them, from one read under the seqlock (setup bumps it inside the same write). */
+export function readAllOut(m: BoardMemory): { rows: PinOut[]; codeSeq: number } {
+  return readLocked(m, H.outSeq, () => ({ rows: Array.from({ length: NPINS }, (_, b) => readOut(m, b)), codeSeq: Atomics.load(m.i32, H.codeSeq) }))
 }
 
 /** The editor's write (spec 4.4): the rows it has, "solved through code sequence N", then a wake. */
@@ -114,6 +118,14 @@ export function writeIn(m: BoardMemory, rows: (PinIn | null)[], solvedThrough: n
 export function wake(m: BoardMemory): void {
   Atomics.add(m.i32, H.wake, 1)
   Atomics.notify(m.i32, H.wake)
+}
+
+/** The virtual-time driver lets a waiting board go (ruling R16): to run time `clockMs`, syncing again at a pin read past `horizonMs`. */
+export function grant(m: BoardMemory, clockMs: number, horizonMs: number): void {
+  m.f64[F.clockMs] = clockMs
+  m.f64[F.horizonMs] = horizonMs
+  Atomics.add(m.i32, H.grant, 1)
+  wake(m)
 }
 
 /** Stop (spec 5.4): KeyboardInterrupt at the next check, and a wake so a wait checks now. */
