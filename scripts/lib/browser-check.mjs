@@ -2,9 +2,10 @@
 // site with `vite preview`, launch the locally installed Chrome through playwright-core (never the
 // shared Playwright MCP browser), read flags, and count failures.
 import { execSync, spawn } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { extname, join } from 'node:path'
+import { gzipSync } from 'node:zlib'
 import { chromium } from 'playwright-core'
 
 const args = process.argv.slice(2)
@@ -18,29 +19,48 @@ export function flagOf(name, fallback) {
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.wasm': 'application/wasm', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.txt': 'text/plain', '.webmanifest': 'application/manifest+json', '.zip': 'application/zip' }
 
 /**
- * Serves `dist/` under `/circuitoon/` with NO isolation headers and no CSP, as GitHub Pages does, so
- * the service worker is what isolates the page. `override(rel, req)` (may be async) maps a request
- * path under `/circuitoon/` to another file, or returns null to serve `dist/<rel>`.
+ * Serves `dist/` under `/circuitoon/` on 127.0.0.1 only. By default it sends NO isolation headers and
+ * no CSP, as GitHub Pages does, so the service worker is what isolates the page. `override(rel, req)`
+ * (may be async) maps a request path under `/circuitoon/` to another file, or returns null to serve
+ * `dist/<rel>`. With `{ pages: true }` it stands in for Pages plus the worker's headers in one, with
+ * no service worker in the way (so DevTools network emulation reaches every fetch): COOP/COEP on every
+ * response, the code worker's CSP, and .wasm, .mjs and .json sent gzip-compressed (level 6) with
+ * Content-Encoding: gzip, as Pages sends them (ruling R15); everything else as is.
  */
-export async function startStatic(port, override = () => null) {
+export async function startStatic(port, override = () => null, { pages = false } = {}) {
   if (!existsSync('dist/index.html')) {
     console.error('No build found. Run `npm run build` first.')
     process.exit(2)
   }
+  // Compressed up front, so no request waits on gzip (Pages serves its compressed files at once).
+  const gzipped = new Map()
+  if (pages) for (const f of readdirSync('dist', { recursive: true })) if (/\.(wasm|mjs|json)$/.test(f)) gzipped.set(join('dist', f), gzipSync(readFileSync(join('dist', f)), { level: 6 }))
   const server = createServer(async (req, res) => {
     const path = decodeURIComponent(new URL(req.url, 'http://x').pathname)
-    if (!path.startsWith('/circuitoon/')) return void res.writeHead(404).end()
+    // Encoded separators (..%2f) survive URL normalisation: refuse anything that climbs.
+    if (!path.startsWith('/circuitoon/') || path.includes('..') || path.includes('\\')) return void res.writeHead(404).end()
     const rel = path.slice('/circuitoon/'.length) || 'index.html'
     const file = (await override(rel, req)) ?? join('dist', rel)
-    if (!existsSync(file)) return void res.writeHead(404).end()
-    res.writeHead(200, { 'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream', 'Cache-Control': 'no-cache' })
-    res.end(readFileSync(file))
+    if (!existsSync(file) || !statSync(file).isFile()) return void res.writeHead(404).end()
+    const headers = { 'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream', 'Cache-Control': 'no-cache' }
+    let body = readFileSync(file)
+    if (pages) {
+      Object.assign(headers, { 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Embedder-Policy': 'require-corp' })
+      if (/\/codeWorker[^/]*\.js$/.test(path)) headers['Content-Security-Policy'] = "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'"
+      if (/\.(wasm|mjs|json)$/.test(file) && /gzip/.test(req.headers['accept-encoding'] ?? '')) {
+        if (!gzipped.has(file)) gzipped.set(file, gzipSync(body, { level: 6 })) // an override's file
+        body = gzipped.get(file)
+        Object.assign(headers, { 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' })
+      }
+    }
+    res.writeHead(200, { ...headers, 'Content-Length': body.length })
+    res.end(body)
   })
-  await new Promise((ok, fail) => server.once('error', fail).listen(port, ok)).catch((e) => {
+  await new Promise((ok, fail) => server.once('error', fail).listen(port, '127.0.0.1', ok)).catch((e) => {
     console.error(`Port ${port} is already in use (${e.code}). Stop that server or pass --port.`)
     process.exit(3)
   })
-  return { base: `http://localhost:${port}/circuitoon/`, close: () => server.close() }
+  return { base: `http://127.0.0.1:${port}/circuitoon/`, close: () => server.close() }
 }
 
 /** The command line asks for the header-less server (`--sw`), so the service worker isolates pages. */

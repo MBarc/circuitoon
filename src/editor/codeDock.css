@@ -160,7 +160,7 @@
   /* The code pane takes its content's height (a link's question or a message above the editor never
      runs into Serial); the editor itself keeps a fixed height. */
   .code-dock-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(160px, auto); }
-  .code-editor { flex: none; height: 150px; }
+  .code-editor { flex: none; height: 200px; }
   .code-tab-board { display: none; }
   .code-status { margin-left: 0; }
   .code-dock-all .tool { white-space: nowrap; }

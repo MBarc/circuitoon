@@ -14,17 +14,18 @@
 // Every case runs at 1600 x 1000 and at 390 x 844 (the dock stacks the editor over Serial, the page
 // scrolls, nothing scrolls sideways). After the light 1600 pass, the budgets of spec 9: starting to
 // running with the files cached, the code worker's memory, run-state change to glow, and a first
-// visit on a 50 Mbit/s line (with the Python transfer as GitHub Pages serves it, ruling R15). Once per
-// scheme at 1600, the sandbox: user code reaches no network (spec 2.6, 10).
+// visit on a 50 Mbit/s line, three times, on a second server (--port + 1) that compresses like
+// GitHub Pages and sends the isolation headers itself, so the throttle reaches every fetch (with the
+// Python transfer on the wire, ruling R15). Once per scheme at 1600, the sandbox: user code reaches
+// no network (spec 2.6, 10).
 // Screenshots go to --out as code-<case>-<scheme>-<width>.png; open and look at each one.
 // With --sw the built site is served with no headers, so the service worker isolates the page and
 // adds the code worker's CSP, as on GitHub Pages.
 // Usage (after `npm run build`): npm run check:code-ui -- [--out <dir>] [--port 4215] [--sw]
-import { execFileSync } from 'node:child_process'
+import { execFileSync, execSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { gzipSync } from 'node:zlib'
-import { checker, flagOf, launchChrome, startPreview, underSw } from './lib/browser-check.mjs'
+import { checker, flagOf, launchChrome, startPreview, startStatic } from './lib/browser-check.mjs'
 
 const out = resolve(flagOf('--out', '.superpowers/code-ui'))
 const port = Number(flagOf('--port', '4215'))
@@ -56,6 +57,14 @@ const twoFile = piSheet('two', BLINK, { parts: [at('u2', 'U2', 'rpi-4-model-b', 
 const linkOf = (file) => JSON.parse(execFileSync(process.execPath, ['plugin/bin/circuitoon.mjs', 'link', file, '--json'], { encoding: 'utf8' }))
 
 const { base } = await startPreview(port)
+// The machine's CPU load in percent now (Windows), for the budget lines; '?' elsewhere.
+const cpuLoad = async () => {
+  try {
+    return `${execSync('powershell -NoProfile -Command "(Get-CimInstance Win32_Processor).LoadPercentage"', { encoding: 'utf8' }).trim()} %`
+  } catch {
+    return '?'
+  }
+}
 const { check, done } = checker()
 const browser = await launchChrome()
 // Waits, across the service worker's one reload of a first visit, until the page is isolated.
@@ -518,41 +527,43 @@ for (const scheme of ['light', 'dark']) {
     const delays = printed.map((t) => (glow.find((g) => g >= t) ?? Infinity) - t).sort((a, b) => a - b)
     const p95 = delays[Math.floor(delays.length * 0.95)]
     check(printed.length === 24 && p95 <= 50, `budget: run-state change to glow, no PWM: p95 ${p95.toFixed(0)} ms over ${printed.length} toggles, median ${delays[delays.length >> 1]?.toFixed(0)} ms (budget 50 ms)`)
-    // First visit on a 50 Mbit/s line with nothing cached (spec 9: 6 s, with progress). Not under
-    // --sw: the page's network emulation does not reach the service worker's own fetches, so the
-    // Python files would arrive unthrottled.
-    if (underSw) console.log('skip budget: first visit, 50 Mbit/s (the throttle does not reach the service worker; run without --sw)')
-    else {
+    // First visit on a 50 Mbit/s line with nothing cached (spec 9: 6 s, with progress), three times.
+    // Served as GitHub Pages serves it (.wasm, .mjs and .json gzip-compressed) with the isolation
+    // headers sent by the server, so no service worker sits between the page and the network and
+    // the DevTools throttle applies to every fetch, the Python files included.
+    const pagesSite = await startStatic(port + 1, undefined, { pages: true })
+    const colds = []
+    for (let run = 1; run <= 3; run++) {
       const fresh = await browser.newContext({ viewport: { width: 1600, height: 1000 } })
       const fp = await fresh.newPage()
-      const pyFiles = new Set()
-      fp.on('response', (r) => r.url().includes('/py/') && pyFiles.add(r.url().slice(r.url().lastIndexOf('/') + 1)))
-      let pyDone = 0
-      fp.on('requestfinished', (r) => r.url().includes('/py/') && (pyDone = Date.now()))
       const cdp = await fresh.newCDPSession(fp)
+      const pyUrls = new Map()
+      let pyBytes = 0
+      let pyDone = 0
+      cdp.on('Network.requestWillBeSent', (e) => e.request.url.includes('/py/') && pyUrls.set(e.requestId, e.request.url))
+      cdp.on('Network.loadingFinished', (e) => pyUrls.has(e.requestId) && ((pyBytes += e.encodedDataLength), (pyDone = Date.now())))
       await cdp.send('Network.enable')
       await cdp.send('Network.setCacheDisabled', { cacheDisabled: true })
       await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 20, downloadThroughput: 50e6 / 8, uploadThroughput: 10e6 / 8 })
-      await fp.goto(base + '#/editor', { waitUntil: 'networkidle' })
-      await isolated(fp)
+      await fp.goto(pagesSite.base + '#/editor', { waitUntil: 'networkidle' })
+      const direct = await fp.evaluate(() => crossOriginIsolated && !navigator.serviceWorker.controller)
       await fp.getByRole('button', { name: /New diagram/ }).click()
       await fp.locator('.toolbar input[type=file]').setInputFiles(blinkFile)
       await fp.waitForSelector('[data-run="u1"]')
+      const load = await cpuLoad()
       const t1 = Date.now()
       await fp.locator('[data-run="u1"]').click()
       await fp.waitForFunction(() => document.querySelector('[data-dock-tab="u1"]')?.getAttribute('data-status') === 'running', null, { timeout: 60000 })
       const cold = Date.now() - t1
-      check(cold <= 6000, `budget: first visit, 50 Mbit/s, starting to running: ${cold} ms, the last Python file in at ${pyDone - t1} ms, as served here uncompressed (budget 6000 ms)`)
-      // The Python transfer of that first Run as GitHub Pages serves it (ruling R15: gzip where Pages
-      // compresses the type, .wasm, .mjs and .json; the stdlib zip raw).
-      const dir = join('dist', 'py', JSON.parse(readFileSync('src/run/pyManifest.json', 'utf8')).version)
-      const served = [...pyFiles].reduce((sum, f) => {
-        const bytes = readFileSync(join(dir, f))
-        return sum + (f.endsWith('.zip') ? bytes.length : gzipSync(bytes, { level: 6 }).length)
-      }, 0)
-      check(pyFiles.has('pyodide.asm.wasm') && served <= 8 * 1048576, `budget: first-Run Python transfer as Pages serves it ${(served / 1048576).toFixed(2)} MB (budget 8 MB; ${[...pyFiles].join(', ')})`)
+      colds.push(cold)
+      const files = [...new Set([...pyUrls.values()].map((u) => u.slice(u.lastIndexOf('/') + 1)))]
+      check(direct, `budget run ${run}: isolated by the server's headers, no service worker in the way`)
+      check(cold <= 6000, `budget run ${run}: first visit, 50 Mbit/s, starting to running: ${cold} ms, the Python files in at ${pyDone - t1} ms (CPU ${load}) (budget 6000 ms)`)
+      check(files.includes('pyodide.asm.wasm') && pyBytes <= 8 * 1048576, `budget run ${run}: first-Run Python transfer ${(pyBytes / 1048576).toFixed(2)} MB on the wire (budget 8 MB; ${files.join(', ')})`)
       await fresh.close()
     }
+    pagesSite.close()
+    console.log(`first visit, 50 Mbit/s: ${colds.join(' ms, ')} ms`)
   }
 
   check(!errors.length, `${scheme} ${width}: no page errors (${errors.join(' | ')})`)

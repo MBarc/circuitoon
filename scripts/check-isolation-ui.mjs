@@ -69,7 +69,7 @@ async function freshPage(scheme) {
   const page = await context.newPage()
   const seen = { loads: 0, foreign: [], errors: [] }
   page.on('load', () => seen.loads++)
-  page.on('request', (r) => !r.url().startsWith(`http://localhost:${port}/`) && !r.url().startsWith('data:') && seen.foreign.push(r.url()))
+  page.on('request', (r) => !r.url().startsWith(new URL(base).origin + '/') && !r.url().startsWith('data:') && seen.foreign.push(r.url()))
   page.on('pageerror', (e) => seen.errors.push(e.message))
   page.on('dialog', (d) => d.accept())
   return { context, page, seen }

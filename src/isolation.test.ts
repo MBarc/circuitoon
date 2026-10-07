@@ -40,11 +40,11 @@ async function swHeaders(url: string): Promise<Headers> {
  * reload fires, the app clears the share link's hash as EditorApp does. Resolves to the URL the page
  * reloads at, or null when it does not reload.
  */
-async function pageReload(unsaved: boolean, start = 'https://mbarc.github.io/circuitoon/#/editor?d=abc', sessionStorage = fakeSession(), ready: Promise<unknown> = Promise.resolve()): Promise<string | null> {
+async function pageReload(unsaved: boolean, start = 'https://mbarc.github.io/circuitoon/#/editor?d=abc', sessionStorage = fakeSession(), ready: Promise<unknown> = Promise.resolve(), onReload = () => {}): Promise<string | null> {
   const config = /<script>(window\.coi[\s\S]*?)<\/script>/.exec(html)![1]
   let reloadedAt: string | null = null
   const registration = { active: {}, addEventListener() {} }
-  const location = { href: start, reload: () => void (reloadedAt = location.href) }
+  const location = { href: start, reload: () => void ((reloadedAt = location.href), onReload()) }
   const window: Record<string, unknown> = {
     crossOriginIsolated: false, isSecureContext: true, __circuitoonUnsaved: unsaved, location,
     history: { replaceState: (_s: unknown, _t: string, url: string) => void (location.href = new URL(url, location.href).href) },
@@ -55,6 +55,9 @@ async function pageReload(unsaved: boolean, start = 'https://mbarc.github.io/cir
   vm.runInContext(config, ctx)
   vm.runInContext(sw, ctx)
   location.href = 'https://mbarc.github.io/circuitoon/#/editor'
+  await new Promise((r) => setTimeout(r, 0))
+  // A ready that never resolves (no active worker) leaves the page as it is.
+  await Promise.race([ready, new Promise((r) => setTimeout(r, 20))])
   await new Promise((r) => setTimeout(r, 0))
   return reloadedAt
 }
@@ -109,6 +112,18 @@ describe.skipIf(rolledBack)('cross-origin isolation (spec 2.5; skipped while the
     // "updatefound" fires while the worker is still installing; reloading then loaded the page
     // uncontrolled (and the 10 s guard kept it so), seen in about a third of first visits.
     expect(await pageReload(false, undefined, undefined, new Promise(() => {}))).toBeNull()
+  })
+  it('reloads once, when the worker it waited for becomes active', async () => {
+    let activate!: () => void
+    const ready = new Promise<void>((r) => (activate = r))
+    const session = fakeSession()
+    let reloads = 0
+    const done = pageReload(false, undefined, session, ready, () => reloads++)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(reloads).toBe(0)
+    activate()
+    expect(await done).toBe('https://mbarc.github.io/circuitoon/#/editor?d=abc')
+    expect(reloads).toBe(1)
   })
   it('does not reload when sessionStorage throws', async () => {
     expect(await pageReload(false, undefined, fakeSession(true))).toBeNull()
