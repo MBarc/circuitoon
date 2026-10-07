@@ -9,3 +9,5 @@ src/format/checks.ts text eol=lf
 engine/** text eol=lf
 public/sim/** text eol=lf
 *.wasm binary
+# Python stand-ins are embedded as text in the CLI bundle (firmware spec 7): LF so the bundle is the same on every checkout.
+src/run/py/** text eol=lf
