@@ -85,7 +85,9 @@ Run `circuitoon parts --search <text>` with the chip name and the board name. If
    circuitoon module check part.json
    ```
 
-   `module new` also reads the spec on standard input. It writes nothing when the lint finds an error. Fix every error. Read every warning: a power pin with no type or supply means the checker cannot catch a wrong voltage on it, so fix it from the datasheet or tell the user why you could not. `custom-part-look` (drawn as the generic box, or no `photo`) blocks the gate later: fix it now. `custom-part-no-photo` (`"photo": "none"`) is listed by the gate as a warning to pass on.
+   `module new` also reads the spec on standard input. It writes nothing when the lint finds an error. Fix every error. Read every warning: a power pin with no type or supply means the checker cannot catch a wrong voltage on it, so fix it from the datasheet or tell the user why you could not. `custom-part-look` (drawn as the generic box, or no `photo`) blocks the gate later: fix it now. `custom-part-no-photo` (`"photo": "none"`) is listed by the gate as a warning to pass on. A part made with `"style": "chip"` and no `art` counts as drawn (a bare chip looks like that), but it still needs `photo`.
+
+   Known limits, so do not lean on them: the gate only spots art that is exactly the generated box, so art with one shape added passes; and `"photo": "none"` only warns, even on a part that has a maker. Neither makes the drawing right.
 
 8. **Render it and compare it with the photo.**
 

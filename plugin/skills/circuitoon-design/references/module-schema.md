@@ -7,7 +7,7 @@ The easy way is `circuitoon module new --spec spec.json -o part.json`: it draws 
 - Take every pin from the maker's documentation (a datasheet, the maker's wiki, or a vendor pinout with a legible silkscreen).
 - List those URLs in `source`, separated by spaces.
 - Optionally give `description` (one plain sentence, at most 300 characters) and `uses` (1 to 8 typical uses, at most 60 characters each). The editor's Parts panel searches them.
-- On a custom part (`"custom": true`), give `photo`: the http(s) URL of the maker's product photo of this exact part that its `art` was drawn from (at most 500 characters), or `"none"` only when no photo of it exists anywhere. The gate blocks (`custom-part-look`) on a custom part with no `photo` or drawn as the generic box, and warns (`custom-part-no-photo`) on `"none"`. Built-in parts never carry it.
+- On every embedded part (any module whose id is not a built-in part's), give `photo`: the http(s) URL of the maker's product photo of this exact part that its `art` was drawn from (at most 500 characters), or `"none"` only when no photo of it exists anywhere. The gate blocks (`custom-part-look`) on an embedded part with no `photo` or drawn as the generic box (the generated bare chip of `"style": "chip"` counts as drawn), and warns (`custom-part-no-photo`) on `"none"`. Built-in parts never carry it.
 - If a pin cannot be verified, do not add the part: tell the user what is missing.
 - The layout and the gate report embedded parts as "custom, unverified". Say so when you present the design.
 

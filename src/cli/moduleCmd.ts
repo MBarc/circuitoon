@@ -82,7 +82,9 @@ export interface ModuleCheckReport {
 }
 
 export function checkModuleFile(raw: unknown, path: string): ModuleCheckReport {
-  const lint = lintModule(raw, { look: true })
+  // A part outside the library (custom or hand-made) is looked at; a built-in one never.
+  const id = (raw as { id?: unknown } | null)?.id
+  const lint = lintModule(raw, { look: !(typeof id === 'string' && Object.hasOwn(modulesById, id)) })
   const v = validateModule(raw)
   const m = v.ok ? v.module : null
   const lay = m ? layoutModule(m) : null

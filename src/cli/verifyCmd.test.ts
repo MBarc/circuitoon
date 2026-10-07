@@ -270,7 +270,8 @@ describe('circuitoon verify and check', () => {
 describe('readability warnings in check', () => {
   it('lists a crowded pair of wires as a warning and still exits 0', async () => {
     const dir = tempDir()
-    const two = { format: 'circuitoon-module/1', id: 'two', name: 'Two', pins: [{ name: 'L', side: 'left' }, { name: 'R', side: 'right' }] }
+    // A hand-made part outside the library, drawn and with a photo, so it does not block on how it looks.
+    const two = { format: 'circuitoon-module/1', id: 'two', name: 'Two', photo: 'https://example.com/two.jpg', pins: [{ name: 'L', side: 'left' }, { name: 'R', side: 'right' }], art: { w: 40, h: 30, shapes: [{ type: 'rect', x: 0, y: 0, w: 40, h: 30, fill: '#C8A27A' }] } }
     const p = (uid: string, x: number, y: number) => ({ uid, designator: uid.toUpperCase(), module: 'two', x, y })
     const w = (uid: string, a: string, b: string, y: number) => ({ uid, from: { part: a, pin: 'R' }, to: { part: b, pin: 'L' }, route: [[60, y], [180, y]] })
     writeFileSync(join(dir, 's.json'), JSON.stringify({ format: 'circuitoon-diagram/1', title: 't', modules: { two }, parts: [p('r1', 0, 0), p('r2', 200, 0), p('r3', 0, 10), p('r4', 200, 10)], connections: [w('w1', 'r1', 'r2', 20), w('w2', 'r3', 'r4', 30)] }))

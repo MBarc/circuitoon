@@ -570,18 +570,27 @@ export interface LintReport {
   warnings: LintIssue[]
 }
 
-const LOOK_TODO = `Find the maker's product photo, draw its art per the art guide, record the photo URL in "photo" (see the circuitoon-custom-part skill).`
+const ART_GUIDE = 'draw its art per the art guide (references/art.md in the circuitoon-custom-part skill)'
+const REBUILD = 'rebuild the part with `module new`, embed it and lay out again.'
 
 /**
- * Whether a custom part looks like the real thing, the message without the part's name: null when
- * it does (or it is not custom). custom-part-look (the gate blocks): drawn as the generic box the
- * part maker generates, or no `photo`. custom-part-no-photo (a warning): `"photo": "none"` with art
- * of its own.
+ * Whether a part made outside the library looks like the real thing, the message without the
+ * part's name: null when it does. Callers pass only parts outside the library (the gate and check
+ * every embedded part not in it, module new and check likewise). custom-part-look (the gate
+ * blocks): drawn as the generic box the part maker generates, or no `photo`; the generated chip
+ * counts as a real look, since a bare chip looks like that. custom-part-no-photo (a warning):
+ * `"photo": "none"` with a real look.
  */
+// ponytail: "generic" is exact equality with the generated art, so one added shape (and any URL
+// in photo) passes, as does "none" on a part that has a maker; compare shape counts or check the
+// source's maker domain if agents start gaming it.
 export function customLook(m: ModuleDef): LintIssue | null {
-  if (!isCustom(m)) return null
-  const why = [...(!m.art || sameArt(m.art, generatedArt(m)) ? ['it is drawn as the generic box'] : []), ...(m.photo === undefined ? ['it has no "photo"'] : [])]
-  if (why.length) return { code: 'custom-part-look', message: `does not look like the real part yet: ${why.join(' and ')}. ${LOOK_TODO}` }
+  const generic = !m.art || (m.art.pinLabels !== 'tips' && sameArt(m.art, generatedArt(m)))
+  if (generic) {
+    if (m.photo === 'none') return { code: 'custom-part-look', message: `is drawn as the generic box: ${ART_GUIDE} from the maker's drawing or the typical part, ${REBUILD}` }
+    return { code: 'custom-part-look', message: `is drawn as the generic box${m.photo === undefined ? ' and has no `photo`' : ''}: find the maker's product photo, ${ART_GUIDE}, record the photo URL in \`photo\`, ${REBUILD}` }
+  }
+  if (m.photo === undefined) return { code: 'custom-part-look', message: 'has no `photo`: record the product photo URL you drew it from in `photo`, or "none" if no photo of this part exists anywhere.' }
   if (m.photo === 'none') return { code: 'custom-part-no-photo', message: 'has "photo": "none", so its art was not drawn from a photo of the real part. Say so when you present the design.' }
   return null
 }
@@ -594,7 +603,7 @@ const GROUND_NAME = /^(gnd\d*|vss|agnd|dgnd|pgnd|v-|-|0v)$/i
  * What is wrong (errors) or doubtful (warnings) about a module: everything validateModule finds,
  * plus duplicate pin names, art that does not match its pins, impossible pin capabilities, power
  * pins without a type or supply, supplies that do not parse and a missing source; with `look`,
- * how a custom part looks (customLook), as a warning.
+ * how a part made outside the library looks (customLook), as a warning; the caller says whether it is one.
  */
 export function lintModule(raw: unknown, opts: { look?: boolean } = {}): LintReport {
   const errors: LintIssue[] = []
