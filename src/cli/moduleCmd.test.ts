@@ -52,6 +52,14 @@ describe('circuitoon module new', () => {
     expect(json(readFileSync(join(dir, 'part.json'), 'utf8'))).toEqual(m)
   })
 
+  it('carries a description and typical uses onto the part', async () => {
+    const spec = { ...SPEC, description: 'Measures humidity on the bench.', uses: ['greenhouse monitor', 'weather station'] }
+    expect(schemaErrors(loadSchema('part-spec'), spec)).toEqual([])
+    const r = await cli(['module', 'new'], { cwd: tempDir(), stdin: JSON.stringify(spec) })
+    expect(r.code).toBe(0)
+    expect(json(r.out)).toMatchObject({ description: spec.description, uses: spec.uses })
+  })
+
   it('reads the spec from standard input, with --spec left out or "-"', async () => {
     const dir = tempDir()
     for (const argv of [['module', 'new'], ['module', 'new', '--spec', '-']]) {
@@ -233,7 +241,7 @@ describe('the part spec schema', () => {
     expect(schemaErrors(schema, { name: 'Gaps', style: 'chip', body: { w: 8, h: 4, color: '#1E4F8A' }, pins: { top: ['A', null, { spacer: true }, { name: 'B', label: 'b', caps: { inputOnly: true } }] }, internal: [['A', 'B']] })).toEqual([])
   })
   it('names the same fields as the spec validator', () => {
-    expect(Object.keys(schema.properties!).sort()).toEqual(['body', 'category', 'format', 'id', 'internal', 'name', 'pins', 'source', 'style', 'version'])
+    expect(Object.keys(schema.properties!).sort()).toEqual(['body', 'category', 'description', 'format', 'id', 'internal', 'name', 'pins', 'source', 'style', 'uses', 'version'])
     expect(schemaErrors(schema, { ...SPEC, colour: 'red' })).toEqual(['$.colour: not allowed'])
     expect(schemaErrors(schema, { name: 'X', pins: { left: [{ name: 'A', kind: 'io' }] } })).toEqual(['$.pins.left[0].kind: not allowed'])
   })

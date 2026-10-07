@@ -47,6 +47,12 @@ A pin's `supply` names the voltages the pin actually sees, never a symbolic rail
 - A part with more than one ground component (an analog ground, isolated outputs) and any supply declares `electrical.returns` (output pin to ground pin); otherwise the checker treats those supplies' returns as unknown. Grounds that are one return across a switch the checker does not model (a charger's B- and OUT-) go in `electrical.commonReturn`.
 - A part whose output is its editable `voltage` value (a battery, an adjustable buck) supplies that value: the checker reads the value set on the sheet, not the pin's `supply` string. With one `power_out` the value sets it; with more, list the ones it sets in `electrical.voltageOutputs` (validation requires it).
 
+## Part text (src/format/partText.json)
+Every built-in part needs an entry keyed by its id: `{ "description": "...", "uses": ["...", ...] }`. It is what people find a part by when they describe it in words ("a touch display for the rpi"), and the description is the Parts panel tooltip.
+- `description`: one plain sentence, ending in a full stop, no second sentence, no em or en dashes. Say what it is and the detail that sets it apart, in words a hobbyist would type ("The official 7 inch Raspberry Pi touch screen that connects over the DSI ribbon and takes 5 V on its power header.").
+- `uses`: 1 to 8 typical uses, each a short phrase of at most 60 characters ("robot arms and joints", "USB-C charging"). Use the words people search with, and name the boards it pairs with when that is the point (Raspberry Pi, ESP32).
+- Only built-in parts go here, and only these two fields; a module JSON never carries them (custom parts carry their own). `src/format/partSearch.test.ts` checks every entry, and that each names a built-in part.
+
 ## Categories (src/editor/libraryGroups.ts CATEGORY_ORDER)
 Batteries, Prototyping, Power, Microcontrollers, Sensors, Communication, Displays, Motors and actuators, Chips, Semiconductors, Passives, Indicators, Switches, Connectors, Wiring (the net label), Mains, then others alphabetically. Planned: "Microcontrollers" becomes "Boards" once full-size Raspberry Pis land. Empty groups are hidden.
 
