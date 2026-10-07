@@ -95,21 +95,31 @@ describe('spec art', () => {
 
 const PHOTO = 'https://example.com/amp.jpg'
 const GENERIC_TODO = "find the maker's product photo, draw its art per the art guide (references/art.md in the circuitoon-custom-part skill), record the photo URL in `photo`, rebuild the part with `module new`, embed it and lay out again."
-const PHOTO_TODO = 'record the product photo URL you drew it from in `photo`, or "none" if no photo of this part exists anywhere.'
+const PHOTO_TODO = 'record the product photo URL you drew it from in `photo`, or "none: <why>" if no photo of this part exists anywhere.'
+const PHOTO_ERROR = 'photo: must be an http(s) URL of a product photo of this exact part, at most 500 characters, or "none: <why>" (a reason of 10 to 200 characters) when no photo of it exists'
+const NONE_WHY = 'none: a hand-wound coil made for this project'
+const BARE_NONE = 'has "photo": "none" with no reason. Shops sell nearly every generic part (a panel jack, a USB audio adapter, a speaker) with a product photo: find one and record its URL in `photo`. Only when no photo of it exists anywhere, write "none: <why>".'
 
 describe('the photo field', () => {
   it('is carried from the spec onto the module and back', () => {
     const m = moduleFromSpec({ ...AMP, photo: PHOTO })
     expect(m.photo).toBe(PHOTO)
     expect(specFromModule(m).photo).toBe(PHOTO)
-    expect(specFromModule(moduleFromSpec({ ...AMP, art: undefined, photo: 'none' })).photo).toBe('none')
+    expect(specFromModule(moduleFromSpec({ ...AMP, art: undefined, photo: NONE_WHY })).photo).toBe(NONE_WHY)
     expect(unmodeled(m)).toEqual([])
     expect('photo' in moduleFromSpec(AMP)).toBe(false)
   })
 
   it('is validated in the spec with its exact path', () => {
     const r = validateSpec({ ...AMP, photo: 'a photo' })
-    expect(r.ok ? [] : r.errors).toEqual(['photo: must be an http(s) URL of a product photo of this exact part, at most 500 characters, or "none" when no photo of it exists'])
+    expect(r.ok ? [] : r.errors).toEqual([PHOTO_ERROR])
+  })
+
+  it('takes "none: <why>" with a reason of 10 to 200 characters, and a bare "none" (old sheets)', () => {
+    expect(validateSpec({ ...AMP, photo: NONE_WHY }).ok).toBe(true)
+    expect(validateSpec({ ...AMP, photo: 'none' }).ok).toBe(true)
+    for (const bad of ['none:', 'none: short', `none: ${'x'.repeat(201)}`, 'None: a hand-wound coil made here'])
+      expect(validateSpec({ ...AMP, photo: bad }).ok, bad).toBe(false)
   })
 })
 
@@ -118,17 +128,18 @@ describe('how a custom part looks', () => {
     expect(customLook(moduleFromSpec({ ...AMP, art: undefined, photo: PHOTO }))).toEqual({ code: 'custom-part-look', message: `is drawn as the generic box: ${GENERIC_TODO}` })
     expect(customLook(moduleFromSpec({ ...AMP, art: undefined }))).toEqual({ code: 'custom-part-look', message: `is drawn as the generic box and has no \`photo\`: ${GENERIC_TODO}` })
     expect(customLook(moduleFromSpec(AMP))).toEqual({ code: 'custom-part-look', message: `has no \`photo\`: ${PHOTO_TODO}` })
-    const none = customLook(moduleFromSpec({ ...AMP, art: undefined, photo: 'none' }))
+    const none = customLook(moduleFromSpec({ ...AMP, art: undefined, photo: NONE_WHY }))
     expect(none?.code).toBe('custom-part-look')
     expect(none?.message).toBe("is drawn as the generic box: draw its art per the art guide (references/art.md in the circuitoon-custom-part skill) from the maker's drawing or the typical part, rebuild the part with `module new`, embed it and lay out again.")
     expect(customLook(moduleFromSpec({ ...AMP, photo: PHOTO }))).toBeNull()
-    expect(customLook(moduleFromSpec({ ...AMP, photo: 'none' }))?.code).toBe('custom-part-no-photo')
+    expect(customLook(moduleFromSpec({ ...AMP, photo: NONE_WHY }))).toEqual({ code: 'custom-part-no-photo', message: 'has no photo ("a hand-wound coil made for this project"), so its art was not drawn from a photo of the real part. Say so when you present the design.' })
+    expect(customLook(moduleFromSpec({ ...AMP, photo: 'none' }))).toEqual({ code: 'custom-part-look', message: BARE_NONE })
   })
 
   it('takes the generated chip drawing as a real look (a bare chip looks like that), but still wants a photo', () => {
     const chip = { name: 'Test op amp (DIP-8)', style: 'chip' as const, source: 'https://example.com/opamp', pins: { left: ['OUT1', 'IN1-', 'IN1+', 'GND'], right: ['VCC', 'OUT2', 'IN2-', 'IN2+'] } }
     expect(customLook(moduleFromSpec({ ...chip, photo: PHOTO }))).toBeNull()
-    expect(customLook(moduleFromSpec({ ...chip, photo: 'none' }))?.code).toBe('custom-part-no-photo')
+    expect(customLook(moduleFromSpec({ ...chip, photo: NONE_WHY }))?.code).toBe('custom-part-no-photo')
     expect(customLook(moduleFromSpec(chip))).toEqual({ code: 'custom-part-look', message: `has no \`photo\`: ${PHOTO_TODO}` })
   })
 

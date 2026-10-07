@@ -235,8 +235,9 @@ export interface ModuleDef {
   uses?: string[]
   /**
    * A custom part's product photo, the one its art was drawn from: an http(s) URL of a photo of this
-   * exact board or part, or "none" when no photo of it exists anywhere (a generic part with no
-   * maker). The gate blocks on a custom part without it. Built-in parts never carry it.
+   * exact board or part, or "none: <why>" when no photo of it exists anywhere (a part made for one
+   * project). The gate blocks on a custom part without it, and on a bare "none" (still valid, so
+   * older sheets open). Built-in parts never carry it.
    */
   photo?: string
   /** The languages code on this part may be in (firmware spec 3.2); read only through languagesOf. */
@@ -249,11 +250,15 @@ export const USES_MAX = 8
 export const USE_MAX = 60
 export const PHOTO_MAX = 500
 
+/** Why a part has no photo ("none: <why>"), "" for a bare "none", or null when it has one or none is given. */
+export const noPhotoReason = (v: string | undefined): string | null =>
+  v === 'none' ? '' : v?.startsWith('none: ') ? v.slice(6) : null
+
 /** What is wrong with a `photo` value, or null (shared with the part spec). */
 export const photoError = (v: unknown): string | null =>
-  v === 'none' || (typeof v === 'string' && v.length <= PHOTO_MAX && /^https?:\/\/\S+$/.test(v))
+  typeof v === 'string' && (v === 'none' || /^none: \S.{9,199}$/s.test(v) || (v.length <= PHOTO_MAX && /^https?:\/\/\S+$/.test(v)))
     ? null
-    : `photo: must be an http(s) URL of a product photo of this exact part, at most ${PHOTO_MAX} characters, or "none" when no photo of it exists`
+    : `photo: must be an http(s) URL of a product photo of this exact part, at most ${PHOTO_MAX} characters, or "none: <why>" (a reason of 10 to 200 characters) when no photo of it exists`
 
 /** The id prefix every custom part has and no built-in part may use. */
 export const CUSTOM_PREFIX = 'custom-'
