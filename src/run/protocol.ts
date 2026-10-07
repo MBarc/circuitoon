@@ -17,7 +17,14 @@ export interface StartMessage {
   py: { indexURL: string; lock: string }
 }
 export type ToCode = StartMessage
+/**
+ * What a confined process could do, seen from inside it (runProcess.ts): the Node code worker sends
+ * one after Pyodide loads, before user code runs. `read` is whether each probed path could be read.
+ */
+export interface SandboxProbe { permission: boolean; codeFromStrings: boolean; read: boolean[]; write: boolean; childProcess: boolean; addons: boolean; wasi: boolean }
 export type FromCode =
+  /** The Node code worker's own sandbox probe (after Pyodide loads, before the script). */
+  | { type: 'probe'; probe: SandboxProbe }
   /** Pyodide is loaded and the script starts now; `sandboxed` names what left the worker's scope (spec 2.6). */
   | { type: 'ready'; sandboxed: string[] }
   /** Serial output, batched (spec 5.3); `text` may hold several lines. */

@@ -97870,17 +97870,54 @@ function spawnNodeCodeWorker() {
 		terminate: () => void w.terminate()
 	};
 }
+var can = (f) => {
+	try {
+		f();
+		return true;
+	} catch {
+		return false;
+	}
+};
+/** What this thread can do: a confined process (runProcess.ts) denies writes, processes, addons, WASI and code from strings. */
+function probeSandbox(paths) {
+	const p = process.permission;
+	return {
+		permission: !!p,
+		codeFromStrings: can(() => new Function("return 1")),
+		read: paths.map((path) => can(() => statSync(path).isDirectory() ? readdirSync(path) : readFileSync(path))),
+		write: p ? p.has("fs.write") : true,
+		childProcess: p ? p.has("child") : true,
+		addons: p ? p.has("addon") : true,
+		wasi: p ? p.has("wasi") : true
+	};
+}
+/** Why a process under the permission model is not confined as it should be, or null. */
+function sandboxHole(p) {
+	if (p.codeFromStrings) return "it can build code from strings";
+	if (p.permission && (p.write || p.childProcess || p.addons || p.wasi)) return "it can write files, start processes, or load addons or WASI";
+	return null;
+}
 if (!isMainThread && workerData?.circuitoonCode) serveCode((m) => parentPort.postMessage(m), (cb) => void parentPort.on("message", cb), async (indexURL, lock) => {
 	const proc = process;
 	const binding = proc.binding;
 	proc.binding = (name) => name === "constants" ? { fs: constants } : binding.call(process, name);
 	const mod = await import(pathToFileURL(join(indexURL, "pyodide.mjs")).href);
 	const g = globalThis;
-	return mod.loadPyodide({
+	const py = await mod.loadPyodide({
 		indexURL,
 		lockFileContents: lock,
 		jsglobals: Object.fromEntries(PY_JSGLOBALS.map((n) => [n, g[n]]))
 	});
+	if (process.permission) {
+		const probe = probeSandbox([homedir()]);
+		parentPort.postMessage({
+			type: "probe",
+			probe
+		});
+		const hole = sandboxHole(probe);
+		if (hole) throw new Error(`the code's sandbox did not hold (${hole}); not running the code`);
+	}
+	return py;
 });
 //#endregion
 //#region src/run/driver.ts
@@ -97952,7 +97989,8 @@ async function drive(o) {
 	let pins = {};
 	let seq = {};
 	let moving = [];
-	const solveAt = async (t) => {
+	const findingsOf = (x) => x.status === "ok" ? x.result.findings : x.status === "failed" ? [x.finding, ...x.findings] : x.findings;
+	const solveAt = async (t, keep = true) => {
 		last = await solve(sheet, o.engine, ++revision, {
 			library,
 			held,
@@ -97964,11 +98002,11 @@ async function drive(o) {
 			t,
 			outcome: last.outcome
 		});
-		addFindings(last.outcome.status === "ok" ? last.outcome.result.findings : last.outcome.status === "failed" ? [last.outcome.finding, ...last.outcome.findings] : last.outcome.findings);
+		if (keep) addFindings(findingsOf(last.outcome));
 		return last;
 	};
 	let notify = () => {};
-	const first = await solveAt(0);
+	const first = await solveAt(0, false);
 	const live = [];
 	const core = new RunCore();
 	for (const uid of o.boards) {
@@ -98015,6 +98053,7 @@ async function drive(o) {
 					untilMs: msg.untilMs
 				}, entry.t = msg.nowMs, entry.heard = performance.now();
 				else if (msg.type === "ready") entry.heard = performance.now();
+				else if (msg.type === "probe") b.probe = msg.probe;
 				else if (msg.type === "out") b.serial.push({
 					t: entry.t,
 					stream: msg.stream,
@@ -98041,6 +98080,7 @@ async function drive(o) {
 		entry.run.memory.f64[F.horizonMs] = Math.min(16, events[0]?.atMs ?? Infinity, o.forMs);
 		entry.run.start();
 	}
+	if (!live.length) addFindings(findingsOf(first.outcome));
 	/** Resolves when every live board waits or has ended; stops a board that never pauses. */
 	const settle = () => new Promise((resolve) => {
 		const check = () => {
@@ -98162,32 +98202,12 @@ async function drive(o) {
 var CHILD = "--circuitoon-run-child";
 /** Node 22.13 and newer: the permission model without the experimental flag. */
 var PERMISSION = process.allowedNodeEnvironmentFlags.has("--permission");
-var can = (f) => {
-	try {
-		f();
-		return true;
-	} catch {
-		return false;
-	}
-};
-function probeSandbox(paths) {
-	const p = process.permission;
-	return {
-		permission: !!p,
-		codeFromStrings: can(() => new Function("return 1")),
-		read: paths.map((path) => can(() => statSync(path).isDirectory() ? readdirSync(path) : readFileSync(path))),
-		write: p ? p.has("fs.write") : true,
-		childProcess: p ? p.has("child") : true,
-		addons: p ? p.has("addon") : true
-	};
-}
+/** A run's real-time cap whatever --for says, on top of the never-pauses limit: the child is killed past it. */
+var RUN_REAL_CAP_MS = 12e4;
 /** Why the child is not confined as it should be, or null. */
 function hole(p) {
-	if (p.codeFromStrings) return "it can build code from strings";
-	if (!PERMISSION) return null;
-	if (!p.permission) return "the permission model is off";
-	if (p.write || p.childProcess || p.addons) return "it can write files, start processes or load addons";
-	return null;
+	if (PERMISSION && !p.permission) return "the permission model is off";
+	return sandboxHole(p);
 }
 /** Runs `job` in the confined child; `readPaths` are the extra folders it may read (Pyodide's). */
 async function runIsolated(job, readPaths) {
@@ -98228,6 +98248,8 @@ async function runIsolated(job, readPaths) {
 			child.once("message", (m) => ok(m));
 			child.once("error", fail);
 			child.once("exit", (code) => fail(/* @__PURE__ */ new Error(`the run's process ended early (exit ${code})${err.trim() ? `: ${err.trim()}` : ""}`)));
+			const cap = RUN_REAL_CAP_MS + (job.realLimitMs ?? 5e3);
+			setTimeout(() => fail(/* @__PURE__ */ new Error(`the run took more than ${cap / 1e3} s of real time and was stopped`)), cap).unref();
 			child.send(job);
 		});
 		const why = hole(reply.probe);
@@ -98309,6 +98331,7 @@ async function runCommand(args, io, opts = {}) {
 		if (!p) throw new CliError(`run: --press ${spec}: write it as REF@TIME[:LENGTH], such as S1@1.5s:0.2s`, EXIT.input);
 		const part = byRef.get(p.ref);
 		if (!part) throw new CliError(`run: --press ${spec}: there is no ${p.ref} on the sheet`, EXIT.input);
+		if (p.atMs >= forMs) throw new CliError(`run: --press ${spec}: it is at or after the end of the run (${forMs / 1e3} s); make --for longer`, EXIT.input);
 		const groups = switchGroups(d.modules[part.module]);
 		if (!groups.some((g) => g.kind === "switch")) throw new CliError(`run: --press ${spec}: ${p.ref} is not a switch or button`, EXIT.input);
 		const button = groups.some((g) => g.momentary);

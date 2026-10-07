@@ -1,7 +1,7 @@
 // `circuitoon run <sheet> [--board U1|all] [--for 5s] [--input "line"]... [--press S1@1.5s[:0.2s]]...
 // [--json] [--py-dir <path>]` (firmware spec 7): runs the boards' code in Node workers on a virtual
 // clock with the live simulation (src/run/driver.ts), inside a confined child process
-// (src/run/node/runProcess.ts), then prints each board's Serial, the pin timeline (steady PWM as one
+// (src/run/node/runProcess.ts; it denies writes, processes and code generation), then prints each board's Serial, the pin timeline (steady PWM as one
 // line per duty change) and the findings seen. Deterministic and faster than real time. Exit 0 clean;
 // 1 a Python error, a blocking finding, lost power or code that never pauses; 2 usage; 3 a board that
 // could not start (no code, no sim data, no power) or no Python runtime.
@@ -51,6 +51,7 @@ export async function runCommand(args: Args, io: Io, opts: { fetch?: typeof fetc
     if (!p) throw new CliError(`run: --press ${spec}: write it as REF@TIME[:LENGTH], such as S1@1.5s:0.2s`, EXIT.input)
     const part = byRef.get(p.ref)
     if (!part) throw new CliError(`run: --press ${spec}: there is no ${p.ref} on the sheet`, EXIT.input)
+    if (p.atMs >= forMs) throw new CliError(`run: --press ${spec}: it is at or after the end of the run (${forMs / 1000} s); make --for longer`, EXIT.input)
     const groups = switchGroups(d.modules[part.module])
     if (!groups.some((g) => g.kind === 'switch')) throw new CliError(`run: --press ${spec}: ${p.ref} is not a switch or button`, EXIT.input)
     const button = groups.some((g) => g.momentary)

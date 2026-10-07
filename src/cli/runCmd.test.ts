@@ -44,6 +44,8 @@ describe('circuitoon run (spec 7)', () => {
     const doc = JSON.parse(j.out)
     expect(schemaErrors(loadSchema('run'), doc)).toEqual([])
     expect(doc).toMatchObject({ format: 'circuitoon-cli/run/1', ok: true, exit: 0, simulatedSeconds: 2, boards: [{ ref: 'U1', status: 'stopped' }] })
+    // GPIO17 is an output once the code runs: the saved-state solve before the code starts reports nothing.
+    expect(doc.findings.filter((f: { message: string }) => f.message.includes('GPIO17 is an input with nothing driving it'))).toEqual([])
   }, 120_000)
   it('presses a button and feeds input()', async () => {
     const pressed = await run(sheet(piButton("from gpiozero import Button\nfrom signal import pause\nb = Button(27)\nb.when_pressed = lambda: print('pressed')\npause()\n")), '--for', '3s', '--press', 'S1@1.5s')
@@ -63,10 +65,11 @@ describe('circuitoon run (spec 7)', () => {
     expect((await run(dir, '--press', 'S1@1s:1s', '--press', 'S1@1.5s')).code).toBe(2)
     expect((await run(dir, '--board', 'U9')).err).toContain('run: --board U9: no board U9 with code on the sheet')
   }, 120_000)
-  it('refuses a press on a part that is not there and a button press with no length (exit 2)', async () => {
+  it('refuses a press on a part that is not there, a button press with no length and a press after the end (exit 2)', async () => {
     const dir = sheet(piBlink())
     expect(await run(dir, '--press', 'S9@1s')).toMatchObject({ code: 2, err: expect.stringContaining('run: --press S9@1s: there is no S9 on the sheet') })
     expect(await run(dir, '--press', 'S1@1s:0s')).toMatchObject({ code: 2, err: expect.stringContaining('run: --press S1@1s:0s: a button press needs a length, such as S1@1s:0.2s') })
+    expect(await run(dir, '--for', '2s', '--press', 'S1@2s')).toMatchObject({ code: 2, err: expect.stringContaining('run: --press S1@2s: it is at or after the end of the run (2 s); make --for longer') })
   })
   it('says the Python runtime is no longer published when Pages has no copy (exit 3)', async () => {
     const dir = sheet(piBlink())
@@ -78,13 +81,21 @@ describe('circuitoon run (spec 7)', () => {
 `), e.code))
     expect([code, err]).toEqual([3, `${NO_LONGER_PUBLISHED}\n`])
   }, 60_000)
-  it('runs the code in a child process that cannot read outside its folders, write, spawn or build code from strings', async () => {
+  // Node's permission model confines reads on the child's main thread only, not in worker threads:
+  // the code threads deny writes, processes, addons, WASI and code generation, and their reads rely on
+  // the in-worker sandbox, so a code thread's home-folder read is recorded here, never asserted.
+  it('runs the code in a child process that denies writes, processes, addons, WASI and code from strings, in the code thread too', async () => {
     const outside = join(tempDir(), 'secret.txt')
     writeFileSync(outside, 'not for the sheet')
     const d = piBlink()
     const modules = Object.fromEntries(Object.keys(d.modules).flatMap((id) => (libraryLookup(id) ? [[id, libraryLookup(id)!]] : [])))
     const r = await runIsolated({ diagram: d, boards: ['u1'], forMs: 1500, inputs: [], presses: [], py: nodePy(), modules, files: PY_FILES, probe: [outside, homedir(), join(PY, 'pyodide.mjs')] }, [PY])
-    expect(r.probe).toEqual({ permission: true, codeFromStrings: false, read: [false, false, true], write: false, childProcess: false, addons: false })
+    // The child's main thread: reads confined to its folders.
+    expect(r.probe).toEqual({ permission: true, codeFromStrings: false, read: [false, false, true], write: false, childProcess: false, addons: false, wasi: false })
+    // The code thread, probed after Pyodide loads and before the script.
+    const worker = r.result.boards[0].probe!
+    expect({ ...worker, read: undefined }).toEqual({ permission: true, codeFromStrings: false, read: undefined, write: false, childProcess: false, addons: false, wasi: false })
+    expect(typeof worker.read[0]).toBe("boolean")
     expect(r.result.boards[0].status).toBe('stopped')
     expect(r.result.timeline.filter((e) => e.pin === 'GPIO17').map((e) => e.state)).toEqual(['high', 'low'])
   }, 120_000)

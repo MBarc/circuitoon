@@ -21,7 +21,7 @@ import { BoardRun, type CodeWorkerLike } from './host.ts'
 import { F, H, INPUT, grant, writeLine } from './memory.ts'
 import { spawnNodeCodeWorker } from './node/codeWorker.ts'
 import { LOST_POWER, NO_POWER, boardPower, underVoltage, underVoltageNote } from './power.ts'
-import type { RunStatus } from './protocol.ts'
+import type { RunStatus, SandboxProbe } from './protocol.ts'
 
 export interface Press { uid: string; atMs: number; forMs: number }
 export interface DriveOptions {
@@ -40,7 +40,7 @@ export interface DriveOptions {
   files: Record<string, string>
 }
 export interface SerialEntry { t: number; stream: 'out' | 'err' | 'note'; text: string }
-export interface DriveBoard { uid: string; ref: string; status: RunStatus | 'not-started'; serial: SerialEntry[] }
+export interface DriveBoard { uid: string; ref: string; status: RunStatus | 'not-started'; serial: SerialEntry[]; probe?: SandboxProbe }
 export interface DriveResult {
   boards: DriveBoard[]
   timeline: { t: number; uid: string; pin: string; state: string }[]
@@ -100,17 +100,20 @@ export async function drive(o: DriveOptions): Promise<DriveResult> {
   let pins: RunPins = {}
   let seq: Record<string, number> = {}
   let moving: string[] = []
-  const solveAt = async (t: number) => {
+  const findingsOf = (x: SimOutcome) => (x.status === 'ok' ? x.result.findings : x.status === 'failed' ? [x.finding, ...x.findings] : x.findings)
+  const solveAt = async (t: number, keep = true) => {
     last = await solve(sheet, o.engine, ++revision, { library, held, runPins: pins, moving, runSeq: seq })
     res.solves.push({ t, outcome: last.outcome })
-    addFindings(last.outcome.status === 'ok' ? last.outcome.result.findings : last.outcome.status === 'failed' ? [last.outcome.finding, ...last.outcome.findings] : last.outcome.findings)
+    if (keep) addFindings(findingsOf(last.outcome))
     return last
   }
 
   // A message from a board re-runs the settle check (set while settling).
   let notify = () => {}
   // Which boards can start (spec 7 exit 3): code, a language they run, sim data, and power.
-  const first = await solveAt(0)
+  // In the saved state, before the code sets its pins: its findings count only if no board starts
+  // (a started board's first solve, due at once, reports what persists).
+  const first = await solveAt(0, false)
   const live: Live[] = []
   const core = new RunCore()
   for (const uid of o.boards) {
@@ -136,6 +139,7 @@ export async function drive(o: DriveOptions): Promise<DriveResult> {
       on: (msg) => {
         if (msg.type === 'block') (entry.blocked = { nowMs: msg.nowMs, untilMs: msg.untilMs }), (entry.t = msg.nowMs), (entry.heard = performance.now())
         else if (msg.type === 'ready') entry.heard = performance.now()
+        else if (msg.type === 'probe') b.probe = msg.probe
         else if (msg.type === 'out') b.serial.push({ t: entry.t, stream: msg.stream, text: msg.text })
         else if (msg.type === 'exit' || msg.type === 'fatal') {
           if (msg.type === 'fatal') b.serial.push({ t: entry.t, stream: 'err', text: `${msg.error}\n` })
@@ -150,6 +154,7 @@ export async function drive(o: DriveOptions): Promise<DriveResult> {
     entry.run.memory.f64[F.horizonMs] = Math.min(16, events[0]?.atMs ?? Infinity, o.forMs)
     entry.run.start()
   }
+  if (!live.length) addFindings(findingsOf(first.outcome))
 
   /** Resolves when every live board waits or has ended; stops a board that never pauses. */
   const settle = () => new Promise<void>((resolve) => {
