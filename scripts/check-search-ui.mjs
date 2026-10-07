@@ -58,7 +58,7 @@ for (const [width, height] of [[1440, 900], [390, 844]]) {
     check(names.length === 5 && names.slice(0, 3).every((n) => n.startsWith('Raspberry Pi Touch Display')), `${tag}: "${QUERIES.described}" lists the three Pi touch displays first under Closest matches (${names.join(' | ')})`)
     check((await lib.locator('.hint', { hasText: 'No exact matches' }).count()) === 1, `${tag}: with no exact result the panel says No exact matches`)
     const tip = await closest.locator('.lib-item').first().getAttribute('title')
-    check(!!tip && /Raspberry Pi touch screen/.test(tip), `${tag}: a part's description is its tooltip (${tip})`)
+    check(!!tip && /Raspberry Pi Touch Display 2/.test(tip), `${tag}: a part's description is its tooltip (${tip})`)
 
     await search.fill(QUERIES.typo)
     check((await closestIds()).some((n) => /Display/.test(n)), `${tag}: a typo still finds displays`)

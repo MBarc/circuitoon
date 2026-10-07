@@ -19,6 +19,10 @@ describe('partText.json', () => {
     expect(entries.map(([id]) => id).filter((id) => !builtin.has(id))).toEqual([])
   })
 
+  it('has an entry for every built-in part', () => {
+    expect(modules.map((m) => m.id).filter((id) => !Object.hasOwn(text, id))).toEqual([])
+  })
+
   it('gives each part one plain sentence and one to eight short uses', () => {
     const bad: string[] = []
     for (const [id, t] of entries) {

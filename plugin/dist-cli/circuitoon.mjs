@@ -68036,49 +68036,1579 @@ var xiao_esp32s3_default = {
 		"note": "Each header is its own socket strip: place them at the board's real row spacing."
 	}
 };
-//#endregion
-//#region src/format/partText.json
 var partText_default = {
-	"ip5306-usbc-module": {
-		"description": "A small power bank board that charges one 18650 lithium cell from USB-C and boosts it to a 5 V output.",
+	"adapter-barrel-au": {
+		"description": "Wall power adapter with a DC barrel jack output and a AS/NZS 3112 plug for Australia and New Zealand, taking mains input and giving low-voltage DC to a board.",
 		"uses": [
-			"portable 5 V power from an 18650",
-			"battery backup for a microcontroller",
-			"USB-C charging",
-			"DIY power bank"
+			"powering Arduino boards",
+			"wall wart",
+			"LED strips",
+			"small electronics",
+			"mains to DC"
+		]
+	},
+	"adapter-barrel-eu": {
+		"description": "Wall power adapter with a DC barrel jack output and a Europlug plug for Europe, taking mains input and giving low-voltage DC to a board.",
+		"uses": [
+			"powering Arduino boards",
+			"wall wart",
+			"LED strips",
+			"small electronics",
+			"mains to DC"
+		]
+	},
+	"adapter-barrel-uk": {
+		"description": "Wall power adapter with a DC barrel jack output and a BS 1363 plug for the UK, taking mains input and giving low-voltage DC to a board.",
+		"uses": [
+			"powering Arduino boards",
+			"wall wart",
+			"LED strips",
+			"small electronics",
+			"mains to DC"
+		]
+	},
+	"adapter-barrel-us": {
+		"description": "Wall power adapter with a DC barrel jack output and a NEMA 1-15P plug for the US and Japan, taking mains input and giving low-voltage DC to a board.",
+		"uses": [
+			"powering Arduino boards",
+			"wall wart",
+			"LED strips",
+			"small electronics",
+			"mains to DC"
+		]
+	},
+	"ams1117-33-module": {
+		"description": "AMS1117 3.3 V linear voltage regulator module with three pins (VIN, GND, OUT), steps a higher supply down to 3.3 V.",
+		"uses": [
+			"3.3 V supply",
+			"powering ESP boards",
+			"voltage step down",
+			"sensor power"
+		]
+	},
+	"arduino-due": {
+		"description": "Arduino Due microcontroller board with many analog and digital pins, two DAC outputs and CAN, running at 3.3 V logic.",
+		"uses": [
+			"fast Arduino projects",
+			"DAC audio output",
+			"CAN bus nodes",
+			"many I/O builds"
+		]
+	},
+	"arduino-leonardo": {
+		"description": "Arduino Leonardo microcontroller board with built-in USB so it can act as a keyboard or mouse, Uno-style header.",
+		"uses": [
+			"USB keyboard emulation",
+			"custom game controllers",
+			"macro pads",
+			"general Arduino projects"
+		]
+	},
+	"arduino-mega-2560": {
+		"description": "Arduino Mega 2560 Rev3 microcontroller board with a large number of digital and analog pins for big projects.",
+		"uses": [
+			"3D printer controllers",
+			"many sensors and motors",
+			"large LED displays",
+			"robot controllers"
+		]
+	},
+	"arduino-micro": {
+		"description": "Arduino Micro compact breadboard-friendly microcontroller board with built-in USB for keyboard and mouse emulation.",
+		"uses": [
+			"USB keyboard emulation",
+			"wearables",
+			"compact projects",
+			"macro pads"
+		]
+	},
+	"arduino-nano": {
+		"description": "Arduino Nano (ATmega328P): small breadboard-friendly 5 V microcontroller board with mini USB, 8 analog inputs and a VIN pin.",
+		"uses": [
+			"small Arduino projects",
+			"breadboard builds",
+			"sensor nodes",
+			"robots"
+		]
+	},
+	"arduino-nano-33-ble": {
+		"description": "Arduino Nano 33 BLE / BLE Sense: Bluetooth low energy board in the small Nano size, 3.3 V logic.",
+		"uses": [
+			"Bluetooth LE projects",
+			"wearables",
+			"motion sensing",
+			"tiny machine learning"
+		]
+	},
+	"arduino-nano-33-iot": {
+		"description": "Arduino Nano 33 IoT: WiFi and Bluetooth board in the small Nano size, 3.3 V logic.",
+		"uses": [
+			"WiFi connected sensors",
+			"IoT projects",
+			"cloud dashboards",
+			"home automation"
+		]
+	},
+	"arduino-nano-esp32": {
+		"description": "Arduino Nano ESP32: ESP32 based board with WiFi and Bluetooth in the small Nano size, 3.3 V logic.",
+		"uses": [
+			"WiFi connected projects",
+			"IoT sensors",
+			"home automation",
+			"MicroPython builds"
+		]
+	},
+	"arduino-nano-every": {
+		"description": "Arduino Nano Every: low cost microcontroller board in the small Nano size.",
+		"uses": [
+			"small Arduino projects",
+			"breadboard builds",
+			"sensor nodes",
+			"wearables"
+		]
+	},
+	"arduino-nano-rp2040-connect": {
+		"description": "Arduino Nano RP2040 Connect: RP2040 based board with WiFi and Bluetooth in the small Nano size.",
+		"uses": [
+			"WiFi connected projects",
+			"MicroPython builds",
+			"IoT sensors",
+			"motion sensing"
+		]
+	},
+	"arduino-pro-mini-3v3": {
+		"description": "Arduino Pro Mini 3.3 V, 8 MHz minimal microcontroller board with no USB port, programmed through a serial adapter.",
+		"uses": [
+			"battery powered projects",
+			"low power sensors",
+			"tiny embedded builds",
+			"wearables"
+		]
+	},
+	"arduino-pro-mini-5v": {
+		"description": "Arduino Pro Mini 5 V, 16 MHz minimal microcontroller board with no USB port, programmed through a serial adapter.",
+		"uses": [
+			"compact projects",
+			"permanent installs",
+			"sensor nodes",
+			"tiny embedded builds"
+		]
+	},
+	"arduino-uno-r3": {
+		"description": "Arduino Uno R3 classic microcontroller board with USB, 5 V and 3.3 V pins and the standard shield header.",
+		"uses": [
+			"learning electronics",
+			"Arduino shields",
+			"beginner projects",
+			"prototyping"
+		]
+	},
+	"arduino-uno-r4-minima": {
+		"description": "Arduino Uno R4 Minima microcontroller board with USB, the updated Uno with the standard shield header.",
+		"uses": [
+			"learning electronics",
+			"Arduino shields",
+			"beginner projects",
+			"prototyping"
+		]
+	},
+	"arduino-uno-r4-wifi": {
+		"description": "Arduino Uno R4 WiFi microcontroller board with built-in WiFi and USB, in the standard Uno shield layout.",
+		"uses": [
+			"WiFi connected projects",
+			"IoT sensors",
+			"home automation",
+			"Arduino shields"
+		]
+	},
+	"arduino-zero": {
+		"description": "Arduino Zero microcontroller board with USB ports, a 3.3 V logic level and the Uno-style header.",
+		"uses": [
+			"audio projects",
+			"fast Arduino builds",
+			"on-board EDBG debugging",
+			"prototyping"
+		]
+	},
+	"battery-18650-cell": {
+		"description": "18650 rechargeable lithium-ion cell, a common battery for power banks and portable projects.",
+		"uses": [
+			"portable power",
+			"power banks",
+			"flashlights",
+			"battery packs"
+		]
+	},
+	"battery-18650-holder": {
+		"description": "Single cell holder for one 18650 lithium-ion battery with plus and minus leads.",
+		"uses": [
+			"portable projects",
+			"battery powered boards",
+			"flashlights",
+			"power banks"
+		]
+	},
+	"battery-18650-holder-2s": {
+		"description": "Holder for two 18650 cells wired in series, giving a higher battery voltage.",
+		"uses": [
+			"higher voltage packs",
+			"portable electronics",
+			"robots",
+			"battery powered builds"
+		]
+	},
+	"battery-9v": {
+		"description": "9 V battery with snap connector, a common power source for small electronics.",
+		"uses": [
+			"guitar pedals",
+			"Arduino power",
+			"smoke detectors",
+			"portable gadgets"
+		]
+	},
+	"battery-aa": {
+		"description": "AA battery, a common 1.5 V alkaline cell for remotes, toys and portable electronics.",
+		"uses": [
+			"remote controls",
+			"toys",
+			"battery boxes",
+			"portable projects"
+		]
+	},
+	"battery-aaa": {
+		"description": "AAA battery, a small 1.5 V alkaline cell for remotes and slim portable electronics.",
+		"uses": [
+			"remote controls",
+			"small gadgets",
+			"battery boxes",
+			"portable projects"
+		]
+	},
+	"battery-cr1220": {
+		"description": "CR1220 coin cell, a small 3 V lithium button battery for clock and memory backup.",
+		"uses": [
+			"real time clocks",
+			"memory backup",
+			"small gadgets",
+			"keyfobs"
+		]
+	},
+	"battery-cr2016": {
+		"description": "CR2016 coin cell, a thin 3 V lithium button battery for watches and small gadgets.",
+		"uses": [
+			"watches",
+			"small gadgets",
+			"memory backup",
+			"LED throwies"
+		]
+	},
+	"battery-cr2025": {
+		"description": "CR2025 coin cell, a 3 V lithium button battery for key fobs, clocks and small gadgets.",
+		"uses": [
+			"real time clocks",
+			"key fobs",
+			"small gadgets",
+			"memory backup"
+		]
+	},
+	"battery-cr2032": {
+		"description": "CR2032 coin cell, the common 3 V lithium button battery for clocks, fobs and small gadgets.",
+		"uses": [
+			"real time clocks",
+			"memory backup",
+			"LED throwies",
+			"small gadgets"
+		]
+	},
+	"battery-holder-2xaa": {
+		"description": "Battery holder for two AA cells in series with plus and minus leads.",
+		"uses": [
+			"small robots",
+			"battery powered boards",
+			"toys",
+			"portable projects"
+		]
+	},
+	"battery-holder-3xaaa": {
+		"description": "Battery holder for three AAA cells in series with plus and minus leads.",
+		"uses": [
+			"small gadgets",
+			"battery powered boards",
+			"LED projects",
+			"portable projects"
+		]
+	},
+	"battery-holder-4xaa": {
+		"description": "Battery holder for four AA cells in series with plus and minus leads.",
+		"uses": [
+			"robots",
+			"motor projects",
+			"Arduino power",
+			"portable projects"
+		]
+	},
+	"battery-holder-cr2032": {
+		"description": "Holder for one CR2032 coin cell with plus and minus leads, giving 3 V to a circuit.",
+		"uses": [
+			"real time clock backup",
+			"small gadgets",
+			"LED projects",
+			"memory backup"
+		]
+	},
+	"battery-lr44": {
+		"description": "LR44 button cell, a small alkaline 1.5 V battery for calculators, toys and laser pointers.",
+		"uses": [
+			"calculators",
+			"small gadgets",
+			"laser pointers",
+			"toys"
+		]
+	},
+	"bme280-module-4pin": {
+		"description": "BME280 sensor module with four pins (VIN, GND, SCL, SDA) using I2C, measures temperature, humidity and air pressure.",
+		"uses": [
+			"weather stations",
+			"temperature readout",
+			"altitude estimates",
+			"home monitoring"
+		]
+	},
+	"bme280-module-6pin": {
+		"description": "GY-BME280 sensor module with six pins (VCC, GND, SCL, SDA, CSB, SDO), 3.3 V, measures temperature, humidity and air pressure over I2C or SPI.",
+		"uses": [
+			"weather stations",
+			"temperature readout",
+			"altitude estimates",
+			"home monitoring"
+		]
+	},
+	"breadboard-full": {
+		"description": "Full-size solderless breadboard with 830 tie points with power rails for building and testing big circuits without soldering.",
+		"uses": [
+			"solderless prototyping",
+			"big circuits",
+			"testing circuits",
+			"learning electronics"
+		]
+	},
+	"breadboard-half": {
+		"description": "Half-size solderless breadboard with 400 tie points with power rails for building and testing medium circuits without soldering.",
+		"uses": [
+			"solderless prototyping",
+			"medium circuits",
+			"testing circuits",
+			"learning electronics"
+		]
+	},
+	"breadboard-mini": {
+		"description": "Mini solderless breadboard with 170 tie points for building and testing small circuits without soldering.",
+		"uses": [
+			"solderless prototyping",
+			"small circuits",
+			"testing circuits",
+			"learning electronics"
+		]
+	},
+	"breadboard-tiny": {
+		"description": "Tiny solderless breadboard with 25 tie points for building and testing tiny circuits without soldering.",
+		"uses": [
+			"solderless prototyping",
+			"tiny circuits",
+			"testing circuits",
+			"learning electronics"
+		]
+	},
+	"buzzer-12mm-passive": {
+		"description": "Passive buzzer 12 mm with plus and minus pins, needs a driven signal to make tones.",
+		"uses": [
+			"alarm sounds",
+			"beeps and melodies",
+			"button feedback",
+			"timers"
+		]
+	},
+	"capacitor-ceramic": {
+		"description": "Ceramic capacitor with two non-polarized leads, defaulting to 100 nF, used for decoupling and filtering.",
+		"uses": [
+			"decoupling",
+			"noise filtering",
+			"timing circuits",
+			"power rail bypass"
+		]
+	},
+	"capacitor-electrolytic": {
+		"description": "Electrolytic capacitor with polarity marked plus and minus, for bulk storage and smoothing.",
+		"uses": [
+			"power smoothing",
+			"audio coupling",
+			"bulk filtering",
+			"power supply ripple"
+		]
+	},
+	"capacitor-film": {
+		"description": "Film capacitor with two non-polarized leads, stable and used for filtering and audio.",
+		"uses": [
+			"audio circuits",
+			"filtering",
+			"timing circuits",
+			"snubbers"
+		]
+	},
+	"capacitor-tantalum": {
+		"description": "Tantalum capacitor with polarity marked plus and minus, compact for bulk filtering.",
+		"uses": [
+			"compact power filtering",
+			"decoupling",
+			"regulator output",
+			"audio coupling"
+		]
+	},
+	"charger-usb-5v-au": {
+		"description": "USB wall charger with a AS/NZS 3112 plug for Australia and New Zealand, converting mains to 5 V DC for phones, boards and small projects.",
+		"uses": [
+			"powering Raspberry Pi",
+			"phone charging",
+			"5 V supply",
+			"microcontroller power",
+			"USB powered builds"
+		]
+	},
+	"charger-usb-5v-eu": {
+		"description": "USB wall charger with a Europlug plug for Europe, converting mains to 5 V DC for phones, boards and small projects.",
+		"uses": [
+			"powering Raspberry Pi",
+			"phone charging",
+			"5 V supply",
+			"microcontroller power",
+			"USB powered builds"
+		]
+	},
+	"charger-usb-5v-uk": {
+		"description": "USB wall charger with a BS 1363 plug for the UK, converting mains to 5 V DC for phones, boards and small projects.",
+		"uses": [
+			"powering Raspberry Pi",
+			"phone charging",
+			"5 V supply",
+			"microcontroller power",
+			"USB powered builds"
+		]
+	},
+	"charger-usb-5v-us": {
+		"description": "USB wall charger with a NEMA 1-15P plug for the US and Japan, converting mains to 5 V DC for phones, boards and small projects.",
+		"uses": [
+			"powering Raspberry Pi",
+			"phone charging",
+			"5 V supply",
+			"microcontroller power",
+			"USB powered builds"
+		]
+	},
+	"computer-usb-port": {
+		"description": "Computer USB 2.0 type A port, a 5 V power and data source for boards.",
+		"uses": [
+			"powering boards",
+			"programming Arduino",
+			"serial connection",
+			"USB power"
+		]
+	},
+	"dht22-bare": {
+		"description": "DHT22 / AM2302 temperature and humidity sensor, bare four pin part (VCC, DATA, NC, GND).",
+		"uses": [
+			"weather stations",
+			"humidity readout",
+			"greenhouse monitoring",
+			"home monitoring"
+		]
+	},
+	"dht22-module": {
+		"description": "DHT22 temperature and humidity sensor module with three pins (plus, out, minus) on a small breakout board.",
+		"uses": [
+			"weather stations",
+			"humidity readout",
+			"greenhouse monitoring",
+			"home monitoring"
+		]
+	},
+	"dupont-1x2": {
+		"description": "Dupont connector housing with 2 positions at 0.1 inch pitch, for jumper wires and header pins.",
+		"uses": [
+			"jumper wire connections",
+			"sensor cables",
+			"custom cables",
+			"header connections"
+		]
+	},
+	"dupont-1x3": {
+		"description": "Dupont connector housing with 3 positions at 0.1 inch pitch, for jumper wires and header pins.",
+		"uses": [
+			"jumper wire connections",
+			"sensor cables",
+			"custom cables",
+			"header connections"
+		]
+	},
+	"dupont-1x4": {
+		"description": "Dupont connector housing with 4 positions at 0.1 inch pitch, for jumper wires and header pins.",
+		"uses": [
+			"jumper wire connections",
+			"sensor cables",
+			"custom cables",
+			"header connections"
+		]
+	},
+	"esp32-c3-supermini": {
+		"description": "ESP32-C3 SuperMini tiny microcontroller board with WiFi, Bluetooth and USB, 3.3 V logic.",
+		"uses": [
+			"tiny WiFi projects",
+			"IoT sensors",
+			"wearables",
+			"home automation"
+		]
+	},
+	"esp32-cam": {
+		"description": "ESP32-CAM (AI Thinker) microcontroller board with a camera and WiFi, needs a serial adapter to program.",
+		"uses": [
+			"security cameras",
+			"video streaming",
+			"photo capture",
+			"smart doorbells"
+		]
+	},
+	"esp32-devkit-v1-30": {
+		"description": "ESP32 DevKit V1 (DOIT) 30 pin development board with WiFi, Bluetooth and USB, 3.3 V logic.",
+		"uses": [
+			"WiFi projects",
+			"IoT sensors",
+			"home automation",
+			"Bluetooth builds"
+		]
+	},
+	"esp32-devkitc-v4": {
+		"description": "ESP32 DevKitC V4 38 pin development board with WiFi, Bluetooth and USB, 3.3 V logic.",
+		"uses": [
+			"WiFi projects",
+			"IoT sensors",
+			"home automation",
+			"prototyping"
+		]
+	},
+	"esp32-s3-devkitc-1": {
+		"description": "Espressif ESP32-S3-DevKitC-1 development board with WiFi, Bluetooth LE, two USB ports and many GPIO pins, 3.3 V logic.",
+		"uses": [
+			"WiFi projects",
+			"IoT sensors",
+			"Bluetooth builds",
+			"home automation",
+			"prototyping"
+		]
+	},
+	"esp32-terminal-board-38": {
+		"description": "ESP32 DevKitC V4 microcontroller board mounted on a 38-pin screw terminal breakout board, powered by 5 V from the DevKit USB port or the 5V terminal.",
+		"uses": [
+			"solderless prototyping",
+			"wifi controllers",
+			"sensor wiring",
+			"IoT projects"
+		]
+	},
+	"fuse-holder-5x20-inline": {
+		"description": "Littelfuse 150274 in-line fuse holder for 5 x 20 mm glass fuses, rated 350 V and 10 A, for AC or DC wiring.",
+		"uses": [
+			"mains fuse protection",
+			"power supply safety",
+			"appliance wiring",
+			"DIY power boxes"
+		]
+	},
+	"gps-neo-m8n-gy-gpsv3": {
+		"description": "GY-GPSV3 GPS receiver module with a u-blox NEO-M8N chip, serial TX and RX pins, VCC and GND, and a u.FL antenna connector.",
+		"uses": [
+			"location tracking",
+			"drones",
+			"vehicle trackers",
+			"time sync",
+			"navigation projects"
+		]
+	},
+	"hlk-pm01": {
+		"description": "Hi-Link HLK-PM01 AC-DC power module that turns mains input from 85 to 264 V AC into 5 V DC at 3 W.",
+		"uses": [
+			"powering microcontrollers",
+			"smart plugs",
+			"mains to 5V supply",
+			"home automation"
+		]
+	},
+	"hlk-pm03": {
+		"description": "Hi-Link HLK-PM03 AC-DC power module that turns mains input from 85 to 264 V AC into 3.3 V DC at 3 W.",
+		"uses": [
+			"powering ESP boards",
+			"mains to 3.3V supply",
+			"smart switches",
+			"home automation"
+		]
+	},
+	"ip5306-usbc-module": {
+		"description": "IP5306 USB-C charger and boost module for a single 18650 lithium battery, giving a 5 V output, with a button pin.",
+		"uses": [
+			"power banks",
+			"portable projects",
+			"battery powered boards",
+			"18650 charging"
+		]
+	},
+	"irm-03-3v3": {
+		"description": "Mean Well IRM-03-3.3 enclosed AC-DC power supply module, 3.3 V output, 85 to 305 V AC input, double insulated Class II.",
+		"uses": [
+			"mains to 3.3V supply",
+			"IoT devices",
+			"smart switches",
+			"built-in power supply"
+		]
+	},
+	"irm-03-5": {
+		"description": "Mean Well IRM-03-5 enclosed AC-DC power supply module, 5 V output, 85 to 305 V AC input, double insulated Class II.",
+		"uses": [
+			"mains to 5V supply",
+			"IoT devices",
+			"smart switches",
+			"built-in power supply"
+		]
+	},
+	"irm-05-5": {
+		"description": "Mean Well IRM-05-5 enclosed AC-DC power supply module, 5 V output, 85 to 305 V AC input, double insulated Class II.",
+		"uses": [
+			"mains to 5V supply",
+			"IoT devices",
+			"control panels",
+			"built-in power supply"
+		]
+	},
+	"jst-xh-2": {
+		"description": "JST-XH connector with two pins at 2.5 mm pitch, a common wire-to-board plug and header for small batteries, sensors and boards.",
+		"uses": [
+			"battery connectors",
+			"sensor cables",
+			"wire to board links",
+			"balance leads"
+		]
+	},
+	"jst-xh-3": {
+		"description": "JST-XH connector with three pins at 2.5 mm pitch, a common wire-to-board plug and header for small batteries, sensors and boards.",
+		"uses": [
+			"battery connectors",
+			"sensor cables",
+			"wire to board links",
+			"balance leads"
+		]
+	},
+	"jst-xh-4": {
+		"description": "JST-XH connector with four pins at 2.5 mm pitch, a common wire-to-board plug and header for small batteries, sensors and boards.",
+		"uses": [
+			"battery connectors",
+			"sensor cables",
+			"wire to board links",
+			"balance leads"
+		]
+	},
+	"l298n-module": {
+		"description": "L298N dual H-bridge motor driver module with two motor outputs and a 12 V supply input, with the 5 V jumper fitted.",
+		"uses": [
+			"DC motors",
+			"robot cars",
+			"stepper motors",
+			"Arduino robots"
+		]
+	},
+	"lamp-holder-e26": {
+		"description": "E26 screw-base lamp holder with live and neutral terminals for a 120 V light bulb.",
+		"uses": [
+			"mains lighting",
+			"lamp wiring",
+			"bulb sockets",
+			"switch demos"
+		]
+	},
+	"lamp-holder-e27": {
+		"description": "E27 screw-base lamp holder with live, neutral and earth terminals for a 230 V light bulb.",
+		"uses": [
+			"mains lighting",
+			"lamp wiring",
+			"bulb sockets",
+			"switch demos"
 		]
 	},
 	"lcd-rpi-touch-display-2-5": {
-		"description": "The official 5 inch Raspberry Pi touch screen that connects over the DSI ribbon and takes 5 V on its power header.",
+		"description": "Raspberry Pi Touch Display 2, 5 inch touchscreen with DSI ribbon connection and 5 V power input.",
 		"uses": [
-			"Raspberry Pi touch screen",
-			"kiosk or control panel",
-			"handheld Pi project"
+			"Raspberry Pi screen",
+			"touch interfaces",
+			"kiosks",
+			"small dashboards"
 		]
 	},
 	"lcd-rpi-touch-display-2-7": {
-		"description": "The official 7 inch Raspberry Pi touch screen that connects over the DSI ribbon and takes 5 V on its power header.",
+		"description": "Raspberry Pi Touch Display 2, 7 inch touchscreen with DSI ribbon connection and 5 V power input.",
 		"uses": [
-			"Raspberry Pi touch screen",
-			"kiosk or control panel",
-			"home dashboard"
+			"Raspberry Pi screen",
+			"touch interfaces",
+			"kiosks",
+			"home dashboards"
 		]
 	},
 	"lcd-rpi-touch-display-7": {
-		"description": "The original 2015 7 inch Raspberry Pi touch screen, driven over DSI with touch on I2C.",
+		"description": "Original 2015 Raspberry Pi 7 inch touchscreen display with DSI connection, 5 V power, and I2C SDA SCL and interrupt pins.",
 		"uses": [
-			"Raspberry Pi touch screen",
-			"kiosk or control panel",
-			"home dashboard"
+			"Raspberry Pi screen",
+			"touch interfaces",
+			"kiosks",
+			"media players"
+		]
+	},
+	"lcd-st7796s-4in-spi-touch": {
+		"description": "4.0 inch SPI TFT touchscreen display, 480x320, ST7796S controller, 3.3 V or 5 V supply, with touch controller and SD card pins.",
+		"uses": [
+			"color display",
+			"touch interfaces",
+			"ESP32 screens",
+			"Arduino displays"
+		]
+	},
+	led: {
+		"description": "Basic light emitting diode with anode and cathode, default red with 2.0 V forward voltage and 20 mA maximum current.",
+		"uses": [
+			"status indicators",
+			"power lights",
+			"blinking projects",
+			"signal lamps"
+		]
+	},
+	"level-shifter-bss138-4ch": {
+		"description": "Four channel bidirectional logic level shifter using BSS138 MOSFETs, SparkFun layout, with separate high and low voltage sides.",
+		"uses": [
+			"3.3V to 5V signals",
+			"I2C level shifting",
+			"sensor interfacing",
+			"mixed voltage boards"
+		]
+	},
+	"lm2596-buck-module": {
+		"description": "LM2596 adjustable buck converter module that steps a higher DC input voltage down to a lower output voltage.",
+		"uses": [
+			"voltage step down",
+			"power supply for boards",
+			"battery to 5V",
+			"adjustable power supply"
+		]
+	},
+	"mcp23017-cjmcu-2317": {
+		"description": "CJMCU-2317 breakout board for the MCP23017 I2C I/O expander, with address pins A0 to A2 and base address 0x20.",
+		"uses": [
+			"more GPIO pins",
+			"I2C expansion",
+			"button matrices",
+			"LED banks"
+		]
+	},
+	"mcp23017-dip28": {
+		"description": "Microchip MCP23017 16-bit I2C I/O expander chip in a DIP-28 package, with address pins A0 to A2 and base address 0x20.",
+		"uses": [
+			"more GPIO pins",
+			"I2C expansion",
+			"button inputs",
+			"LED outputs"
+		]
+	},
+	"mcp23018-dip28": {
+		"description": "Microchip MCP23018 16-bit I2C I/O expander chip in a DIP-28 package, with one ADDR pin and two interrupt outputs.",
+		"uses": [
+			"more GPIO pins",
+			"I2C expansion",
+			"keyboard matrices",
+			"LED outputs"
+		]
+	},
+	"mic-ics-40300": {
+		"description": "TDK ICS-40300 analog MEMS microphone in a bare surface-mount package with a single analog output.",
+		"uses": [
+			"sound sensing",
+			"audio capture",
+			"voice projects",
+			"noise level"
+		]
+	},
+	"mic-ics-43434": {
+		"description": "TDK ICS-43434 I2S digital MEMS microphone in a bare surface-mount package with clock, word select and data pins.",
+		"uses": [
+			"voice recording",
+			"I2S audio",
+			"sound level",
+			"speech projects"
+		]
+	},
+	"mic-ics-43434-adafruit-6049": {
+		"description": "Adafruit 6049 breakout for the TDK ICS-43434 I2S MEMS microphone, with 3 V power, clock, word select and data pins.",
+		"uses": [
+			"voice recording",
+			"ESP32 audio",
+			"sound level",
+			"speech projects"
+		]
+	},
+	"mic-spu0410lr5h-qb": {
+		"description": "Knowles SPU0410LR5H-QB analog MEMS microphone in a bare surface-mount package with a single analog output.",
+		"uses": [
+			"sound sensing",
+			"audio capture",
+			"voice projects",
+			"noise level"
+		]
+	},
+	"microsd-spi-3v3": {
+		"description": "microSD card module with SPI interface for 3.3 V only, with CS, MOSI, CLK and MISO pins.",
+		"uses": [
+			"data logging",
+			"ESP32 storage",
+			"audio files",
+			"image storage"
+		]
+	},
+	"microsd-spi-5v": {
+		"description": "microSD card module with SPI interface, 5 V supply and onboard level shifter, with MISO, MOSI, SCK and CS pins.",
+		"uses": [
+			"data logging",
+			"Arduino storage",
+			"audio files",
+			"sensor logs"
+		]
+	},
+	"net-label": {
+		"description": "Net label that names a wire so separate parts of a wiring diagram connect without drawing a long line.",
+		"uses": [
+			"tidy wiring diagrams",
+			"power rails",
+			"shared signals",
+			"long connections"
+		]
+	},
+	"oled-sh1106-13-i2c": {
+		"description": "1.3 inch OLED display, 128x64 pixels, SH1106 controller, I2C interface with address 0x3C or 0x3D, pin order GND, VCC, SCL, SDA.",
+		"uses": [
+			"small display",
+			"status screens",
+			"sensor readout",
+			"Arduino display"
+		]
+	},
+	"oled-sh1106-13-i2c-vcc-gnd": {
+		"description": "1.3 inch OLED display, 128x64 pixels, SH1106 controller, I2C interface with address 0x3C or 0x3D, pin order VCC, GND, SCL, SDA.",
+		"uses": [
+			"small display",
+			"status screens",
+			"sensor readout",
+			"Arduino display"
+		]
+	},
+	"oled-ssd1306-091-i2c": {
+		"description": "0.91 inch OLED display, 128x32 pixels, SSD1306 controller, I2C interface, pin order SDA, SCL, VCC, GND.",
+		"uses": [
+			"small display",
+			"status screens",
+			"sensor readout",
+			"wearable projects"
+		]
+	},
+	"oled-ssd1306-096-i2c": {
+		"description": "0.96 inch OLED display, 128x64 pixels, SSD1306 controller, I2C interface with address 0x3C or 0x3D, pin order GND, VCC, SCL, SDA.",
+		"uses": [
+			"small display",
+			"status screens",
+			"sensor readout",
+			"Arduino display"
+		]
+	},
+	"oled-ssd1306-096-i2c-vcc-gnd": {
+		"description": "0.96 inch OLED display, 128x64 pixels, SSD1306 controller, I2C interface with address 0x3C or 0x3D, pin order VCC, GND, SCL, SDA.",
+		"uses": [
+			"small display",
+			"status screens",
+			"sensor readout",
+			"Arduino display"
+		]
+	},
+	"outlet-au-as3112": {
+		"description": "Australia and New Zealand wall outlet, AS/NZS 3112 single socket, 10 A at 230 V, with live, neutral and earth.",
+		"uses": [
+			"mains power source",
+			"power strip wiring",
+			"appliance demos",
+			"wall socket"
+		]
+	},
+	"outlet-fr-cee7-5": {
+		"description": "French wall outlet, CEE 7/5, 16 A at 230 V, with live, neutral and earth.",
+		"uses": [
+			"mains power source",
+			"power strip wiring",
+			"appliance demos",
+			"wall socket"
+		]
+	},
+	"outlet-jp-1-15r-duplex": {
+		"description": "Japan duplex wall outlet, 1-15R, 15 A at 100 V and 50 Hz, with live and neutral.",
+		"uses": [
+			"mains power source",
+			"power strip wiring",
+			"appliance demos",
+			"wall socket"
+		]
+	},
+	"outlet-jp-1-15r-duplex-polarized": {
+		"description": "Japan duplex wall outlet, polarized 1-15R, 15 A at 100 V and 50 Hz, with live and neutral.",
+		"uses": [
+			"mains power source",
+			"power strip wiring",
+			"appliance demos",
+			"wall socket"
+		]
+	},
+	"outlet-schuko-cee7-3": {
+		"description": "Schuko wall outlet, CEE 7/3, 16 A at 230 V, with live, neutral and earth.",
+		"uses": [
+			"mains power source",
+			"power strip wiring",
+			"appliance demos",
+			"wall socket"
+		]
+	},
+	"outlet-uk-bs1363": {
+		"description": "UK wall outlet, BS 1363 single socket, 13 A at 230 V, with live, neutral and earth.",
+		"uses": [
+			"mains power source",
+			"power strip wiring",
+			"appliance demos",
+			"wall socket"
+		]
+	},
+	"outlet-us-5-15r-duplex": {
+		"description": "US duplex wall outlet, NEMA 5-15R, 15 A at 120 V, with live, neutral and ground.",
+		"uses": [
+			"mains power source",
+			"power strip wiring",
+			"appliance demos",
+			"wall socket"
+		]
+	},
+	"outlet-us-5-20r-duplex": {
+		"description": "US duplex wall outlet, NEMA 5-20R, 20 A at 120 V, with live, neutral and ground.",
+		"uses": [
+			"mains power source",
+			"power strip wiring",
+			"appliance demos",
+			"wall socket"
+		]
+	},
+	"pir-hc-sr501": {
+		"description": "HC-SR501 PIR motion sensor module with GND, OUT and VCC pins, detecting movement from people.",
+		"uses": [
+			"motion detection",
+			"security alarms",
+			"automatic lights",
+			"presence sensing"
+		]
+	},
+	"plug-au-as3112-2lead": {
+		"description": "Australia and New Zealand cord plug, AS/NZS 3112, 2-lead with live and neutral, rated 10 A and 250 V.",
+		"uses": [
+			"mains power cord",
+			"appliance plug",
+			"wall power input",
+			"lamp cords"
+		]
+	},
+	"plug-au-as3112-3lead": {
+		"description": "Australia and New Zealand cord plug, AS/NZS 3112, 3-lead with live, neutral and earth, rated 10 A and 250 V.",
+		"uses": [
+			"mains power cord",
+			"appliance plug",
+			"wall power input",
+			"lamp cords"
+		]
+	},
+	"plug-eu-cee7-16": {
+		"description": "Europlug cord plug, CEE 7/16, 2-lead with live and neutral, rated 2.5 A and 250 V.",
+		"uses": [
+			"mains power cord",
+			"appliance plug",
+			"wall power input",
+			"lamp cords"
+		]
+	},
+	"plug-eu-cee7-7": {
+		"description": "Schuko and French cord plug, CEE 7/7, 3-lead with live, neutral and earth.",
+		"uses": [
+			"mains power cord",
+			"appliance plug",
+			"wall power input",
+			"lamp cords"
+		]
+	},
+	"plug-jp-1-15p": {
+		"description": "Japan cord plug, 1-15P, 2-lead with live and neutral, rated 15 A and 125 V.",
+		"uses": [
+			"mains power cord",
+			"appliance plug",
+			"wall power input",
+			"lamp cords"
+		]
+	},
+	"plug-uk-bs1363-2lead": {
+		"description": "UK cord plug, BS 1363, fused with a 13 A default fuse, 2-lead with live and neutral.",
+		"uses": [
+			"mains power cord",
+			"appliance plug",
+			"wall power input",
+			"lamp cords"
+		]
+	},
+	"plug-uk-bs1363-3lead": {
+		"description": "UK cord plug, BS 1363, fused with a 13 A default fuse, 3-lead with live, neutral and earth.",
+		"uses": [
+			"mains power cord",
+			"appliance plug",
+			"wall power input",
+			"lamp cords"
+		]
+	},
+	"plug-us-1-15p": {
+		"description": "US cord plug, NEMA 1-15P polarized, 2-lead with live and neutral, rated 15 A and 125 V.",
+		"uses": [
+			"mains power cord",
+			"appliance plug",
+			"wall power input",
+			"lamp cords"
+		]
+	},
+	"plug-us-5-15p": {
+		"description": "US cord plug, NEMA 5-15P, 3-lead with live, neutral and ground, rated 15 A and 125 V.",
+		"uses": [
+			"mains power cord",
+			"appliance plug",
+			"wall power input",
+			"lamp cords"
+		]
+	},
+	potentiometer: {
+		"description": "Three-terminal variable resistor with a wiper, defaulting to 10k ohms, used as an adjustable knob for voltage dividers and analog inputs.",
+		"uses": [
+			"volume knobs",
+			"analog input dial",
+			"dimmer control",
+			"sensor tuning"
+		]
+	},
+	"potentiometer-panel-10k": {
+		"description": "Panel mount 10 k potentiometer, WH148 type, with knob and three terminals, used as a variable resistor or voltage divider.",
+		"uses": [
+			"volume control",
+			"dimmer knob",
+			"analog input",
+			"speed adjust"
+		]
+	},
+	"power-rail-strip": {
+		"description": "Breadboard-style power rail strip that gives a shared positive and ground line for distributing supply voltage to several parts.",
+		"uses": [
+			"breadboard power rails",
+			"distributing 5 V",
+			"shared ground",
+			"prototyping"
+		]
+	},
+	"push-button": {
+		"description": "Simple two-terminal momentary push button switch, normally open, that connects its pins while pressed.",
+		"uses": [
+			"user input button",
+			"reset button",
+			"menu navigation",
+			"microcontroller input"
+		]
+	},
+	"relay-module-1ch-5v": {
+		"description": "One-channel 5 V relay module with an SRD-05VDC relay and a high or low trigger jumper, switching a load from a microcontroller signal.",
+		"uses": [
+			"switching mains loads",
+			"home automation",
+			"lamp control",
+			"pump control",
+			"Arduino relay"
+		]
+	},
+	resistor: {
+		"description": "Quarter-watt through-hole resistor with two legs, defaulting to 1k ohms, the standard everyday hobby resistor.",
+		"uses": [
+			"LED current limiting",
+			"pull-up or pull-down",
+			"voltage divider",
+			"signal conditioning"
+		]
+	},
+	"resistor-half-watt": {
+		"description": "Half-watt through-hole resistor with two legs, defaulting to 1k ohms, for higher power dissipation than a quarter-watt part.",
+		"uses": [
+			"current limiting",
+			"pull-up resistor",
+			"voltage divider",
+			"LED series resistor"
+		]
+	},
+	"rfm95-lora-breakout": {
+		"description": "Adafruit RFM95W LoRa radio breakout board for 868 or 915 MHz long-range wireless, with SPI interface, antenna pad and G0 to G5 pins.",
+		"uses": [
+			"long-range sensor links",
+			"LoRa gateways",
+			"remote telemetry",
+			"IoT nodes"
+		]
+	},
+	"rocker-switch-kcd1": {
+		"description": "KCD1-101 two-pin SPST rocker switch, rated 250 V AC at 6 A, for turning a circuit on and off.",
+		"uses": [
+			"power on off switch",
+			"mains appliance switch",
+			"project enclosure power",
+			"lamp switch"
+		]
+	},
+	"rpi-4-model-b": {
+		"description": "Raspberry Pi 4 Model B single-board computer with USB-C power, two USB 3 and two USB 2 ports, camera and display connectors and GPIO header.",
+		"uses": [
+			"home server",
+			"media center",
+			"retro gaming",
+			"robot brain",
+			"desktop computer"
+		]
+	},
+	"rpi-5": {
+		"description": "Raspberry Pi 5 single-board computer powered over USB-C, with two USB 3 and two USB 2 ports, camera and display connectors and GPIO header.",
+		"uses": [
+			"desktop computer",
+			"home server",
+			"camera projects",
+			"robotics",
+			"media center"
+		]
+	},
+	"rpi-pico": {
+		"description": "Raspberry Pi Pico RP2040 microcontroller board with USB power, 26 GPIO pins, three ADC inputs and SWD debug pins.",
+		"uses": [
+			"MicroPython projects",
+			"sensor boards",
+			"robotics",
+			"hobby electronics",
+			"USB gadgets"
+		]
+	},
+	"rpi-pico-2": {
+		"description": "Raspberry Pi Pico 2 RP2350 microcontroller board with USB power, 26 GPIO pins, three ADC inputs and SWD debug pins.",
+		"uses": [
+			"MicroPython projects",
+			"sensor boards",
+			"robotics",
+			"hobby electronics",
+			"USB gadgets"
+		]
+	},
+	"rpi-pico-2-w": {
+		"description": "Raspberry Pi Pico 2 W RP2350 microcontroller board with WiFi and Bluetooth, USB power, 26 GPIO pins, three ADC inputs and SWD debug pins.",
+		"uses": [
+			"wireless sensors",
+			"IoT projects",
+			"MicroPython projects",
+			"home automation"
+		]
+	},
+	"rpi-pico-h": {
+		"description": "Raspberry Pi Pico H RP2040 microcontroller board with soldered pin headers and a 3-pin debug connector, USB powered, with 26 GPIO pins.",
+		"uses": [
+			"breadboard prototyping",
+			"MicroPython projects",
+			"sensor boards",
+			"robotics"
+		]
+	},
+	"rpi-pico-w": {
+		"description": "Raspberry Pi Pico W RP2040 microcontroller board with WiFi and Bluetooth, USB power, 26 GPIO pins, three ADC inputs and SWD debug pins.",
+		"uses": [
+			"wireless sensors",
+			"IoT projects",
+			"MicroPython projects",
+			"home automation"
+		]
+	},
+	"rpi-zero-2-w": {
+		"description": "Raspberry Pi Zero 2 W small single-board computer with WiFi and Bluetooth, micro USB power, a camera connector and 40-pin GPIO header.",
+		"uses": [
+			"small Linux projects",
+			"wireless cameras",
+			"compact servers",
+			"wearables",
+			"IoT gateways"
+		]
+	},
+	"rtl-sdr-blog-v4": {
+		"description": "RTL-SDR Blog V4 software defined radio receiver in a USB-A dongle with an SMA antenna connector.",
+		"uses": [
+			"radio scanning",
+			"ADS-B plane tracking",
+			"weather satellite reception",
+			"FM radio listening"
 		]
 	},
 	"servo-sg90": {
-		"description": "A small hobby servo that turns its horn to an angle set by a PWM pulse from 0.5 to 2.4 ms.",
+		"description": "Micro servo SG90 hobby servo with three wires for ground, 5 V supply and PWM control signal.",
 		"uses": [
-			"robot arms and joints",
-			"pan and tilt mounts",
-			"steering on small RC models",
-			"moving a latch or pointer"
+			"robot arms",
+			"pan tilt cameras",
+			"RC models",
+			"door latches",
+			"small mechanisms"
+		]
+	},
+	"ssr-fotek-25da": {
+		"description": "Fotek SSR-25DA solid state relay with 4 to 32 VDC control input, switching 24 to 380 VAC loads up to 25 A.",
+		"uses": [
+			"heater control",
+			"mains load switching",
+			"sous vide controller",
+			"kiln or oven control"
+		]
+	},
+	"tactile-switch-12mm-4pin": {
+		"description": "Large 12 mm four-pin tactile push button, normally open, for mounting on a board or breadboard.",
+		"uses": [
+			"user input button",
+			"reset button",
+			"big project buttons",
+			"control panels"
+		]
+	},
+	"tactile-switch-6mm-4pin": {
+		"description": "Small 6 mm four-pin tactile push button, normally open, the common breadboard button.",
+		"uses": [
+			"breadboard buttons",
+			"menu navigation",
+			"reset button",
+			"microcontroller input"
+		]
+	},
+	"terminal-block-kf2edg-508-2": {
+		"description": "Two-position KF2EDG pluggable screw terminal block clone with 5.08 mm pitch, listed at 300 V and 10 A.",
+		"uses": [
+			"wiring power connections",
+			"pluggable connections",
+			"mains wiring",
+			"PCB wire connectors"
+		]
+	},
+	"terminal-block-kf2edg-508-3": {
+		"description": "Three-position KF2EDG pluggable screw terminal block clone with 5.08 mm pitch, listed at 300 V and 10 A.",
+		"uses": [
+			"wiring power connections",
+			"pluggable connections",
+			"mains wiring",
+			"PCB wire connectors"
+		]
+	},
+	"terminal-block-kf301-500-2": {
+		"description": "Two-position KF301 screw terminal block clone with 5.0 mm pitch, listed at 250 V and 17 A.",
+		"uses": [
+			"wiring power connections",
+			"screw terminals",
+			"mains wiring",
+			"PCB wire connectors"
+		]
+	},
+	"terminal-block-kf301-500-3": {
+		"description": "Three-position KF301 screw terminal block clone with 5.0 mm pitch, listed at 250 V and 17 A.",
+		"uses": [
+			"wiring power connections",
+			"screw terminals",
+			"mains wiring",
+			"PCB wire connectors"
+		]
+	},
+	"terminal-block-mc-381-2": {
+		"description": "2-position Phoenix Contact MC 1,5 pluggable terminal block with 3.81 mm pitch, rated 8 A and up to 250 V depending on overvoltage category.",
+		"uses": [
+			"wiring power connections",
+			"pluggable connections",
+			"control wiring",
+			"PCB wire connectors"
+		]
+	},
+	"terminal-block-mc-381-3": {
+		"description": "3-position Phoenix Contact MC 1,5 pluggable terminal block with 3.81 mm pitch, rated 8 A and up to 250 V depending on overvoltage category.",
+		"uses": [
+			"wiring power connections",
+			"pluggable connections",
+			"control wiring",
+			"PCB wire connectors"
+		]
+	},
+	"terminal-block-mc-381-4": {
+		"description": "4-position Phoenix Contact MC 1,5 pluggable terminal block with 3.81 mm pitch, rated 8 A and up to 250 V depending on overvoltage category.",
+		"uses": [
+			"wiring power connections",
+			"pluggable connections",
+			"control wiring",
+			"PCB wire connectors"
+		]
+	},
+	"terminal-block-mc-381-5": {
+		"description": "5-position Phoenix Contact MC 1,5 pluggable terminal block with 3.81 mm pitch, rated 8 A and up to 250 V depending on overvoltage category.",
+		"uses": [
+			"wiring power connections",
+			"pluggable connections",
+			"control wiring",
+			"PCB wire connectors"
+		]
+	},
+	"terminal-block-mc-381-6": {
+		"description": "6-position Phoenix Contact MC 1,5 pluggable terminal block with 3.81 mm pitch, rated 8 A and up to 250 V depending on overvoltage category.",
+		"uses": [
+			"wiring power connections",
+			"pluggable connections",
+			"control wiring",
+			"PCB wire connectors"
+		]
+	},
+	"terminal-block-mstb-508-2": {
+		"description": "2-position Phoenix Contact MSTB 2,5 pluggable terminal block with 5.08 mm pitch, rated 12 A and up to 400 V depending on overvoltage category.",
+		"uses": [
+			"wiring power connections",
+			"pluggable connections",
+			"mains wiring",
+			"PCB wire connectors"
+		]
+	},
+	"terminal-block-mstb-508-3": {
+		"description": "3-position Phoenix Contact MSTB 2,5 pluggable terminal block with 5.08 mm pitch, rated 12 A and up to 400 V depending on overvoltage category.",
+		"uses": [
+			"wiring power connections",
+			"pluggable connections",
+			"mains wiring",
+			"PCB wire connectors"
+		]
+	},
+	"terminal-block-mstb-508-4": {
+		"description": "4-position Phoenix Contact MSTB 2,5 pluggable terminal block with 5.08 mm pitch, rated 12 A and up to 400 V depending on overvoltage category.",
+		"uses": [
+			"wiring power connections",
+			"pluggable connections",
+			"mains wiring",
+			"PCB wire connectors"
+		]
+	},
+	"terminal-block-mstb-508-5": {
+		"description": "5-position Phoenix Contact MSTB 2,5 pluggable terminal block with 5.08 mm pitch, rated 12 A and up to 400 V depending on overvoltage category.",
+		"uses": [
+			"wiring power connections",
+			"pluggable connections",
+			"mains wiring",
+			"PCB wire connectors"
+		]
+	},
+	"terminal-block-mstb-508-6": {
+		"description": "6-position Phoenix Contact MSTB 2,5 pluggable terminal block with 5.08 mm pitch, rated 12 A and up to 400 V depending on overvoltage category.",
+		"uses": [
+			"wiring power connections",
+			"pluggable connections",
+			"mains wiring",
+			"PCB wire connectors"
+		]
+	},
+	"tft-ili9341-24-spi": {
+		"description": "2.4 inch 240x320 color TFT display module with ILI9341 controller and SPI interface, with touch and SD card pins on some versions.",
+		"uses": [
+			"Arduino displays",
+			"color screen",
+			"image viewer",
+			"dashboards"
+		]
+	},
+	"tft-ili9341-28-spi-touch": {
+		"description": "2.8 inch 240x320 color TFT touchscreen display module with ILI9341 controller, SPI interface and SD card pins.",
+		"uses": [
+			"touchscreen UI",
+			"Arduino displays",
+			"control panels",
+			"dashboards"
+		]
+	},
+	"tft-st7735-18-spi": {
+		"description": "1.8 inch 128x160 color TFT display module with ST7735 controller and SPI interface, with SD card pins.",
+		"uses": [
+			"small color screen",
+			"Arduino displays",
+			"menus and gauges",
+			"image display"
+		]
+	},
+	"tft-st7789-154-spi": {
+		"description": "1.54 inch 240x240 IPS color TFT display module with ST7789 controller and SPI interface.",
+		"uses": [
+			"small color screen",
+			"smartwatch projects",
+			"gauges and menus",
+			"ESP32 displays"
+		]
+	},
+	"tilt-switch-sw460d": {
+		"description": "SW-460D two-pin ball vibration switch that opens and closes with shaking or movement.",
+		"uses": [
+			"vibration detection",
+			"motion alarms",
+			"tamper alerts",
+			"shake sensing"
+		]
+	},
+	"tilt-switch-sw520d": {
+		"description": "SW-520D two-pin ball tilt switch that opens and closes depending on orientation.",
+		"uses": [
+			"tilt detection",
+			"orientation sensing",
+			"tip-over alarms",
+			"simple motion sensing"
+		]
+	},
+	"tp4056-module": {
+		"description": "TP4056 lithium-ion battery charger module with USB-C input and protection, with input, battery and output pads.",
+		"uses": [
+			"charging 18650 cells",
+			"portable projects",
+			"battery powered gadgets",
+			"DIY power banks"
+		]
+	},
+	"ultrasonic-hc-sr04": {
+		"description": "HC-SR04 ultrasonic distance sensor with VCC, Trig, Echo and GND pins for measuring range by sound.",
+		"uses": [
+			"distance measuring",
+			"obstacle avoidance robots",
+			"parking sensors",
+			"water level sensing"
+		]
+	},
+	"usb-hub-fe11s-circuitneato": {
+		"description": "USB 2.0 hub board with FE1.1s chip from Circuitneato, USB-C input and four USB-A ports sharing 2 A combined.",
+		"uses": [
+			"adding USB ports",
+			"Raspberry Pi USB hub",
+			"custom USB hubs",
+			"embedded USB expansion"
+		]
+	},
+	"usb-hub-powered-4port": {
+		"description": "Generic powered USB 2.0 hub with four ports, a USB-B upstream connection and a 5 V DC power input.",
+		"uses": [
+			"adding USB ports",
+			"powering USB devices",
+			"Raspberry Pi peripherals",
+			"desktop USB expansion"
+		]
+	},
+	"usb-panel-mount-microusb": {
+		"description": "Micro-USB panel-mount extension cable with a socket on the panel and a plug on the other end.",
+		"uses": [
+			"enclosure USB port",
+			"project box charging port",
+			"panel mount USB",
+			"device programming port"
+		]
+	},
+	"usb-panel-mount-usbc": {
+		"description": "USB-C panel-mount extension with a socket on the panel and a plug on the other end.",
+		"uses": [
+			"enclosure USB port",
+			"project box charging port",
+			"panel mount USB-C",
+			"device programming port"
+		]
+	},
+	"wago-221-412": {
+		"description": "Wago 221-412 lever connector joining 2 conductors without tools, rated 450 V and 32 A.",
+		"uses": [
+			"splicing wires",
+			"mains junction boxes",
+			"lighting wiring",
+			"tool-free wire joints"
+		]
+	},
+	"wago-221-413": {
+		"description": "Wago 221-413 lever connector joining 3 conductors without tools, rated 450 V and 32 A.",
+		"uses": [
+			"splicing wires",
+			"mains junction boxes",
+			"lighting wiring",
+			"tool-free wire joints"
+		]
+	},
+	"wago-221-415": {
+		"description": "Wago 221-415 lever connector joining 5 conductors without tools, rated 450 V and 32 A.",
+		"uses": [
+			"splicing wires",
+			"mains junction boxes",
+			"lighting wiring",
+			"tool-free wire joints"
+		]
+	},
+	"wemos-d1-mini": {
+		"description": "Wemos LOLIN D1 mini ESP8266 WiFi microcontroller board with micro USB power and D0 to D8 pins.",
+		"uses": [
+			"WiFi sensors",
+			"home automation",
+			"IoT nodes",
+			"small ESP8266 projects"
+		]
+	},
+	"ws2812b-strip": {
+		"description": "WS2812B addressable RGB LED strip segment of five LEDs with ground, data in and 5 V pads.",
+		"uses": [
+			"lighting effects",
+			"ambient lighting",
+			"LED displays",
+			"decorations"
+		]
+	},
+	"ws2812d-5mm": {
+		"description": "WS2812D-F5 5 mm through-hole addressable RGB LED with data in, data out, ground and supply pins.",
+		"uses": [
+			"status indicators",
+			"chained RGB LEDs",
+			"LED art",
+			"color lighting"
+		]
+	},
+	"xiao-esp32c3": {
+		"description": "Seeed XIAO ESP32-C3 tiny WiFi and Bluetooth microcontroller board with USB and D0 to D10 pins.",
+		"uses": [
+			"wearables",
+			"small IoT nodes",
+			"WiFi sensors",
+			"compact projects"
+		]
+	},
+	"xiao-esp32s3": {
+		"description": "Seeed XIAO ESP32-S3 tiny WiFi and Bluetooth microcontroller board with USB and D0 to D10 pins.",
+		"uses": [
+			"wearables",
+			"small IoT nodes",
+			"home automation",
+			"compact projects"
 		]
 	}
 };
