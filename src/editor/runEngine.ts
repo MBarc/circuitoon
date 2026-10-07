@@ -45,6 +45,7 @@ export class RunController {
   private seenSim: SimView | null = null
   private seenParts: unknown = null
   private unsubscribe: () => void
+  private disposed = false
 
   constructor(store: EditorStore, deps: Deps = {}) {
     this.store = store
@@ -70,7 +71,20 @@ export class RunController {
     })
   }
 
+  /**
+   * After an await while starting: whether to go on. Not once the editor closed or the board was
+   * stopped; a board deleted or given another module meanwhile ends stopped (spec 2.1).
+   */
+  private stillStarting(uid: string, module: string): boolean {
+    const st = this.store.getState()
+    if (this.disposed || st.run.boards[uid]?.status !== 'starting') return false
+    if (st.diagram.parts.some((p) => p.uid === uid && p.module === module)) return true
+    this.store.setBoardRun(uid, { status: 'stopped', progress: null })
+    return false
+  }
+
   async run(uid: string): Promise<void> {
+    if (this.disposed) return
     const s = this.store.getState()
     const env = this.deps.isolated ? { isolated: this.deps.isolated(), serviceWorkers: true } : undefined
     const blocked = runBlocker(s, uid, env)
@@ -88,12 +102,13 @@ export class RunController {
     try {
       py = await (this.deps.prefetch ?? prefetchPy)((loaded, total) => this.store.setBoardRun(uid, { progress: { loaded, total } }))
     } catch (e) {
-      this.store.setBoardRun(uid, { status: 'error', progress: null, message: `Python could not load: ${why(e)}` })
+      if (this.stillStarting(uid, part.module)) this.store.setBoardRun(uid, { status: 'error', progress: null, message: `Python could not load: ${why(e)}` })
       return
     }
+    if (!this.stillStarting(uid, part.module)) return
     // The first solve (spec 2.1, 4.5): refuse a board it shows unpowered.
     const first = await this.nextSolve()
-    if (this.store.getState().run.boards[uid]?.status !== 'starting') return
+    if (!this.stillStarting(uid, part.module)) return
     // Simulate was turned off while starting: that is a Stop.
     if (!first) return void this.store.setBoardRun(uid, { status: 'stopped', progress: null })
     const ok = first?.outcome.status === 'ok' && first.circuit && boardPower(first.circuit, first.outcome.result, uid).powered
@@ -280,6 +295,9 @@ export class RunController {
   }
 
   dispose(): void {
+    this.disposed = true
+    // Boards still downloading or waiting for the first solve never start (stillStarting).
+    for (const [uid, b] of Object.entries(this.store.getState().run.boards)) if (b.status === 'starting') this.store.setBoardRun(uid, { status: 'stopped', progress: null })
     void this.stopAll()
     this.unsubscribe()
     if (this.timer) clearTimeout(this.timer)

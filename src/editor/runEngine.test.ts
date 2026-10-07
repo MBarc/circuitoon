@@ -19,6 +19,18 @@ import { RunController } from './runEngine.ts'
 import { runBlocker, RELOAD_FIRST, ISOLATION_OFF, capText } from './running.ts'
 import { MAX_RUNNING } from '../run/limits.ts'
 
+/** A prefetch held until release(), and a spawn that counts workers: what happens to a board still starting. */
+function held() {
+  let release!: () => void
+  const gate = new Promise<void>((r) => (release = r))
+  const counts = { spawned: 0 }
+  const deps = {
+    prefetch: async () => (await gate, nodePy()),
+    spawn: () => (counts.spawned++, spawnNodeCodeWorker()),
+  }
+  return { deps, release, counts }
+}
+
 const engine = makeEngine(createNodeEngineHost())
 afterAll(() => engine.dispose())
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -27,13 +39,13 @@ const until = async (ok: () => boolean, ms = 15000) => {
 }
 
 /** An editor store simulated by the Node engine, as useSimulation does in the browser. */
-function editor(d: ReturnType<typeof piBlink>) {
+function editor(d: ReturnType<typeof piBlink>, deps: Partial<ConstructorParameters<typeof RunController>[1]> = {}) {
   const store = new EditorStore(d)
   const session = new SimSession(engine, (o, c, opts) => store.setSim({ phase: 'done', outcome: o, circuit: c ?? null, runSeq: opts?.runSeq }))
   let rev = 0
   const unRun = store.subscribe(() => session.setRunning(store.activeRuns.length > 0))
   const unFollow = followStore(store, (dd, held, run) => session.request(dd, ++rev, { held, library: libraryLookup, runPins: run.pins, moving: run.moving, runSeq: run.seq }))
-  const c = new RunController(store, { spawn: spawnNodeCodeWorker, prefetch: async () => nodePy(), isolated: () => true })
+  const c = new RunController(store, { spawn: spawnNodeCodeWorker, prefetch: async () => nodePy(), isolated: () => true, ...deps })
   const close = () => (c.dispose(), session.stop(), unRun(), unFollow())
   return { store, c, close }
 }
@@ -89,6 +101,34 @@ describe('the editor run controller (spec 2.1, 2.3, 4.5)', () => {
     expect(store.getState().run.pins).toEqual({})
     expect(store.activeRuns).toEqual([])
     close()
+  }, 60_000)
+  it('never starts a board that was still starting when the editor closed', async () => {
+    const h = held()
+    const { store, c, close } = editor(piBlink(), h.deps)
+    const started = c.run('u1')
+    expect(store.getState().run.boards.u1.status).toBe('starting')
+    c.dispose()
+    expect(store.getState().run.boards.u1.status).toBe('stopped')
+    h.release()
+    await started
+    await sleep(300)
+    expect([h.counts.spawned, store.getState().run.boards.u1.status]).toEqual([0, 'stopped'])
+    close()
+  }, 60_000)
+  it('ends a starting board stopped when it is deleted, or its module changes, before it starts (spec 2.1)', async () => {
+    for (const edit of [
+      (d: ReturnType<typeof piBlink>) => deleteSelection(d, { parts: ['u1'], wires: [] }),
+      (d: ReturnType<typeof piBlink>) => ({ ...d, modules: { ...d.modules, 'rpi-5': libraryLookup('rpi-5')! }, parts: d.parts.map((p) => (p.uid === 'u1' ? { ...p, module: 'rpi-5' } : p)) }),
+    ]) {
+      const h = held()
+      const { store, c, close } = editor(piBlink(), h.deps)
+      const started = c.run('u1')
+      store.commit(edit(store.getState().diagram))
+      h.release()
+      await started
+      expect([h.counts.spawned, store.getState().run.boards.u1.status, store.getState().run.boards.u1.message]).toEqual([0, 'stopped', null])
+      close()
+    }
   }, 60_000)
   it('stops every board when Simulate is turned off', async () => {
     const { store, c, close } = editor(piBlink())
