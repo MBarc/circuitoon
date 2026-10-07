@@ -40,7 +40,7 @@ async function swHeaders(url: string): Promise<Headers> {
  * reload fires, the app clears the share link's hash as EditorApp does. Resolves to the URL the page
  * reloads at, or null when it does not reload.
  */
-async function pageReload(unsaved: boolean, start = 'https://mbarc.github.io/circuitoon/#/editor?d=abc', sessionStorage = fakeSession()): Promise<string | null> {
+async function pageReload(unsaved: boolean, start = 'https://mbarc.github.io/circuitoon/#/editor?d=abc', sessionStorage = fakeSession(), ready: Promise<unknown> = Promise.resolve()): Promise<string | null> {
   const config = /<script>(window\.coi[\s\S]*?)<\/script>/.exec(html)![1]
   let reloadedAt: string | null = null
   const registration = { active: {}, addEventListener() {} }
@@ -50,7 +50,7 @@ async function pageReload(unsaved: boolean, start = 'https://mbarc.github.io/cir
     history: { replaceState: (_s: unknown, _t: string, url: string) => void (location.href = new URL(url, location.href).href) },
     document: { currentScript: { src: '/circuitoon/coi-serviceworker.js' } },
   }
-  const navigator = { serviceWorker: { controller: null, register: async () => registration } }
+  const navigator = { serviceWorker: { controller: null, register: async () => registration, ready } }
   const ctx = vm.createContext({ window, navigator, console, sessionStorage })
   vm.runInContext(config, ctx)
   vm.runInContext(sw, ctx)
@@ -104,6 +104,11 @@ describe.skipIf(rolledBack)('cross-origin isolation (spec 2.5; skipped while the
     const session = fakeSession()
     expect(await pageReload(false, undefined, session)).not.toBeNull()
     expect(await pageReload(false, undefined, session)).toBeNull()
+  })
+  it('reloads only once a worker is active, so the reloaded page is controlled', async () => {
+    // "updatefound" fires while the worker is still installing; reloading then loaded the page
+    // uncontrolled (and the 10 s guard kept it so), seen in about a third of first visits.
+    expect(await pageReload(false, undefined, undefined, new Promise(() => {}))).toBeNull()
   })
   it('does not reload when sessionStorage throws', async () => {
     expect(await pageReload(false, undefined, fakeSession(true))).toBeNull()

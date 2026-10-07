@@ -979,6 +979,7 @@ function validateSim(raw, names, errors) {
 		if (!isObj(v)) errors.push(`${w}: must be an object`);
 		else {
 			keys(v, [
+				"shaft",
 				"signal",
 				"pulseMin",
 				"pulseMax",
@@ -987,6 +988,7 @@ function validateSim(raw, names, errors) {
 				"signalLoad"
 			], w);
 			if (typeof v.signal !== "string" || !names.has(v.signal)) errors.push(`${w}.signal: no pin "${show(v.signal)}"`);
+			if (v.shaft !== void 0 && !(isObj(v.shaft) && typeof v.shaft.x === "number" && Number.isFinite(v.shaft.x) && typeof v.shaft.y === "number" && Number.isFinite(v.shaft.y))) errors.push(`${w}.shaft: must be { "x", "y" } in art coordinates`);
 			for (const [k, unit] of [
 				["pulseMin", "s"],
 				["pulseMax", "s"],
@@ -1440,6 +1442,7 @@ function validateModule(raw) {
 				if (s.label !== void 0 && typeof s.label !== "string") errors.push(`${at}.label: must be a string`);
 				if (s.labelColor !== void 0 && typeof s.labelColor !== "string") errors.push(`${at}.labelColor: must be a string`);
 				if (s.labelSize !== void 0 && !isPos(s.labelSize)) errors.push(`${at}.labelSize: must be a positive number`);
+				if (s.horn !== void 0 && s.horn !== true) errors.push(`${at}.horn: must be true`);
 				if (s.band !== void 0 && !(Number.isInteger(s.band) && s.band >= 1 && s.band <= 4)) errors.push(`${at}.band: must be a whole number from 1 to 4`);
 			});
 		}
@@ -58223,6 +58226,10 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					}]
 				},
 				"servo": {
+					"shaft": {
+						"x": 122,
+						"y": 24
+					},
 					"signal": "PWM",
 					"pulseMin": {
 						"value": 5e-4,
@@ -58391,7 +58398,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"w": 44,
 					"h": 16,
 					"fill": "#F4F6F8",
-					"radius": 8
+					"radius": 8,
+					"horn": true
 				},
 				{
 					"type": "rect",
@@ -58400,7 +58408,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"w": 16,
 					"h": 16,
 					"fill": "#F4F6F8",
-					"radius": 8
+					"radius": 8,
+					"horn": true
 				},
 				{
 					"type": "rect",
@@ -58410,7 +58419,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"h": 6,
 					"fill": "#8E96A1",
 					"radius": 3,
-					"outline": false
+					"outline": false,
+					"horn": true
 				},
 				{
 					"type": "rect",
@@ -85045,25 +85055,28 @@ var Part = (0, import_react.memo)(function Part({ module: m, x = 0, y = 0, rotat
 					}, p.name)),
 					art ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", {
 						transform: `translate(${ax} ${ay})`,
-						children: art.shapes.map((s, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", {
-							x: s.x,
-							y: s.y,
-							width: s.w,
-							height: s.h,
-							rx: s.radius ?? 0,
-							fill: s.band && bands ? bands[s.band - 1] : s.fill,
-							stroke: i === body ? outline : s.outline === false ? "none" : INK$2,
-							strokeWidth: OUTLINE
-						}), s.label && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("text", {
-							x: s.x + s.w / 2,
-							y: s.y + s.h / 2,
-							textAnchor: "middle",
-							dominantBaseline: "central",
-							fontSize: s.labelSize ?? 8,
-							fontWeight: 700,
-							fill: s.labelColor ?? "#23282F",
-							children: s.label
-						})] }, i))
+						children: art.shapes.map((s, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", {
+							className: s.horn ? "art-horn" : void 0,
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", {
+								x: s.x,
+								y: s.y,
+								width: s.w,
+								height: s.h,
+								rx: s.radius ?? 0,
+								fill: s.band && bands ? bands[s.band - 1] : s.fill,
+								stroke: i === body ? outline : s.outline === false ? "none" : INK$2,
+								strokeWidth: OUTLINE
+							}), s.label && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("text", {
+								x: s.x + s.w / 2,
+								y: s.y + s.h / 2,
+								textAnchor: "middle",
+								dominantBaseline: "central",
+								fontSize: s.labelSize ?? 8,
+								fontWeight: 700,
+								fill: s.labelColor ?? "#23282F",
+								children: s.label
+							})]
+						}, i))
 					}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", {
 						width: lay.w,
 						height: lay.h,

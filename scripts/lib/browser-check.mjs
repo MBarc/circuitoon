@@ -2,7 +2,9 @@
 // site with `vite preview`, launch the locally installed Chrome through playwright-core (never the
 // shared Playwright MCP browser), read flags, and count failures.
 import { execSync, spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { createServer } from 'node:http'
+import { extname, join } from 'node:path'
 import { chromium } from 'playwright-core'
 
 const args = process.argv.slice(2)
@@ -13,8 +15,43 @@ export function flagOf(name, fallback) {
   return i < 0 ? fallback : args[i + 1]
 }
 
-/** Starts `vite preview` on `port` (stopped when the process exits) and waits until it answers. */
+const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.wasm': 'application/wasm', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.txt': 'text/plain', '.webmanifest': 'application/manifest+json', '.zip': 'application/zip' }
+
+/**
+ * Serves `dist/` under `/circuitoon/` with NO isolation headers and no CSP, as GitHub Pages does, so
+ * the service worker is what isolates the page. `override(rel, req)` (may be async) maps a request
+ * path under `/circuitoon/` to another file, or returns null to serve `dist/<rel>`.
+ */
+export async function startStatic(port, override = () => null) {
+  if (!existsSync('dist/index.html')) {
+    console.error('No build found. Run `npm run build` first.')
+    process.exit(2)
+  }
+  const server = createServer(async (req, res) => {
+    const path = decodeURIComponent(new URL(req.url, 'http://x').pathname)
+    if (!path.startsWith('/circuitoon/')) return void res.writeHead(404).end()
+    const rel = path.slice('/circuitoon/'.length) || 'index.html'
+    const file = (await override(rel, req)) ?? join('dist', rel)
+    if (!existsSync(file)) return void res.writeHead(404).end()
+    res.writeHead(200, { 'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream', 'Cache-Control': 'no-cache' })
+    res.end(readFileSync(file))
+  })
+  await new Promise((ok, fail) => server.once('error', fail).listen(port, ok)).catch((e) => {
+    console.error(`Port ${port} is already in use (${e.code}). Stop that server or pass --port.`)
+    process.exit(3)
+  })
+  return { base: `http://localhost:${port}/circuitoon/`, close: () => server.close() }
+}
+
+/** The command line asks for the header-less server (`--sw`), so the service worker isolates pages. */
+export const underSw = args.includes('--sw')
+
+/**
+ * Starts `vite preview` on `port` (stopped when the process exits) and waits until it answers. With
+ * `--sw` on the command line it starts the header-less `startStatic` server instead.
+ */
 export async function startPreview(port) {
+  if (underSw) return startStatic(port)
   if (!existsSync('dist/index.html')) {
     console.error('No build found. Run `npm run build` first.')
     process.exit(2)
