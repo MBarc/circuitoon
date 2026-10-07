@@ -33,7 +33,7 @@ Under `--json`, every failure that has no command result prints one error docume
 
 | Command | Does | `--json` schema |
 | --- | --- | --- |
-| `parts [--search text]` | Lists built-in parts: category, pins (name, label, type, supply, capacity, caps), hole groups, source. An untyped pin reports type `null`. | `schemas/parts.schema.json` |
+| `parts [--search text]` | Lists built-in parts: category, description, typical uses, pins (name, label, type, supply, capacity, caps), hole groups, source. An untyped pin reports type `null`. `--search` takes a name or a description in words: the exact matches (id, name or category containing the text), then up to 8 closest matches ranked by the words (`closest` in JSON, each with a `score`). | `schemas/parts.schema.json` |
 | `part <id>` | One module in full, with each pin's limits in words (`[input only; no internal pull-up or pull-down]`), the pin notes, and the I2C device data (bus pins, address, pull-ups). | `schemas/part.schema.json` |
 | `layout <netlist.json> -o <sheet.json> [--labels none\|auto\|all]` | Places, mounts, wires and routes. `--labels` picks which nets get net labels: by default `none`, wires only, except nets marked `"label": true` (see SKILL.md "Wires and net labels"). Prints the readability report (with the readability warnings count, the label mode, the labelled nets and any net with an endpoint that had no room for its label), the bill of quantities and the channel table. | `schemas/layout.schema.json` |
 | `layout --keep <partial.json> -o <sheet.json>` | The same, keeping the positions the partial gives (see `netlist-format.md`). | `schemas/layout.schema.json` |

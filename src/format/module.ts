@@ -225,9 +225,20 @@ export interface ModuleDef {
    * library: unverified. Its id starts with "custom-", which no built-in id does.
    */
   custom?: true
+  /**
+   * A custom part's own words for the closest-match search: one sentence on what it is, and typical
+   * uses. Built-in parts keep theirs in src/format/partText.json instead (see partSearch.ts).
+   */
+  description?: string
+  uses?: string[]
   /** The languages code on this part may be in (firmware spec 3.2); read only through languagesOf. */
   firmware?: { languages: string[] }
 }
+
+/** Limits on a part's description and uses (validateModule). */
+export const DESCRIPTION_MAX = 300
+export const USES_MAX = 8
+export const USE_MAX = 60
 
 /** The id prefix every custom part has and no built-in part may use. */
 export const CUSTOM_PREFIX = 'custom-'
@@ -360,6 +371,15 @@ export function validateModule(raw: unknown): ValidationResult {
   if (raw.custom !== undefined) {
     if (raw.custom !== true) errors.push('custom: must be true when present')
     else if (typeof raw.id === 'string' && !raw.id.startsWith(CUSTOM_PREFIX)) errors.push(`custom: a custom part's id must start with "${CUSTOM_PREFIX}"`)
+  }
+  if (raw.description !== undefined && (typeof raw.description !== 'string' || !raw.description.trim() || raw.description.length > DESCRIPTION_MAX))
+    errors.push(`description: must be a non-empty string, at most ${DESCRIPTION_MAX} characters`)
+  if (raw.uses !== undefined) {
+    if (!Array.isArray(raw.uses) || !raw.uses.length || raw.uses.length > USES_MAX) errors.push(`uses: must be a list of 1 to ${USES_MAX} short strings`)
+    else
+      raw.uses.forEach((u, i) => {
+        if (typeof u !== 'string' || !u.trim() || u.length > USE_MAX) errors.push(`uses[${i}]: must be a non-empty string, at most ${USE_MAX} characters`)
+      })
   }
   if (raw.firmware !== undefined) {
     const f = raw.firmware

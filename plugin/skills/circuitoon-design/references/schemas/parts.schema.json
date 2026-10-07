@@ -6,52 +6,56 @@
   "additionalProperties": false,
   "properties": {
     "format": { "const": "circuitoon-cli/parts/1" },
-    "parts": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["id", "name", "category", "source", "board", "netLabel", "pins", "holes"],
-        "additionalProperties": false,
-        "properties": {
-          "id": { "type": "string" },
-          "name": { "type": "string" },
-          "category": { "type": ["string", "null"] },
-          "source": { "type": ["string", "null"] },
-          "board": { "type": "boolean" },
-          "netLabel": { "type": "boolean" },
-          "pins": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": ["name", "label", "type", "supply", "capacity", "caps", "usb"],
-              "additionalProperties": false,
-              "properties": {
-                "name": { "type": "string" },
-                "label": { "type": ["string", "null"] },
-                "type": { "enum": ["power_in", "power_out", "ground", "input", "output", "io", "passive", "nc", "usb", null] },
-                "supply": { "type": ["string", "null"] },
-                "capacity": { "type": "integer" },
-                "caps": { "type": ["object", "null"] },
-                "usb": { "type": ["object", "null"] }
-              }
+    "parts": { "type": "array", "items": { "$ref": "#/$defs/part" } },
+    "closest": { "type": "array", "items": { "allOf": [{ "$ref": "#/$defs/part" }, { "required": ["score"] }] } }
+  },
+  "$defs": {
+    "part": {
+      "type": "object",
+      "required": ["id", "name", "category", "source", "description", "uses", "board", "netLabel", "pins", "holes"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": ["string", "null"] },
+        "source": { "type": ["string", "null"] },
+        "description": { "type": ["string", "null"] },
+        "uses": { "type": "array", "items": { "type": "string" } },
+        "score": { "type": "number" },
+        "board": { "type": "boolean" },
+        "netLabel": { "type": "boolean" },
+        "pins": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "label", "type", "supply", "capacity", "caps", "usb"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "label": { "type": ["string", "null"] },
+              "type": { "enum": ["power_in", "power_out", "ground", "input", "output", "io", "passive", "nc", "usb", null] },
+              "supply": { "type": ["string", "null"] },
+              "capacity": { "type": "integer" },
+              "caps": { "type": ["object", "null"] },
+              "usb": { "type": ["object", "null"] }
             }
-          },
-          "holes": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": ["name", "label", "type", "supply", "holes", "rail", "capacity", "caps"],
-              "additionalProperties": false,
-              "properties": {
-                "name": { "type": "string" },
-                "label": { "type": ["string", "null"] },
-                "type": { "enum": ["power_in", "power_out", "ground", "input", "output", "io", "passive", "nc", null] },
-                "supply": { "type": ["string", "null"] },
-                "holes": { "type": "integer" },
-                "rail": { "enum": ["+", "-", null] },
-                "capacity": { "type": "integer" },
-                "caps": { "type": ["object", "null"] }
-              }
+          }
+        },
+        "holes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "label", "type", "supply", "holes", "rail", "capacity", "caps"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "label": { "type": ["string", "null"] },
+              "type": { "enum": ["power_in", "power_out", "ground", "input", "output", "io", "passive", "nc", null] },
+              "supply": { "type": ["string", "null"] },
+              "holes": { "type": "integer" },
+              "rail": { "enum": ["+", "-", null] },
+              "capacity": { "type": "integer" },
+              "caps": { "type": ["object", "null"] }
             }
           }
         }

@@ -31,6 +31,8 @@ Run `circuitoon parts --search <text>` with the chip name and the board name. If
      "name": "INA219 current sensor breakout (CJMCU-219)",
      "category": "Sensors",
      "source": ["https://www.ti.com/lit/ds/symlink/ina219.pdf", "https://second-source.example/pinout"],
+     "description": "Measures current and bus voltage over I2C with a 0.1 ohm shunt.",
+     "uses": ["battery monitor", "solar panel logger"],
      "pins": {
        "left": [
          { "name": "VCC", "type": "power_in", "supply": "3V3/5V" },
@@ -51,6 +53,7 @@ Run `circuitoon parts --search <text>` with the chip name and the board name. If
    - **Types** are `power_in`, `power_out`, `ground`, `input`, `output`, `io`, `passive` or `nc`. Leave a type out when the datasheet does not make it clear. The checker uses exactly what you give, so a wrong type is a wrong finding.
    - **Supply** is the rails a power pin takes or gives, from the datasheet's range: `"3V3"`, `"5V"`, `"3V3/5V"`.
    - **caps** only where the chip's datasheet says a pin cannot do something (`inputOnly`, `outputOnly`, `strapping`, ...), as in `../circuitoon-design/references/module-schema.md`.
+   - **description and uses** are optional: one plain sentence on what the part is (300 characters at most) and 1 to 8 typical uses (60 characters each). The editor's Parts panel searches them and shows the description as the tooltip.
    - `"style": "chip"` draws a bare IC (names past the pin tips) instead of a breakout board. `body` sets the size in grid units and the colour; leave the size out and it fits the pins.
 
 6. **Build and lint it.**

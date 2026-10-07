@@ -2,7 +2,8 @@
 // built-in catalog, with canonical pin names, labels, types, supplies, capacities, hole groups and
 // sources, for picking parts and writing a netlist. An untyped pin reports type null: it is never
 // guessed (amendment A14).
-import { library } from '../library.ts'
+import { library, partText } from '../library.ts'
+import { partTextOf, rankParts } from '../format/partSearch.ts'
 import { type I2cSpec, addressText, i2cOf, isBoard, isNetLabel, isSpacer, type ModuleDef, type PinDef, terminalCapacity } from '../format/module.ts'
 
 /** How a device's I2C address is set, in words. */
@@ -20,11 +21,15 @@ import type { Args } from './args.ts'
 import { CliError, EXIT, type Io, flag, printJson } from './io.ts'
 
 export function partSummary(m: ModuleDef) {
+  const text = partTextOf(m, partText)
   return {
     id: m.id,
     name: m.name,
     category: m.category ?? null,
     source: m.source ?? null,
+    /** What the part is and its typical uses, from src/format/partText.json (null and [] until written). */
+    description: text?.description || null,
+    uses: text?.uses ?? [],
     board: isBoard(m),
     /** A net label (a named flag, not a physical part): a netlist asks for one with "label": true on a net. */
     netLabel: isNetLabel(m),
@@ -42,22 +47,35 @@ const pinText = (p: Pin) =>
   [p.name, p.label && p.label !== p.name ? `(${p.label})` : '', p.usb ? `[${usbWords(p.usb)}]` : p.type ?? 'untyped', p.supply ?? '', p.capacity > 1 ? `takes ${p.capacity}` : '',
     capsText(p.caps ?? undefined).length ? `[${capsText(p.caps ?? undefined).join('; ')}]` : ''].filter(Boolean).join(' ')
 
+/** How many ranked closest matches `parts --search` adds after the exact ones. */
+const CLOSEST = 8
+
 export function partsCommand(args: Args, io: Io): number {
-  const q = (flag(args, '--search') ?? '').toLowerCase()
-  const list = modules().filter((m) => !q || [m.id, m.name, m.category ?? ''].some((s) => s.toLowerCase().includes(q)))
+  const search = flag(args, '--search') ?? ''
+  const q = search.trim().toLowerCase()
+  const all = modules()
+  const list = all.filter((m) => !q || [m.id, m.name, m.category ?? ''].some((s) => s.toLowerCase().includes(q)))
+  // A part described in words ("a touch display for the rpi"): the closest matches, ranked, after the exact ones.
+  const exact = new Set(list.map((m) => m.id))
+  const closest = q ? rankParts(all.filter((m) => !exact.has(m.id)), search, partText, CLOSEST) : []
   if (args.flags.has('--json')) {
-    printJson(io, { format: 'circuitoon-cli/parts/1', parts: list.map(partSummary) })
+    printJson(io, { format: 'circuitoon-cli/parts/1', parts: list.map(partSummary), ...(q ? { closest: closest.map((r) => ({ ...partSummary(r.module), score: r.score })) } : {}) })
     return EXIT.ok
   }
-  const blocks = list.map((m) => {
+  const block = (m: ModuleDef) => {
     const s = partSummary(m)
     return [
       `${s.id}: ${s.name}${s.category ? ` [${s.category}]` : ''}`,
+      s.description ? `  ${s.description}` : '',
+      s.uses.length ? `  uses: ${s.uses.join('; ')}` : '',
       s.pins.length ? `  pins: ${s.pins.map(pinText).join(', ')}` : '',
       s.netLabel ? `  not a part to list: set "label": true on a net and the layout draws its labels` : '',
       s.holes.length ? `  hole groups: ${s.holes.map((g) => `${g.name}${g.rail ? ` (rail ${g.rail})` : ''} x${g.holes}`).join(', ')}` : '',
     ].filter(Boolean).join('\n')
-  })
+  }
+  const blocks = list.map(block)
+  if (closest.length) blocks.push(`closest matches (ranked, best first${list.length ? ', not listed above' : ''}):`, ...closest.map((r) => block(r.module)))
+  else if (!list.length) blocks.push(`no parts match "${search.trim()}"`)
   io.stdout(`${blocks.join('\n')}\n`)
   return EXIT.ok
 }

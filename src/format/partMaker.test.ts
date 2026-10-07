@@ -111,7 +111,7 @@ describe('moduleFromSpec', () => {
     expect(r.ok).toBe(false)
     if (r.ok) return
     expect(r.errors).toEqual(expect.arrayContaining([
-      'colour: unknown field (allowed: format, name, id, category, source, version, style, body, pins, internal)',
+      'colour: unknown field (allowed: format, name, id, category, source, description, uses, version, style, body, pins, internal)',
       'name: required',
       'body.color: must be a colour like "#2F9E6E"',
       'pins.middle: unknown side (left, right, top or bottom)',
@@ -125,6 +125,14 @@ describe('moduleFromSpec', () => {
     // Bad caps reach validateModule and come back as errors, not a throw.
     const caps = buildPart({ name: 'X', pins: { left: [{ name: 'A', caps: { inputOnly: true, outputOnly: true } }] } })
     expect(caps.ok).toBe(false)
+  })
+
+  it('carries a description and uses onto the part, trimmed, and back', () => {
+    const m = moduleFromSpec({ ...INA, description: ' Measures current. ', uses: [' battery monitor ', 'solar logger'] })
+    expect(m).toMatchObject({ description: 'Measures current.', uses: ['battery monitor', 'solar logger'] })
+    expect(specFromModule(m)).toMatchObject({ description: 'Measures current.', uses: ['battery monitor', 'solar logger'] })
+    expect(unmodeled(m)).toEqual([])
+    expect(validateSpec({ ...INA, description: 7, uses: 'x' }).ok).toBe(false)
   })
 
   it('reads its own module back as a spec that rebuilds it exactly', () => {

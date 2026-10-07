@@ -142,6 +142,18 @@ describe('the part maker draft', () => {
     expect(again).toMatchObject({ name: 'Sensor A', maker: 'Acme', id: 'custom-sensor-a', sized: false, source: 'https://example.com/a\nhttps://example.com/b' })
     expect(moduleFromSpec(specFromDraft(again))).toEqual(m)
   })
+  it('takes a description and comma separated uses, and leaves both out when empty', () => {
+    const d = { ...emptyDraft(), name: 'Sensor B', description: ' Reads light. ', uses: 'plant monitor, , night light ', pins: { left: [pinRow('A')], right: [], top: [], bottom: [] } }
+    const m = moduleFromSpec(specFromDraft(d))
+    expect(m).toMatchObject({ description: 'Reads light.', uses: ['plant monitor', 'night light'] })
+    expect(draftFromPart({ module: m, saved: 1 })).toMatchObject({ description: 'Reads light.', uses: 'plant monitor, night light' })
+    const bare = moduleFromSpec(specFromDraft({ ...d, description: ' ', uses: ' , ' }))
+    expect('description' in bare || 'uses' in bare).toBe(false)
+    // An imported part edited in place takes them too.
+    const p = { module: modulesById['tp4056-module'], saved: 1 }
+    const r = savedModule({ ...draftFromPart(p), description: 'Charges a cell.', uses: 'power bank' }, p.module.id, p.module, false)
+    expect(r.ok && r.module).toMatchObject({ description: 'Charges a cell.', uses: ['power bank'] })
+  })
   it('moves rows within a side and onto another side', () => {
     const d = { ...emptyDraft(), pins: { left: [pinRow('A'), pinRow('B'), pinRow('C')], right: [], top: [], bottom: [] } }
     expect(moveRow(d, 'left', 0, 2).pins.left.map((r) => r.name)).toEqual(['B', 'C', 'A'])
