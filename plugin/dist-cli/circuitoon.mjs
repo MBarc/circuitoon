@@ -94528,8 +94528,12 @@ function mixRaws(raws, weights) {
 }
 //#endregion
 //#region src/sim/session.ts
-/** Per sheet (by its parts array): the circuit built with no run pins, and the classification and topology findings per set of GPIO states. */
-var bases = /* @__PURE__ */ new WeakMap();
+/**
+* The last sheet solved only (one slot, replaced by a new sheet): its circuit built with no run pins,
+* and the classification and topology findings per set of GPIO states. One slot is all a run-state
+* change needs; keeping every parts array solved would hold a circuit per undo entry.
+*/
+var slot = null;
 /**
 * The circuit, its classification and its topology findings (decided before the engine runs, so a
 * failed or unavailable outcome still names a real short). Perf ruling (firmware slice 1): a
@@ -94550,15 +94554,16 @@ function prepare(d, opts) {
 		opts.netNames,
 		JSON.stringify(opts.moving ?? [])
 	];
-	let hit = bases.get(d.parts);
-	if (!hit || hit.key.some((x, i) => x !== key[i])) bases.set(d.parts, hit = {
+	if (slot?.parts !== d.parts || slot.key.some((x, i) => x !== key[i])) slot = {
+		parts: d.parts,
 		key,
 		base: buildCircuit(d, {
 			...opts,
 			runPins: void 0
 		}),
 		byStates: /* @__PURE__ */ new Map()
-	});
+	};
+	const hit = slot;
 	const c = withRunPins(hit.base, opts.runPins);
 	if (!c) {
 		const full = buildCircuit(d, opts);

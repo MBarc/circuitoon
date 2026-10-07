@@ -14,7 +14,7 @@ import { analyseRuns, topologyFindings } from './findings.ts'
 import { classify, classifyCached } from './floating.ts'
 import type { Analysis, Circuit } from './model.ts'
 import { pwmPlan } from './pwm.ts'
-import { solve } from './session.ts'
+import { solve, solveCacheHolds } from './session.ts'
 import { compile } from './spice.ts'
 import { pwmPerfSheet } from './testing.ts'
 
@@ -71,9 +71,10 @@ async function freshFindings(c: Circuit): Promise<unknown> {
 }
 
 describe('run-state changes reuse the built circuit (perf ruling)', () => {
-  for (const [name, d, board, servos] of SHEETS)
+  for (const [name, sheet, board, servos] of SHEETS)
     it(`gives the same circuit, texts and findings as a full build on ${name}`, async () => {
       const random = rng(name.length * 7919)
+      let d = sheet
       // The board's wired pins and two spare ones (PWM on every pin would make each solve dozens of texts).
       const all = buildCircuit(d).gpio.filter((g) => g.part === board).map((g) => g.pin)
       const wired = all.filter((pin) => d.connections.some((c) => [c.from, c.to].some((e) => e.part === board && e.pin === pin)))
@@ -90,7 +91,11 @@ describe('run-state changes reuse the built circuit (perf ruling)', () => {
         for (let n = Math.floor(random() * 3) + 1; n > 0; n--) run[pins[Math.floor(random() * pins.length)]] = states()
         if (random() < 0.3) moving = servos.filter(() => random() < 0.5)
         const stopped = random() < 0.15
-        const opts = stopped ? {} : { runPins: { [board]: run } as RunPins, moving }
+        // Mid-sequence, a value edit (a new parts array, as the store makes) and a button held for three steps.
+        if (k === 10) d = { ...d, parts: d.parts.map((p) => (p.module === 'resistor' && p === d.parts.find((x) => x.module === 'resistor') ? { ...p, values: { resistance: { value: 470, unit: 'ohm' } } } : p)) }
+        const button = d.parts.find((p) => p.module === 'push-button')
+        const held = button && k >= 15 && k < 18 ? { held: { part: button.uid, group: 's' } } : {}
+        const opts = stopped ? held : { ...held, runPins: { [board]: run } as RunPins, moving }
         const { circuit, outcome } = await solve(d, engine, k, opts)
         const fresh = buildCircuit(d, opts)
         expect(JSON.stringify(circuit), `step ${k}`).toBe(JSON.stringify(fresh))
@@ -99,4 +104,11 @@ describe('run-state changes reuse the built circuit (perf ruling)', () => {
         expect(JSON.stringify(outcome.status === 'ok' ? outcome.result.findings : outcome), `step ${k}`).toBe(JSON.stringify(await freshFindings(fresh)))
       }
     }, 120_000)
+  it('keeps only the last sheet solved', async () => {
+    const [a, b] = [piBlinkSample, piButtonSample]
+    await solve(a, engine, 1)
+    expect(solveCacheHolds(a.parts)).toBe(true)
+    await solve(b, engine, 2)
+    expect([solveCacheHolds(a.parts), solveCacheHolds(b.parts)]).toEqual([false, true])
+  })
 })

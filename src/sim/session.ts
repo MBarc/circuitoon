@@ -16,8 +16,14 @@ import type { RawRun } from './spice.ts'
 export interface SolveOptions extends BuildOptions { probes?: Probe[]; runSeq?: Record<string, number> }
 
 type Prepared = { c: Circuit; cls: Classification; topo: ReturnType<typeof topologyFindings> }
-/** Per sheet (by its parts array): the circuit built with no run pins, and the classification and topology findings per set of GPIO states. */
-const bases = new WeakMap<object, { key: unknown[]; base: Circuit; byStates: Map<string, Omit<Prepared, 'c'>> }>()
+/**
+ * The last sheet solved only (one slot, replaced by a new sheet): its circuit built with no run pins,
+ * and the classification and topology findings per set of GPIO states. One slot is all a run-state
+ * change needs; keeping every parts array solved would hold a circuit per undo entry.
+ */
+let slot: { parts: Diagram['parts']; key: unknown[]; base: Circuit; byStates: Map<string, Omit<Prepared, 'c'>> } | null = null
+/** Whether the solve cache holds this sheet (tests: a new sheet drops the last one). */
+export const solveCacheHolds = (parts: Diagram['parts']): boolean => slot?.parts === parts
 
 /**
  * The circuit, its classification and its topology findings (decided before the engine runs, so a
@@ -30,8 +36,8 @@ const bases = new WeakMap<object, { key: unknown[]; base: Circuit; byStates: Map
  */
 function prepare(d: Diagram, opts: BuildOptions): Prepared {
   const key = [d.connections, d.modules, d.intent, opts.held?.part, opts.held?.group, opts.library, opts.netNames, JSON.stringify(opts.moving ?? [])]
-  let hit = bases.get(d.parts)
-  if (!hit || hit.key.some((x, i) => x !== key[i])) bases.set(d.parts, (hit = { key, base: buildCircuit(d, { ...opts, runPins: undefined }), byStates: new Map() }))
+  if (slot?.parts !== d.parts || slot.key.some((x, i) => x !== key[i])) slot = { parts: d.parts, key, base: buildCircuit(d, { ...opts, runPins: undefined }), byStates: new Map() }
+  const hit = slot
   const c = withRunPins(hit.base, opts.runPins)
   if (!c) {
     const full = buildCircuit(d, opts)
