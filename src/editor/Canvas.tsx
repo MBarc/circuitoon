@@ -126,7 +126,7 @@ export interface CanvasApi {
 }
 
 export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api: CanvasApi) => void }) {
-  const { diagram, selection, highlight, reveal, snapObjects, simulate, simTool, sim } = useEditorState(store)
+  const { diagram, selection, highlight, reveal, snapObjects, simulate, simTool, sim, run } = useEditorState(store)
   // While simulating: the readings to draw (the last good ones, stale, after a failed solve) and the current findings.
   const simOutcome = simulate && sim?.phase === 'done' ? sim.outcome : undefined
   const simShown = shownResult(simOutcome)
@@ -956,11 +956,11 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         {(diagram.annotations ?? []).filter((a) => a.type === 'text').map((a) => (
           <NoteMark key={a.uid} a={a} interactive selected={!!selection.annotations?.includes(a.uid)} />
         ))}
-        {simOutcome && (
-          <SimLayer diagram={diagram} result={simShown?.result ?? null} stale={!!simShown?.stale} circuit={sim?.phase === 'done' ? sim.circuit : null} findings={simFindings} />
+        {(simOutcome || Object.keys(run.boards).length > 0) && (
+          <SimLayer diagram={diagram} result={simShown?.result ?? null} stale={!!simShown?.stale} circuit={sim?.phase === 'done' ? sim.circuit : null} findings={simFindings} run={run} />
         )}
         {/* Probes (saved with the sheet) show "-" until Simulate gives them readings. */}
-        {(diagram.probes?.length ?? 0) > 0 && <ProbeLayer diagram={diagram} readings={simShown?.result.probes ?? null} stale={!!simShown?.stale} />}
+        {(diagram.probes?.length ?? 0) > 0 && <ProbeLayer diagram={diagram} readings={simShown?.result.probes ?? null} stale={!!simShown?.stale} avg={!!simShown?.result.pwm} />}
         {/* A connection the netlist could not join (a missing part, pin, group or hole) has no
             route to draw, but a short dashed red stub at whichever end still resolves lets a
             user find and repair it instead of a wire silently vanishing from the sheet. Drawn after the

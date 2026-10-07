@@ -141,7 +141,7 @@ export function ProbesPanel({ store }: { store: EditorStore }) {
                     <span className="probe-where">{where}</span>
                   </div>
                   <p className="probe-reading">
-                    <span className="probe-value">{p.at.pin === undefined ? partText(r?.part) : readingText(r?.voltage)}</span>
+                    <span className="probe-value">{p.at.pin === undefined ? partText(r?.part) : readingText(r?.voltage, !!result?.pwm)}</span>
                     {shown?.stale && <span className="probe-stale"> (stale)</span>}
                   </p>
                   {typical?.kind === 'value' && <p className="hint probe-ref">to {typical.reference}</p>}
@@ -224,6 +224,13 @@ export function ProbesPanel({ store }: { store: EditorStore }) {
             Circuitoon solves the sheet with ngspice {about.engine.ngspice ?? '(version unknown)'}{about.engine.build ? `, engine build ${about.engine.build}` : ''}, compiled to WebAssembly and run in your browser. Nothing is uploaded.
           </p>
         )}
+        <h4>Running code</h4>
+        <p>
+          A Raspberry Pi's Python runs in your browser on Pyodide, with RPi.GPIO and most of gpiozero. Pins, PWM, servos and print() reach the simulation;
+          I2C and SPI devices, serial ports and threads are not simulated yet. Callbacks do not run at the same time as each other: a callback that sleeps holds
+          blink() and the others until it returns. A read can lag the circuit by one solve. gpiozero's Servo defaults to 1 to 2 ms pulses, so Servo.min() turns an
+          SG90 to about 47 degrees, as on many real ones.
+        </p>
         {about && about.engine !== null && about.notice === '' && <p className="hint warn">The licence notice could not be loaded. Open it from the link below.</p>}
         {about?.notice && <pre className="about-notice" tabIndex={0} aria-label="Licence notice">{about.notice}</pre>}
         <ul className="about-links">

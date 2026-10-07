@@ -26,7 +26,7 @@ export const TAG_H = 13
 const TAG_PAD = 13
 export const tagWidth = (text: string) => Math.ceil(TAG_PAD + text.length * TAG_CHAR_W)
 /** The reading every tag reserves room for, so a tag keeps its place whatever it reads. */
-export const TAG_RESERVE = '-00.00 V (peak -00.00 V)'
+export const TAG_RESERVE = 'avg -00.00 V (peak -00.00 V)'
 /** Longest probe name a tag shows whole (a name may be 40 characters); the title has it all. */
 const NAME_CHARS = 16
 
@@ -34,11 +34,12 @@ function one(r: Reading): string {
   return r.kind === 'value' ? formatValue(sig(r.value), 'V') : r.kind === 'undefined' ? r.why : r.kind
 }
 const outside = (...rs: Reading[]) => rs.some((r) => r.kind === 'value' && r.trust === 'outside-model')
-export function readingText(r: { typical: Reading; peak: Reading } | undefined): string {
+/** `avg`: the solve had PWM pins, so every reading is a duty-weighted average (ruling R7). */
+export function readingText(r: { typical: Reading; peak: Reading } | undefined, avg = false): string {
   if (!r) return '-'
   const t = one(r.typical)
   const p = one(r.peak)
-  return `${t}${p !== t ? ` (peak ${p})` : ''}${outside(r.typical, r.peak) ? ', outside model' : ''}`
+  return `${avg ? 'avg ' : ''}${t}${p !== t ? ` (peak ${p})` : ''}${outside(r.typical, r.peak) ? ', outside model' : ''}`
 }
 export function partText(p: { typical: PartRun; peak: PartRun } | undefined): string {
   if (!p) return '-'
@@ -145,11 +146,11 @@ export function probeColor(id: string, index: number): string {
   return PROBE_COLORS[((Number.isInteger(n) && n > 0 ? n - 1 : index) % PROBE_COLORS.length)]
 }
 
-export const ProbeLayer = memo(function ProbeLayer({ diagram, readings, stale = false }: { diagram: Diagram; readings: ProbeReading[] | null; stale?: boolean }) {
+export const ProbeLayer = memo(function ProbeLayer({ diagram, readings, stale = false, avg = false }: { diagram: Diagram; readings: ProbeReading[] | null; stale?: boolean; avg?: boolean }) {
   const probes = diagram.probes ?? []
   const texts = probes.map((p) => {
     const r = readings?.find((x) => x.id === p.id)
-    const reading = p.at.pin === undefined ? partText(r?.part) : readingText(r?.voltage)
+    const reading = p.at.pin === undefined ? partText(r?.part) : readingText(r?.voltage, avg)
     const name = p.name ?? p.id
     const off = !!r?.voltage && outside(r.voltage.typical, r.voltage.peak)
     return { id: p.id, full: `${name}: ${reading}`, text: tagText(name, reading), reserve: tagText(name, TAG_RESERVE), off }

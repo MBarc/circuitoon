@@ -104,6 +104,7 @@ for (const scheme of ['light', 'dark']) {
     await page.waitForTimeout(150)
   }
   check(levels.size >= 2, `${scheme}: the LED glow toggles while blink runs (${[...levels].join(', ')})`)
+  check((await page.locator('[data-run-badge="u1"].running').count()) === 1, `${scheme}: the running board has a green "running" badge`)
   check((await page.locator('[data-run="u1"]').getAttribute('aria-label')) === "Stop U1's code", `${scheme}: the button's name follows the state`)
   await shot('running')
 
@@ -143,6 +144,7 @@ for (const scheme of ['light', 'dark']) {
   check((await ref.textContent()) === 'File "boom.py", line 4', `${scheme}: the traceback names the script line`)
   await ref.click()
   check((await page.locator('.cm-activeLine').textContent())?.includes("raise RuntimeError('boom')"), `${scheme}: the link moves the cursor to line 4`)
+  check((await page.locator('[data-run-badge="u1"].error').count()) === 1, `${scheme}: an error badge`)
   await shot('error')
   // The jump belongs to U1's editor: moving along the tabs keeps focus on the tablist (C20).
   await tab.focus()
@@ -153,6 +155,70 @@ for (const scheme of ['light', 'dark']) {
   await page.keyboard.press('ArrowLeft')
   await page.waitForTimeout(500)
   check((await onTab()) === 'u1', `${scheme}: and coming back to U1 does not jump into its editor again`)
+
+  // 12. A servo turns: AngularServo sweeps; the horn's angle follows; the run finding list stays empty.
+  const servoFile = piSheet('servo', 'from gpiozero import AngularServo\nimport time\ns = AngularServo(18, min_angle=0, max_angle=180, min_pulse_width=0.0005, max_pulse_width=0.0024)\nwhile True:\n    s.angle = 0\n    time.sleep(1)\n    s.angle = 180\n    time.sleep(1)\n', {
+    parts: [at('m1', 'M1', 'servo-sg90', 640, 300)],
+    wires: [w('w6', 'u1', 'GPIO18', 'm1', 'PWM'), w('w7', 'bt1', '+', 'm1', 'VCC'), w('w8', 'bt1', '-', 'm1', 'GND')],
+  })
+  const rawServo = JSON.parse(readFileSync(servoFile, 'utf8'))
+  rawServo.probes = [{ id: 'P1', at: { part: 'm1', pin: 'PWM' } }, { id: 'P2', at: { part: 'm1', pin: 'VCC' } }]
+  writeFileSync(servoFile, JSON.stringify(rawServo))
+  await open(servoFile)
+  await page.locator('[data-run="u1"]').click()
+  await waitStatus('running', 30000)
+  // Zoom the sheet out so the servo shows above the dock.
+  await page.mouse.move(775, 300)
+  for (let i = 0; i < 3; i++) await page.mouse.wheel(0, 120)
+  const horn = () => page.getAttribute('[data-servo-horn="m1"]', 'data-angle').then(Number, () => NaN)
+  const angles = new Set()
+  for (let i = 0; i < 40 && angles.size < 3; i++) {
+    angles.add(await horn())
+    await page.waitForTimeout(100)
+  }
+  check(angles.size >= 3, `${scheme}: the servo horn moves (${[...angles].join(', ')})`)
+  for (const [name, hit] of [['low', (a) => a < 5], ['high', (a) => a > 175]]) {
+    for (let i = 0; i < 60 && !hit(await horn()); i++) await page.waitForTimeout(100)
+    await shot(`servo-${name}`)
+  }
+  // Close up, so the horn and the tags read at full size.
+  const hb = await page.locator('[data-part="m1"]').first().boundingBox()
+  await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2)
+  for (let i = 0; i < 5; i++) await page.mouse.wheel(0, -120)
+  for (const [name, hit] of [['low', (a) => a < 5], ['high', (a) => a > 175]]) {
+    for (let i = 0; i < 60 && !hit(await horn()); i++) await page.waitForTimeout(100)
+    await shot(`servo-zoom-${name}`)
+    const sb = await page.locator('[data-part="m1"]').first().boundingBox()
+    await page.screenshot({ path: join(out, `code-servo-crop-${name}-${scheme}.png`), clip: { x: Math.max(220, sb.x - 20), y: Math.max(50, sb.y - 40), width: Math.min(sb.width + 40, 1100), height: Math.min(sb.height + 80, 680) } })
+  }
+  check(((await page.locator(".probe-layer").textContent()) ?? "").includes("avg "), `${scheme}: probe tags read "avg" while PWM runs`)
+  await page.locator('[data-run="u1"]').click()
+  await waitStatus('stopped')
+
+  // 13. Run-time findings: a floating read and an out-of-range servo signal, once each.
+  const findFile = piSheet('findings', 'import RPi.GPIO as GPIO\nimport time\nGPIO.setmode(GPIO.BCM)\nGPIO.setup(5, GPIO.IN)\nGPIO.setup(18, GPIO.OUT)\np = GPIO.PWM(18, 1000)\np.start(50)\nwhile True:\n    GPIO.input(5)\n    time.sleep(0.2)\n', {
+    parts: [at('m1', 'M1', 'servo-sg90', 640, 300)],
+    wires: [w('w6', 'u1', 'GPIO18', 'm1', 'PWM'), w('w7', 'bt1', '+', 'm1', 'VCC'), w('w8', 'bt1', '-', 'm1', 'GND')],
+  })
+  await open(findFile)
+  await page.locator('[data-run="u1"]').click()
+  await waitStatus('running', 30000)
+  await page.waitForSelector('[data-run-finding="servo-signal"]', { timeout: 20000 }).catch(() => {})
+  await page.waitForSelector('[data-run-finding="floating-read"]', { timeout: 20000 }).catch(() => {})
+  await page.waitForTimeout(1500)
+  check((await page.locator('[data-run-finding="servo-signal"]').count()) === 1 && (await page.locator('[data-run-finding="floating-read"]').count()) === 1, `${scheme}: one servo-signal and one floating-read finding, not repeated`)
+  await page.locator('[data-run-finding="floating-read"]').scrollIntoViewIfNeeded()
+  await shot('findings')
+  await page.locator('[data-run="u1"]').click()
+  await waitStatus('stopped')
+
+  // 14. The Probes panel's About the simulator has a Running code paragraph.
+  await page.getByRole('button', { name: 'Probe', exact: true }).click()
+  await page.locator('summary', { hasText: 'About the simulator' }).click()
+  await page.getByRole('heading', { name: 'Running code' }).scrollIntoViewIfNeeded()
+  check((await page.locator('details', { hasText: 'About the simulator' }).textContent())?.includes('A read can lag the circuit by one solve'), `${scheme}: About the simulator has the Running code paragraph`)
+  await shot('about')
+  await page.getByRole('button', { name: 'Probe', exact: true }).click()
 
   // 8. link: code that came in a link asks once before running (spec 2.6)
   const link = linkOf(blinkFile)
