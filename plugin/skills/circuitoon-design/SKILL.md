@@ -71,7 +71,9 @@ With `--json`, a failure prints `{ "ok": false, "exit": N, "error": { "code", "m
    - the bill of materials (`out/bom.csv`, hashed in `gate.json`; its rows are also `bom` in `gate.json`) and, for repeats, the channel table. The bill counts what is on the sheet: parts, wires by cable, gauge and color, and connectors. Rows marked `added by layout` are rail strips, breadboards or jumpers the layout added to distribute nets, so say those are extra parts to buy;
    - every warning, explained; when `gate.json` says `ready: false`, every readability warning listed one by one, each with what it is and why you could not clear it;
    - the "not checked" list;
-   - every assumption the user still has to confirm.
+   - every assumption the user still has to confirm;
+   - when you split the design into sheets, why (the signs from step 4 that you saw).
+11. **Clean up.** Leave the user the final sheet file (one per sheet) and the gate's output folder. Delete everything else you made along the way: netlists, partials, review tiles and focus renders, scratch sheets, and the spec and part files of custom parts (each sheet carries its own copy of every part, and `circuitoon netlist <sheet>` rebuilds a netlist from it). Keep a file only when the user asked for it. Working in a scratch folder (for example `.circuitoon-work/`) from the start makes this one deletion.
 
 ## Simulation
 
@@ -147,7 +149,7 @@ The `layout` report prints: body overlaps and caption overlaps (both must be 0),
 ## Reading the gate
 
 - `NOT READY: N readability warnings` (the first line, before the verdict; `ready: false` in `gate.json`): the gate may still pass, but list each of those warnings to the user with why it stays, or fix them and gate again.
-- `GATE PASSED` (exit 0): present, following step 10.
+- `GATE PASSED` (exit 0): present, following step 10, then clean up (step 11).
 - `GATE PASSED, with warnings` (exit 0): present, and report every warning; simulation warnings worded 'Likely' rest on representative or estimated values.
 - `GATE FAILED (simulation)` (exit 1): a blocking simulation finding: read its message and its `inputs`; fix the circuit, or set the GPIO states and switch positions to what the firmware and the user will do, and gate again.
 - `GATE FAILED` (exit 1): each blocking line names its rule: `missing-connection`, `merge`, `extra-connection`, `nc`, `capacity`, `value-drift`, `mount`, `extra-part`, `module-mismatch`, `module-drift` (the sheet's copy of a built-in part no longer matches the current library in its pin names, sides, types or order, holes, internal joins, geometry, or electrical data it states differently; the message lists what differs: lay the sheet out again with the current library; when the part's body or pins moved, as the DIP-28s did when they were redrawn to scale, the message says so: remove that part's x, y and rotation from the partial before `layout --keep`, or lay out from the netlist, since keeping the old position pins it where the old drawing sat), `intent`, `load`, `blocked-route`, or a wiring checker rule (`short`, `reversed`, `supply-too-high`, ...). Fix the problem and gate again. Never present a blocked sheet.
