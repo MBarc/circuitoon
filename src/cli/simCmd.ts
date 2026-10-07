@@ -74,7 +74,7 @@ function connectionSheet(intent: Intent, raw: unknown): Diagram {
     format: DIAGRAM_FORMAT,
     title: intent.title,
     modules: intent.modules,
-    parts: intent.parts.map((p, i) => ({ uid: p.ref, designator: p.ref, module: p.module, x: (i % 8) * 400, y: Math.floor(i / 8) * 400, ...(p.values ? { values: p.values } : {}), ...(p.settings ? { settings: p.settings } : {}) })),
+    parts: intent.parts.map((p, i) => ({ uid: p.ref, designator: p.ref, module: p.module, x: (i % 8) * 400, y: Math.floor(i / 8) * 400, ...(p.values ? { values: p.values } : {}), ...(p.settings ? { settings: p.settings } : {}), ...(p.code && 'source' in p.code ? { code: p.code } : {}) })),
     connections: connections.map((c, i) => ({ ...c, uid: `w${i + 1}` })),
     intent: structuredClone(raw),
     ...(probes.length ? { probes } : {}),

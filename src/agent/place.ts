@@ -167,7 +167,7 @@ export function placeParts(intent: Intent, opts: PlaceOptions): PlaceResult {
   const keep = opts.keep ?? new Map<string, Keep>()
   const mods: Record<string, ModuleDef> = { ...intent.modules }
   const inst = new Map<string, PartInstance>()
-  for (const p of intent.parts) inst.set(p.ref, { uid: p.ref, designator: p.ref, module: p.module, x: 0, y: 0, rotation: 0, ...(p.values ? { values: p.values } : {}), ...(p.settings ? { settings: { ...p.settings } } : {}) })
+  for (const p of intent.parts) inst.set(p.ref, { uid: p.ref, designator: p.ref, module: p.module, x: 0, y: 0, rotation: 0, ...(p.values ? { values: p.values } : {}), ...(p.settings ? { settings: { ...p.settings } } : {}), ...(p.code && 'source' in p.code ? { code: p.code } : {}) })
   const modOf = (ref: string) => mods[inst.get(ref)!.module]
   const fp = (ref: string) => footprint(inst.get(ref)!, modOf(ref))
   const tight = (ref: string) => tightFootprint(inst.get(ref)!, modOf(ref))

@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -1051,6 +1051,12 @@ var LANGUAGE_NAMES = {
 	"python-rpi": "Raspberry Pi Python",
 	"arduino-avr": "Arduino C++",
 	micropython: "MicroPython"
+};
+/** The file extensions an upload of each language may have (spec 6.2: `.ino` on a Pi is refused). */
+var LANGUAGE_EXT = {
+	"python-rpi": [".py"],
+	"arduino-avr": [".ino", ".cpp"],
+	micropython: [".py"]
 };
 var isObj$1 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 var utf8Bytes = (s) => new TextEncoder().encode(s).length;
@@ -86472,6 +86478,23 @@ function parseNetlist(raw, library) {
 				if (ok && Object.keys(p.settings).length) part.settings = p.settings;
 			}
 		}
+		if (p.code !== void 0) {
+			const c = p.code;
+			const lang = isObj(c) ? c.language : void 0;
+			if (!isObj(c) || typeof c.path !== "string" && typeof c.source !== "string") errors.push(`${at}.code: must be { "language", "path" } or { "language", "source", "file" }`);
+			else if (typeof lang !== "string" || !KNOWN_LANGUAGES.includes(lang)) errors.push(`${at}.code.language: unknown language "${String(lang)}" (${KNOWN_LANGUAGES.join(", ")})`);
+			else if (typeof c.path === "string") {
+				if (!c.path || /^([\\/]|[A-Za-z]:)/.test(c.path) || c.path.split(/[\\/]/).includes("..")) errors.push(`${at}.code.path: must be a relative path inside the netlist's folder, with no ".."`);
+				else part.code = {
+					language: lang,
+					path: c.path
+				};
+			} else {
+				const r = checkCode(c, ref);
+				if (!r.code) errors.push(...r.warnings.map((w) => `${at}.code: ${w}`));
+				else part.code = r.code;
+			}
+		}
 		if (p.on !== void 0) {
 			if (typeof p.on !== "string") errors.push(`${at}.on: must be the ref of a breadboard or rail strip`);
 			else part.on = p.on;
@@ -89907,7 +89930,8 @@ function placeParts(intent, opts) {
 		y: 0,
 		rotation: 0,
 		...p.values ? { values: p.values } : {},
-		...p.settings ? { settings: { ...p.settings } } : {}
+		...p.settings ? { settings: { ...p.settings } } : {},
+		...p.code && "source" in p.code ? { code: p.code } : {}
 	});
 	const modOf = (ref) => mods[inst.get(ref).module];
 	const fp = (ref) => footprint(inst.get(ref), modOf(ref));
@@ -91172,7 +91196,8 @@ function extractNetlist(d, warn) {
 				module: p.module,
 				...p.values && Object.keys(p.values).length ? { values: p.values } : {},
 				...settings ? { settings } : {},
-				...on ? { on } : {}
+				...on ? { on } : {},
+				...p.code ? { code: p.code } : {}
 			};
 		}),
 		nets: order.map((i) => ({
@@ -94579,7 +94604,8 @@ function connectionSheet(intent, raw) {
 			x: i % 8 * 400,
 			y: Math.floor(i / 8) * 400,
 			...p.values ? { values: p.values } : {},
-			...p.settings ? { settings: p.settings } : {}
+			...p.settings ? { settings: p.settings } : {},
+			...p.code && "source" in p.code ? { code: p.code } : {}
 		})),
 		connections: connections.map((c, i) => ({
 			...c,
@@ -95077,6 +95103,58 @@ function loadPartial(raw) {
 	};
 }
 //#endregion
+//#region src/cli/codeFiles.ts
+/** The netlist with every `code.path` replaced by the file's source. `file` names the netlist in messages. */
+function embedCode(raw, dir, file) {
+	if (!isObj(raw) || !Array.isArray(raw.parts)) return raw;
+	const root = realpathSync(dir);
+	return {
+		...raw,
+		parts: raw.parts.map((p) => {
+			if (!isObj(p) || !isObj(p.code) || typeof p.code.path !== "string") return p;
+			const path = p.code.path;
+			const who = `${file}: ${String(p.ref)}'s code ${path}`;
+			let real;
+			try {
+				real = realpathSync(resolve(dir, path));
+			} catch {
+				throw new CliError(`${who} cannot be read`, EXIT.input);
+			}
+			const rel = relative(root, real);
+			if (rel.startsWith("..") || rel.includes(`..${sep}`) || resolve(root, rel) !== real) throw new CliError(`${who} leads outside the netlist's folder`, EXIT.input);
+			const bytes = readFileSync(real);
+			if (bytes.length > 262144) throw new CliError(`${who} is over 256 KB`, EXIT.input);
+			let source;
+			try {
+				source = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+			} catch {
+				throw new CliError(`${who} is not UTF-8 text`, EXIT.input);
+			}
+			return {
+				...p,
+				code: {
+					language: p.code.language,
+					source,
+					file: basename(path)
+				}
+			};
+		})
+	};
+}
+/** Writes each part's inline code beside the netlist as <ref><ext> and references it by path. */
+function writeCode(netlist, outFile, io) {
+	for (const p of netlist.parts) {
+		const c = p.code;
+		if (!isObj(c) || typeof c.source !== "string" || typeof c.language !== "string") continue;
+		const name = `${String(p.ref)}${(LANGUAGE_EXT[c.language] ?? [".txt"])[0]}`;
+		writeFile(io, join(dirname(outFile), name), c.source);
+		p.code = {
+			language: c.language,
+			path: name
+		};
+	}
+}
+//#endregion
 //#region src/cli/layoutCmd.ts
 /** Designators the partial keeps that are not parts of its intent (after repeat expansion). */
 function unknownKept(path, intent, keep) {
@@ -95103,7 +95181,7 @@ function layoutCommand(args, io) {
 		raw = p.intent;
 		keep = p.keep;
 		warnings = unknownKept(keepPath, raw, keep);
-	} else raw = readJson(io, input);
+	} else raw = embedCode(readJson(io, input), dirname(pathIn(io, input)), input);
 	if (!json) for (const w of warnings) io.stderr(`warning: ${w}\n`);
 	const r = layoutNetlist(raw, {
 		keep,
@@ -95384,6 +95462,7 @@ function netlistCommand(args, io) {
 	for (const w of warnings) io.stderr(`warning: ${w}\n`);
 	const netlist = extractNetlist(diagram, (w) => io.stderr(`warning: ${w}\n`));
 	const out = flag(args, "--out") ?? null;
+	if (out) writeCode(netlist, out, io);
 	const text = `${JSON.stringify(netlist, null, 2)}\n`;
 	if (out) writeFile(io, out, text);
 	if (args.flags.has("--json")) printJson(io, {
