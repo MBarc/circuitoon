@@ -1169,8 +1169,10 @@ var STRAPPING_LEVELS = [
 	"low",
 	"either"
 ];
+/** Why a part has no photo ("none: <why>"), "" for a bare "none", or null when it has one or none is given. */
+var noPhotoReason = (v) => v === "none" ? "" : v?.startsWith("none: ") ? v.slice(6) : null;
 /** What is wrong with a `photo` value, or null (shared with the part spec). */
-var photoError = (v) => v === "none" || typeof v === "string" && v.length <= 500 && /^https?:\/\/\S+$/.test(v) ? null : `photo: must be an http(s) URL of a product photo of this exact part, at most 500 characters, or "none" when no photo of it exists`;
+var photoError = (v) => typeof v === "string" && (v === "none" || /^none: \S.{9,199}$/s.test(v) || v.length <= 500 && /^https?:\/\/\S+$/.test(v)) ? null : `photo: must be an http(s) URL of a product photo of this exact part, at most 500 characters, or "none: <why>" (a reason of 10 to 200 characters) when no photo of it exists`;
 /** The id prefix every custom part has and no built-in part may use. */
 var CUSTOM_PREFIX = "custom-";
 /** A part made in the part maker (`custom: true`): user-made and unverified. */
@@ -89918,12 +89920,15 @@ var REBUILD = "rebuild the part with `module new`, embed it and lay out again.";
 * part's name: null when it does. Callers pass only parts outside the library (the gate and check
 * every embedded part not in it, module new and check likewise). custom-part-look (the gate
 * blocks): drawn as the generic box the part maker generates, or no `photo`; the generated chip
-* counts as a real look, since a bare chip looks like that. custom-part-no-photo (a warning):
-* `"photo": "none"` with a real look.
+* counts as a real look, since a bare chip looks like that; a bare "none" also blocks, since
+* nearly every generic part is sold with a photo. custom-part-no-photo (a warning):
+* `"photo": "none: <why>"` with a real look.
 */
 function customLook(m) {
-	if (!m.art || m.art.pinLabels !== "tips" && sameArt(m.art, generatedArt(m))) {
-		if (m.photo === "none") return {
+	const generic = !m.art || m.art.pinLabels !== "tips" && sameArt(m.art, generatedArt(m));
+	const why = noPhotoReason(m.photo);
+	if (generic) {
+		if (why) return {
 			code: "custom-part-look",
 			message: `is drawn as the generic box: ${ART_GUIDE} from the maker's drawing or the typical part, ${REBUILD}`
 		};
@@ -89934,11 +89939,15 @@ function customLook(m) {
 	}
 	if (m.photo === void 0) return {
 		code: "custom-part-look",
-		message: "has no `photo`: record the product photo URL you drew it from in `photo`, or \"none\" if no photo of this part exists anywhere."
+		message: "has no `photo`: record the product photo URL you drew it from in `photo`, or \"none: <why>\" if no photo of this part exists anywhere."
 	};
-	if (m.photo === "none") return {
+	if (why === "") return {
+		code: "custom-part-look",
+		message: "has \"photo\": \"none\" with no reason. Shops sell nearly every generic part (a panel jack, a USB audio adapter, a speaker) with a product photo: find one and record its URL in `photo`. Only when no photo of it exists anywhere, write \"none: <why>\"."
+	};
+	if (why) return {
 		code: "custom-part-no-photo",
-		message: "has \"photo\": \"none\", so its art was not drawn from a photo of the real part. Say so when you present the design."
+		message: `has no photo (${JSON.stringify(why)}), so its art was not drawn from a photo of the real part. Say so when you present the design.`
 	};
 	return null;
 }

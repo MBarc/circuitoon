@@ -39,7 +39,7 @@ const withSpec = (spec: unknown = SPEC) => {
 const json = (s: string) => JSON.parse(s)
 const PHOTO = 'https://example.com/humidity.jpg'
 const GENERIC_TODO = "find the maker's product photo, draw its art per the art guide (references/art.md in the circuitoon-custom-part skill), record the photo URL in `photo`, rebuild the part with `module new`, embed it and lay out again."
-const PHOTO_TODO = 'record the product photo URL you drew it from in `photo`, or "none" if no photo of this part exists anywhere.'
+const PHOTO_TODO = 'record the product photo URL you drew it from in `photo`, or "none: <why>" if no photo of this part exists anywhere.'
 /** SPEC drawn with art of its own (one extra chip on the generated board) and a photo, so it looks real to the gate. */
 const realSpec = async (extra: object = {}) => {
   const plain = json((await cli(['module', 'new', '--spec', 'spec.json'], { cwd: withSpec() })).out)
@@ -134,15 +134,15 @@ describe('circuitoon module check', () => {
     expect(text.out).toMatch(/^OK: custom-test-humidity-sensor-i2c \(Test humidity sensor \(I2C\)\), 4 pins, \d+ x \d+ px, custom \(unverified\)\nwarning \[custom-part-look\] Test humidity sensor \(I2C\) is drawn as the generic box .*\n$/)
   })
 
-  it('warns, never fails, on a part with its own art but no photo, and on "photo": "none"', async () => {
+  it('warns, never fails, on a part with its own art but no photo, and on "photo": "none: <why>"', async () => {
     const own = await realSpec()
     delete (own as { photo?: string }).photo
     const r = await cli(['module', 'new', '--spec', 'spec.json', '--json'], { cwd: withSpec(own) })
     expect(r.code).toBe(0)
     expect(json(r.out).warnings).toEqual([{ code: 'custom-part-look', message: `Test humidity sensor (I2C) has no \`photo\`: ${PHOTO_TODO}` }])
-    const none = await cli(['module', 'new', '--spec', 'spec.json', '-o', 'part.json'], { cwd: withSpec({ ...own, photo: 'none' }) })
+    const none = await cli(['module', 'new', '--spec', 'spec.json', '-o', 'part.json'], { cwd: withSpec({ ...own, photo: 'none: a sensor made for this test only' }) })
     expect(none.code).toBe(0)
-    expect(none.out).toContain('warning [custom-part-no-photo] Test humidity sensor (I2C) has "photo": "none"')
+    expect(none.out).toContain('warning [custom-part-no-photo] Test humidity sensor (I2C) has no photo ("a sensor made for this test only")')
   })
 
   it('says nothing about the look of a part with its own art and a photo', async () => {
@@ -347,14 +347,14 @@ describe('the gate on how custom parts look', () => {
     expect(json((await cli(['module', 'check', 'modules/resistor.json', '--json'])).out).warnings.map((w: { code: string }) => w.code)).not.toContain('custom-part-look')
   }, 60_000)
 
-  it('blocks on a custom part with no photo, and warns on "photo": "none" with art of its own', async () => {
+  it('blocks on a custom part with no photo, and warns on "photo": "none: <why>" with art of its own', async () => {
     const noPhoto = await sheetWith(await realSpec({ name: 'Real sensor' }), { ...(await realSpec({ name: 'Unsourced sensor' })), photo: undefined })
     expect(noPhoto.code).toBe(EXIT.blocked)
     expect(noPhoto.report.blocking.map((f) => f.message)).toEqual([expect.stringMatching(/^U3: Unsourced sensor \[custom-unsourced-sensor\] has no `photo`: record /)])
-    const { code, report } = await sheetWith(await realSpec({ name: 'Real sensor' }), await realSpec({ name: 'No photo sensor', photo: 'none' }))
+    const { code, report } = await sheetWith(await realSpec({ name: 'Real sensor' }), await realSpec({ name: 'No photo sensor', photo: 'none: a sensor made for this test only' }))
     expect(code, JSON.stringify(report.blocking)).toBe(EXIT.ok)
     expect(report.warnings.filter((f) => f.rule.startsWith('custom-part')).map((f) => [f.rule, f.message])).toEqual([
-      ['custom-part-no-photo', expect.stringMatching(/^U3: No photo sensor \[custom-no-photo-sensor\] has "photo": "none"/)],
+      ['custom-part-no-photo', expect.stringMatching(/^U3: No photo sensor \[custom-no-photo-sensor\] has no photo \("a sensor made for this test only"\)/)],
     ])
   }, 60_000)
 })

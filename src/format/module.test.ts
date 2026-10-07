@@ -47,12 +47,12 @@ describe('validateModule', () => {
     if (!many.ok) expect(many.errors).toEqual(['description: must be a non-empty string, at most 300 characters', 'uses: must be a list of 1 to 8 short strings'])
     else expect.unreachable()
   })
-  it('accepts a photo URL or "none", and rejects anything else', () => {
+  it('accepts a photo URL, "none: <why>" or a bare "none", and rejects anything else', () => {
     const pins = [{ name: 'A', side: 'left' }]
-    for (const photo of ['https://cdn-shop.adafruit.com/970x728/2130-06.jpg', 'http://example.com/p.jpg', 'none'])
+    for (const photo of ['https://cdn-shop.adafruit.com/970x728/2130-06.jpg', 'http://example.com/p.jpg', 'none', 'none: a coil wound for this project'])
       expect(validateModule({ ...base, pins, photo }).ok, photo).toBe(true)
-    const msg = 'photo: must be an http(s) URL of a product photo of this exact part, at most 500 characters, or "none" when no photo of it exists'
-    for (const photo of ['None', '', 'ftp://example.com/p.jpg', 'https://example.com/a b.jpg', `https://example.com/${'x'.repeat(481)}`, 3, null]) {
+    const msg = 'photo: must be an http(s) URL of a product photo of this exact part, at most 500 characters, or "none: <why>" (a reason of 10 to 200 characters) when no photo of it exists'
+    for (const photo of ['None', '', 'none: short', 'ftp://example.com/p.jpg', 'https://example.com/a b.jpg', `https://example.com/${'x'.repeat(481)}`, 3, null]) {
       const r = validateModule({ ...base, pins, photo })
       expect(r.ok ? [] : r.errors, String(photo)).toEqual([msg])
     }

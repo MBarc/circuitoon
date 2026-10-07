@@ -6,7 +6,7 @@
 // A custom part is user-made and unverified: `custom: true` and an id starting with "custom-", so it
 // never collides with a built-in id. The checker treats it like any part, using the pin types given.
 import {
-  CUSTOM_PREFIX, GRID, MODULE_FORMAT, MODULE_PX_MAX, PIN_TYPES, SIDES, artShapeErrors, isCustom, isObj, isNum, isSpacer, layoutModule, photoError, validateModule,
+  CUSTOM_PREFIX, GRID, MODULE_FORMAT, MODULE_PX_MAX, PIN_TYPES, SIDES, artShapeErrors, isCustom, isObj, isNum, isSpacer, layoutModule, noPhotoReason, photoError, validateModule,
   type Art, type ArtShape, type ModuleDef, type PinCaps, type PinDef, type PinEntry, type PinType, type Side,
 } from './module.ts'
 import { parseSupply } from './checks.ts'
@@ -52,7 +52,7 @@ export interface PartSpec {
   description?: string
   /** Typical uses ("plant monitor"), for the closest-match search. */
   uses?: string[]
-  /** The product photo the art was drawn from (an http(s) URL), or "none" when no photo exists (see ModuleDef.photo). */
+  /** The product photo the art was drawn from (an http(s) URL), or "none: <why>" when no photo exists (see ModuleDef.photo). */
   photo?: string
 }
 
@@ -578,20 +578,24 @@ const REBUILD = 'rebuild the part with `module new`, embed it and lay out again.
  * part's name: null when it does. Callers pass only parts outside the library (the gate and check
  * every embedded part not in it, module new and check likewise). custom-part-look (the gate
  * blocks): drawn as the generic box the part maker generates, or no `photo`; the generated chip
- * counts as a real look, since a bare chip looks like that. custom-part-no-photo (a warning):
- * `"photo": "none"` with a real look.
+ * counts as a real look, since a bare chip looks like that; a bare "none" also blocks, since
+ * nearly every generic part is sold with a photo. custom-part-no-photo (a warning):
+ * `"photo": "none: <why>"` with a real look.
  */
 // ponytail: "generic" is exact equality with the generated art, so one added shape (and any URL
-// in photo) passes, as does "none" on a part that has a maker; compare shape counts or check the
+// in photo) passes, as does "none: <any reason>" on a part that has a maker; compare shape counts or check the
 // source's maker domain if agents start gaming it.
 export function customLook(m: ModuleDef): LintIssue | null {
   const generic = !m.art || (m.art.pinLabels !== 'tips' && sameArt(m.art, generatedArt(m)))
+  const why = noPhotoReason(m.photo)
   if (generic) {
-    if (m.photo === 'none') return { code: 'custom-part-look', message: `is drawn as the generic box: ${ART_GUIDE} from the maker's drawing or the typical part, ${REBUILD}` }
+    if (why) return { code: 'custom-part-look', message: `is drawn as the generic box: ${ART_GUIDE} from the maker's drawing or the typical part, ${REBUILD}` }
     return { code: 'custom-part-look', message: `is drawn as the generic box${m.photo === undefined ? ' and has no `photo`' : ''}: find the maker's product photo, ${ART_GUIDE}, record the photo URL in \`photo\`, ${REBUILD}` }
   }
-  if (m.photo === undefined) return { code: 'custom-part-look', message: 'has no `photo`: record the product photo URL you drew it from in `photo`, or "none" if no photo of this part exists anywhere.' }
-  if (m.photo === 'none') return { code: 'custom-part-no-photo', message: 'has "photo": "none", so its art was not drawn from a photo of the real part. Say so when you present the design.' }
+  if (m.photo === undefined) return { code: 'custom-part-look', message: 'has no `photo`: record the product photo URL you drew it from in `photo`, or "none: <why>" if no photo of this part exists anywhere.' }
+  if (why === '')
+    return { code: 'custom-part-look', message: 'has "photo": "none" with no reason. Shops sell nearly every generic part (a panel jack, a USB audio adapter, a speaker) with a product photo: find one and record its URL in `photo`. Only when no photo of it exists anywhere, write "none: <why>".' }
+  if (why) return { code: 'custom-part-no-photo', message: `has no photo (${JSON.stringify(why)}), so its art was not drawn from a photo of the real part. Say so when you present the design.` }
   return null
 }
 

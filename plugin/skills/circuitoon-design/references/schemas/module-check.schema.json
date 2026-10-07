@@ -20,7 +20,7 @@
       "description": "The drawn body in px, or null when the module is not valid."
     },
     "errors": { "$ref": "#/$defs/issues" },
-    "warnings": { "$ref": "#/$defs/issues", "description": "Never fail the check. (There is no notes field: the generic-art note of earlier versions is now the custom-part-look warning.) custom-part-look: a part outside the library drawn as the generic box or with no photo; the gate blocks on it, so find the maker's product photo, draw its art per the art guide (references/art.md in the circuitoon-custom-part skill) and record the photo URL in photo. custom-part-no-photo: photo is \"none\"; the gate lists it as a warning." }
+    "warnings": { "$ref": "#/$defs/issues", "description": "Never fail the check. (There is no notes field: the generic-art note of earlier versions is now the custom-part-look warning.) custom-part-look: a part outside the library drawn as the generic box, with no photo, or with a bare \"none\"; the gate blocks on it, so find the maker's product photo, draw its art per the art guide (references/art.md in the circuitoon-custom-part skill) and record the photo URL in photo. custom-part-no-photo: photo is \"none: <why>\"; the gate lists it as a warning." }
   },
   "$defs": {
     "issues": {

@@ -40,7 +40,7 @@ Run `circuitoon parts --search <text>` with the chip name and the board name. If
 
    **The photo is the check on the pin order.** List the pins in the order they physically sit on the board's header or pads, side by side as printed on the silkscreen, read from the photo and the maker's board drawing. Pinout pages and datasheets often group pins by function (power, then I2C, then the rest), which is NOT the physical order. The PAM8302 amp's pins listed by function are VIN, GND, A+, A-, SD; its header reads A+, A-, SD, Vin, Gnd. When the photo and the pinout page disagree on the order, the photo wins.
 
-   Record the photo's URL in the spec's `photo`. Only when no photo of the part exists anywhere (a generic part with no maker) write `"photo": "none"`, draw from the maker's dimension drawing or description, and tell the user the drawing was not checked against a photo. The gate blocks on a custom part with no `photo`.
+   Record the photo's URL in the spec's `photo`. Generic parts have photos too: a panel jack, a USB audio adapter, a speaker or a fuse holder is sold by Adafruit, SparkFun, DigiKey or Amazon with a product photo, so draw from one of those. Only when no photo of the part exists anywhere (a part made for this one project) write `"photo": "none: <why>"`, draw from the maker's dimension drawing or description, and tell the user the drawing was not checked against a photo. A bare `"none"` blocks the gate. The gate blocks on a custom part with no `photo`.
 
 6. **Write the spec** (`circuitoon-part-spec/1`, schema in `../circuitoon-design/references/schemas/part-spec.schema.json`):
 
@@ -69,7 +69,7 @@ Run `circuitoon parts --search <text>` with the chip name and the board name. If
 
    - **Cite every URL** you used in `source`: the maker's datasheet first, then the second source.
    - **Physical order.** List the pins in the order they physically sit on the header or pads, as the photo and the silkscreen show them (step 5), never in the order a pinout table groups them by function. Seen from the component side: left and right pins top to bottom, top and bottom pins left to right. Put `null` where a header has a gap.
-   - **photo**: the URL of the product photo you drew from (step 5), or `"none"` when no photo exists anywhere.
+   - **photo**: the URL of the product photo you drew from (step 5), or `"none: <why>"` when no photo exists anywhere.
    - **Names** are the silkscreen text. A repeated name (three GND pins) is numbered for you: `GND`, `GND 2`, `GND 3`, each labelled `GND`. If the datasheet says they are joined on the board, list them in `internal`.
    - **Types** are `power_in`, `power_out`, `ground`, `input`, `output`, `io`, `passive` or `nc`. Leave a type out when the datasheet does not make it clear. The checker uses exactly what you give, so a wrong type is a wrong finding.
    - **Supply** is the rails a power pin takes or gives, from the datasheet's range: `"3V3"`, `"5V"`, `"3V3/5V"`.
@@ -85,9 +85,9 @@ Run `circuitoon parts --search <text>` with the chip name and the board name. If
    circuitoon module check part.json
    ```
 
-   `module new` also reads the spec on standard input. It writes nothing when the lint finds an error. Fix every error. Read every warning: a power pin with no type or supply means the checker cannot catch a wrong voltage on it, so fix it from the datasheet or tell the user why you could not. `custom-part-look` (drawn as the generic box, or no `photo`) blocks the gate later: fix it now. `custom-part-no-photo` (`"photo": "none"`) is listed by the gate as a warning to pass on. A part made with `"style": "chip"` and no `art` counts as drawn (a bare chip looks like that), but it still needs `photo`.
+   `module new` also reads the spec on standard input. It writes nothing when the lint finds an error. Fix every error. Read every warning: a power pin with no type or supply means the checker cannot catch a wrong voltage on it, so fix it from the datasheet or tell the user why you could not. `custom-part-look` (drawn as the generic box, no `photo`, or a bare `"none"`) blocks the gate later: fix it now. `custom-part-no-photo` (`"photo": "none: <why>"`) is listed by the gate as a warning to pass on. A part made with `"style": "chip"` and no `art` counts as drawn (a bare chip looks like that), but it still needs `photo`.
 
-   Known limits, so do not lean on them: the gate only spots art that is exactly the generated box, so art with one shape added passes; and `"photo": "none"` only warns, even on a part that has a maker. Neither makes the drawing right.
+   Known limits, so do not lean on them: the gate only spots art that is exactly the generated box, so art with one shape added passes; and `"photo": "none: <why>"` only warns, whatever the reason says. Neither makes the drawing right.
 
 8. **Render it and compare it with the photo.**
 
