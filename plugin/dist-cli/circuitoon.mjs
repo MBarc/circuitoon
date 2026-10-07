@@ -1069,6 +1069,10 @@ function fileProblem(name) {
 	return null;
 }
 /** A part's `code` as loaded: the value to keep (the same object when nothing changed), or null to drop it, and the warnings in words. */
+/** Why a netlist `code.path` is refused (firmware spec 7), or null: relative, inside the netlist's folder, no "..". */
+function pathProblem(path) {
+	return !path || /^([\\/]|[A-Za-z]:)/.test(path) || path.split(/[\\/]/).includes("..") ? "must be a relative path inside the netlist's folder, with no \"..\"" : null;
+}
 function checkCode(raw, who) {
 	const drop = (why) => ({
 		code: null,
@@ -86484,7 +86488,7 @@ function parseNetlist(raw, library) {
 			if (!isObj(c) || typeof c.path !== "string" && typeof c.source !== "string") errors.push(`${at}.code: must be { "language", "path" } or { "language", "source", "file" }`);
 			else if (typeof lang !== "string" || !KNOWN_LANGUAGES.includes(lang)) errors.push(`${at}.code.language: unknown language "${String(lang)}" (${KNOWN_LANGUAGES.join(", ")})`);
 			else if (typeof c.path === "string") {
-				if (!c.path || /^([\\/]|[A-Za-z]:)/.test(c.path) || c.path.split(/[\\/]/).includes("..")) errors.push(`${at}.code.path: must be a relative path inside the netlist's folder, with no ".."`);
+				if (pathProblem(c.path)) errors.push(`${at}.code.path: ${pathProblem(c.path)}`);
 				else part.code = {
 					language: lang,
 					path: c.path
@@ -95114,16 +95118,18 @@ function embedCode(raw, dir, file) {
 			if (!isObj(p) || !isObj(p.code) || typeof p.code.path !== "string") return p;
 			const path = p.code.path;
 			const who = `${file}: ${String(p.ref)}'s code ${path}`;
+			if (pathProblem(path)) throw new CliError(`${who} leads outside the netlist's folder`, EXIT.input);
 			let real;
 			try {
 				real = realpathSync(resolve(dir, path));
 			} catch {
 				throw new CliError(`${who} cannot be read`, EXIT.input);
 			}
-			const rel = relative(root, real);
-			if (rel.startsWith("..") || rel.includes(`..${sep}`) || resolve(root, rel) !== real) throw new CliError(`${who} leads outside the netlist's folder`, EXIT.input);
+			if (real !== root && !real.startsWith(root + sep)) throw new CliError(`${who} leads outside the netlist's folder`, EXIT.input);
+			const st = statSync(real);
+			if (!st.isFile()) throw new CliError(`${who} cannot be read`, EXIT.input);
+			if (st.size > 262144) throw new CliError(`${who} is over 256 KB`, EXIT.input);
 			const bytes = readFileSync(real);
-			if (bytes.length > 262144) throw new CliError(`${who} is over 256 KB`, EXIT.input);
 			let source;
 			try {
 				source = new TextDecoder("utf-8", { fatal: true }).decode(bytes);

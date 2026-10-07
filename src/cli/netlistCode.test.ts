@@ -67,4 +67,25 @@ describe('code in netlists (spec 7)', () => {
     const m = await cli(['layout', 'm.json', '-o', 'sheet.json'], { cwd: dir })
     expect([m.code, m.err]).toEqual([2, "m.json: U1's code nope.py cannot be read\n"])
   })
+  it('refuses bad paths, oversize and non-UTF-8 files through layout, and a junction out of the folder', async () => {
+    const dir = tempDir()
+    const outside = tempDir()
+    writeFileSync(join(outside, 'secret.py'), 'print(1)\n')
+    writeFileSync(join(dir, 'big.py'), 'x'.repeat(256 * 1024 + 1))
+    writeFileSync(join(dir, 'bin.py'), Buffer.from([0xff, 0xfe, 0x00]))
+    mkdirSync(join(dir, 'sub'))
+    writeFileSync(join(dir, 'blink.py'), BLINK)
+    symlinkSync(outside, join(dir, 'jct'), 'junction')
+    const run = async (path: string) => {
+      writeFileSync(join(dir, 'p.json'), JSON.stringify(net({ language: 'python-rpi', path })))
+      const r = await cli(['layout', 'p.json', '-o', 'sheet.json'], { cwd: dir })
+      return [r.code, r.err]
+    }
+    const away = (p: string) => [2, `p.json: U1's code ${p} leads outside the netlist's folder\n`]
+    for (const p of ['sub/../blink.py', 'sub\\..\\blink.py', 'D:\\secret.py', 'C:secret.py', '\\\\host\\share\\x.py', '/etc/x.py', '\\x.py', 'jct/secret.py']) expect(await run(p), p).toEqual(away(p))
+    expect(await run('sub')).toEqual([2, "p.json: U1's code sub cannot be read\n"])
+    expect(await run('big.py')).toEqual([2, "p.json: U1's code big.py is over 256 KB\n"])
+    expect(await run('bin.py')).toEqual([2, "p.json: U1's code bin.py is not UTF-8 text\n"])
+    expect((await run('blink.py'))[0]).toBe(0)
+  })
 })

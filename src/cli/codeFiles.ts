@@ -1,9 +1,9 @@
 // Code files beside a netlist (firmware spec 7). layout reads each part's `code.path` (relative,
 // inside the netlist's folder, no "..", and not out of it through a symlink) and embeds the source;
 // `netlist -o` writes each board's code next to the netlist as <designator><ext> and points at it.
-import { readFileSync, realpathSync } from 'node:fs'
-import { basename, dirname, join, relative, resolve, sep } from 'node:path'
-import { LANGUAGE_EXT, SOURCE_MAX_BYTES } from '../format/code.ts'
+import { readFileSync, realpathSync, statSync } from 'node:fs'
+import { basename, dirname, join, resolve, sep } from 'node:path'
+import { LANGUAGE_EXT, SOURCE_MAX_BYTES, pathProblem } from '../format/code.ts'
 import { isObj } from '../format/module.ts'
 import { CliError, EXIT, type Io, writeFile } from './io.ts'
 
@@ -17,16 +17,18 @@ export function embedCode(raw: unknown, dir: string, file: string): unknown {
       if (!isObj(p) || !isObj(p.code) || typeof p.code.path !== 'string') return p
       const path = p.code.path
       const who = `${file}: ${String(p.ref)}'s code ${path}`
+      if (pathProblem(path)) throw new CliError(`${who} leads outside the netlist's folder`, EXIT.input)
       let real: string
       try {
         real = realpathSync(resolve(dir, path))
       } catch {
         throw new CliError(`${who} cannot be read`, EXIT.input)
       }
-      const rel = relative(root, real)
-      if (rel.startsWith('..') || rel.includes(`..${sep}`) || resolve(root, rel) !== real) throw new CliError(`${who} leads outside the netlist's folder`, EXIT.input)
+      if (real !== root && !real.startsWith(root + sep)) throw new CliError(`${who} leads outside the netlist's folder`, EXIT.input)
+      const st = statSync(real)
+      if (!st.isFile()) throw new CliError(`${who} cannot be read`, EXIT.input)
+      if (st.size > SOURCE_MAX_BYTES) throw new CliError(`${who} is over 256 KB`, EXIT.input)
       const bytes = readFileSync(real)
-      if (bytes.length > SOURCE_MAX_BYTES) throw new CliError(`${who} is over 256 KB`, EXIT.input)
       let source: string
       try {
         source = new TextDecoder('utf-8', { fatal: true }).decode(bytes)

@@ -4,7 +4,7 @@
 // also holds for every copy. Pure.
 import { type ModuleDef, type PinDef, PARAM_RULES, isBoard, isNetLabel, isObj, isNum, isSpacer, moduleSettings, usbOf, validParamValue, validateModule } from '../format/module.ts'
 import { mainsOf } from '../format/mainsModel.ts'
-import { type PartCode, KNOWN_LANGUAGES, checkCode } from '../format/code.ts'
+import { type PartCode, KNOWN_LANGUAGES, checkCode, pathProblem } from '../format/code.ts'
 import { isSimValueKey, simValueProblem } from '../format/simState.ts'
 import { withLibraryData } from '../format/simModel.ts'
 import { type Diagram, ANNOTATION_LABEL_MAX, PROBE_ID, ANNOTATION_TEXT_MAX, isValidColor, moduleOf } from '../format/diagram.ts'
@@ -204,7 +204,7 @@ export function parseNetlist(raw: unknown, library: ModuleLookup): IntentResult 
       if (!isObj(c) || (typeof c.path !== 'string' && typeof c.source !== 'string')) errors.push(`${at}.code: must be { "language", "path" } or { "language", "source", "file" }`)
       else if (typeof lang !== 'string' || !(KNOWN_LANGUAGES as readonly string[]).includes(lang)) errors.push(`${at}.code.language: unknown language "${String(lang)}" (${KNOWN_LANGUAGES.join(', ')})`)
       else if (typeof c.path === 'string') {
-        if (!c.path || /^([\\/]|[A-Za-z]:)/.test(c.path) || c.path.split(/[\\/]/).includes('..')) errors.push(`${at}.code.path: must be a relative path inside the netlist's folder, with no ".."`)
+        if (pathProblem(c.path)) errors.push(`${at}.code.path: ${pathProblem(c.path)}`)
         else part.code = { language: lang, path: c.path }
       } else {
         const r = checkCode(c, ref)

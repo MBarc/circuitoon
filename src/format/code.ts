@@ -30,6 +30,11 @@ export function fileProblem(name: unknown): string | null {
 }
 
 /** A part's `code` as loaded: the value to keep (the same object when nothing changed), or null to drop it, and the warnings in words. */
+/** Why a netlist `code.path` is refused (firmware spec 7), or null: relative, inside the netlist's folder, no "..". */
+export function pathProblem(path: string): string | null {
+  return !path || /^([\\/]|[A-Za-z]:)/.test(path) || path.split(/[\\/]/).includes('..') ? "must be a relative path inside the netlist's folder, with no \"..\"" : null
+}
+
 export function checkCode(raw: unknown, who: string): { code: PartCode | null; warnings: string[] } {
   const drop = (why: string) => ({ code: null, warnings: [`${who}'s code was dropped: ${why}`] })
   if (!isObj(raw)) return drop('it must be { "language", "source", "file" }')
