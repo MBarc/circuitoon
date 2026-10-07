@@ -5,7 +5,7 @@
 // the buttons, Alt+Up/Down or by dragging (onto another edge of the body to move a pin there), and
 // pasted as lines ("1 VCC power", "GND"). Saving needs a part with no errors.
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react'
-import { PIN_TYPES, SIDES, isSpacer, pinRoom, type PinType, type Side } from '../format/module.ts'
+import { DESCRIPTION_MAX, PIN_TYPES, SIDES, isSpacer, pinRoom, type PinType, type Side } from '../format/module.ts'
 import { BODY_COLORS, DEFAULT_COLORS, lintModule, parsePinLines, unmodeled, type PartStyle } from '../format/partMaker.ts'
 import { CATEGORY_ORDER } from './libraryGroups.ts'
 import { Part, partBounds } from '../render/Part.tsx'
@@ -159,6 +159,12 @@ export function PartMaker({ editing, taken, onSave, onExport, onCancel, extra, i
           </label>
           <label className="field">Datasheet and pinout links <span className="pm-opt">one per line</span>
             <textarea rows={3} value={draft.source} placeholder="https://..." onChange={(e) => update({ ...draft, source: e.target.value })} />
+          </label>
+          <label className="field">Description <span className="pm-opt">optional</span>
+            <input data-testid="pm-description" value={draft.description} maxLength={DESCRIPTION_MAX} placeholder="Measures current and voltage over I2C." onChange={(e) => update({ ...draft, description: e.target.value })} />
+          </label>
+          <label className="field">Typical uses <span className="pm-opt">comma separated, optional</span>
+            <input data-testid="pm-uses" value={draft.uses} placeholder="battery monitor, solar logger" onChange={(e) => update({ ...draft, uses: e.target.value })} />
           </label>
           <fieldset className="pm-style" disabled={pinsOnly}>
             <legend>Drawn as</legend>

@@ -1,10 +1,12 @@
 // Built-in parts. Drag one onto the sheet, or click it to drop it in the middle of the view.
 // Grouped by category (see libraryGroups.ts) with a search box and collapsible groups, so the
-// panel stays organized as more parts are added. My parts (the person's custom parts, see
+// panel stays organized as more parts are added. While searching, Closest matches below the exact
+// results ranks parts described in words ("a touch display for the rpi", see partSearch.ts). My parts (the person's custom parts, see
 // myParts.ts) sit at the top with New part and Import part; each has Edit, Duplicate, Export and
 // Delete (and whatever `partActions` adds, such as Submit to library).
 import { type ReactNode, useMemo, useState, useSyncExternalStore } from 'react'
-import { library } from '../library.ts'
+import { library, partText } from '../library.ts'
+import { partTextOf, rankParts } from '../format/partSearch.ts'
 import { Part, partBounds } from '../render/Part.tsx'
 import { groupLibrary, searchLibrary } from './libraryGroups.ts'
 import type { ModuleDef } from '../format/module.ts'
@@ -14,6 +16,8 @@ export const MODULE_MIME = 'application/x-circuitoon-module'
 
 const COLLAPSED_KEY = 'circuitoon.library.collapsed'
 const MY_PARTS = 'My parts'
+/** How many ranked closest matches the search shows under the exact results. */
+const CLOSEST = 5
 
 /** Which groups the person collapsed last time, remembered per browser. Storage can fail
  * (private browsing, a full quota, a disabled API) and the panel must still work: every access
@@ -43,6 +47,7 @@ function LibItem({ m, onAdd, custom = false }: { m: ModuleDef; onAdd: (moduleId:
     <button
       type="button"
       className={custom ? 'lib-item mine' : 'lib-item'}
+      title={partTextOf(m, partText)?.description || undefined}
       draggable
       onDragStart={(ev) => {
         ev.dataTransfer.setData(MODULE_MIME, m.id)
@@ -106,6 +111,14 @@ export function LibraryPanel({ onAdd, parts: handlers }: { onAdd: (moduleId: str
 
   const searching = query.trim() !== ''
   const visibleGroups = useMemo(() => searchLibrary(groups, query), [groups, query])
+  // The parts nearest a description in words, after the exact results and without repeating them.
+  const closest = useMemo(() => {
+    if (!searching) return []
+    const shown = new Set([...visibleGroups.flatMap((g) => g.modules.map((m) => m.id)), ...(handlers ? shownMine.map((p) => p.module.id) : [])])
+    const candidates = [...modules, ...(handlers ? mine.map((p) => p.module) : [])].filter((m) => !shown.has(m.id))
+    return rankParts(candidates, query, partText, CLOSEST)
+  }, [searching, visibleGroups, shownMine, mine, modules, handlers, query])
+  const mineIds = useMemo(() => new Set(mine.map((p) => p.module.id)), [mine])
 
   function toggle(category: string) {
     const next = new Set(collapsed)
@@ -164,7 +177,7 @@ export function LibraryPanel({ onAdd, parts: handlers }: { onAdd: (moduleId: str
           </div>
         )
       })()}
-      {visibleGroups.length === 0 && (!handlers || !shownMine.length) && <p className="hint">No parts match</p>}
+      {visibleGroups.length === 0 && (!handlers || !shownMine.length) && <p className="hint">{closest.length ? 'No exact matches' : 'No parts match'}</p>}
       {visibleGroups.map((g) => {
         const expanded = searching || !collapsed.has(g.category)
         return (
@@ -189,6 +202,17 @@ export function LibraryPanel({ onAdd, parts: handlers }: { onAdd: (moduleId: str
           </div>
         )
       })}
+      {closest.length > 0 && (
+        <div className="lib-group closest-group">
+          <button type="button" className="lib-group-head" aria-expanded aria-disabled>
+            <span>Closest matches</span>
+            <span className="lib-group-count">{closest.length}</span>
+          </button>
+          <div className="lib-group-items">
+            {closest.map(({ module: m }) => <LibItem key={m.id} m={m} onAdd={onAdd} custom={mineIds.has(m.id)} />)}
+          </div>
+        </div>
+      )}
     </aside>
   )
 }
