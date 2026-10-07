@@ -8,7 +8,7 @@ import { libraryLookup } from '../agent/catalog.ts'
 import { StartScreen } from './StartScreen.tsx'
 import { Editor } from './Editor.tsx'
 
-type Doc = { diagram: Diagram; warnings?: string[]; key: number }
+type Doc = { diagram: Diagram; warnings?: string[]; key: number; linkCode?: boolean }
 
 /** Back to `#/editor`, keeping the path and query, without a navigation. */
 function clearPayload() {
@@ -44,7 +44,7 @@ export function EditorApp() {
         if (open && dirty.current && !window.confirm(`Discard unsaved changes to ${open.diagram.title} and open the linked diagram?`)) return
         dirty.current = false
         setLinkError(null)
-        setDoc({ diagram: r.diagram, warnings: r.warnings, key: Date.now() })
+        setDoc({ diagram: r.diagram, warnings: r.warnings, key: Date.now(), linkCode: r.diagram.parts.some((p) => p.code) })
       })
     }
     check()
@@ -71,6 +71,7 @@ export function EditorApp() {
       key={doc.key}
       initial={doc.diagram}
       warnings={doc.warnings}
+      linkCode={doc.linkCode}
       onClose={() => setDoc(null)}
       onDirty={(v) => {
         dirty.current = v

@@ -40,7 +40,13 @@ export function resetModules(py: PyodideLike): void {
 
 export function runMain(py: PyodideLike, source: string, file: string): 'done' | 'stopped' | 'error' {
   const g = py.toPy({ SRC: source, FILE: file })
-  return py.runPython('import _circuitoon\n_circuitoon.main(SRC, FILE)', { globals: g }) as 'done' | 'stopped' | 'error'
+  try {
+    return py.runPython('import _circuitoon\n_circuitoon.main(SRC, FILE)', { globals: g }) as 'done' | 'stopped' | 'error'
+  } catch (e) {
+    // A Stop just after 'ready' lands while Pyodide still compiles this line, outside main's own handler.
+    if ((e as { type?: string }).type === 'KeyboardInterrupt') return 'stopped'
+    throw e
+  }
 }
 
 /** makeHw's `fail`: raises a Python ValueError with `message` (a Python exception thrown through JS arrives in Python as itself). */

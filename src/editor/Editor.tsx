@@ -18,6 +18,7 @@ import { PART_FILE, cleanBaseName, downloadText, saveWithPicker, type SavePicker
 import { ExportDialog } from './ExportDialog.tsx'
 import { copyText, submissionUrl, submitToLibrary } from './partSubmit.ts'
 import { markUnsaved } from '../isolation.ts'
+import { disposeRuns } from './running.ts'
 import './editor.css'
 import './partMaker.css'
 
@@ -313,8 +314,8 @@ function usePartMaker(store: EditorStore, canvas: { current: CanvasApi | null })
   return { handlers, editModule, updateModule, ui }
 }
 
-export function Editor({ initial, warnings, onClose, onDirty }: { initial: Diagram; warnings?: string[]; onClose: () => void; onDirty?: (dirty: boolean) => void }) {
-  const store = useMemo(() => new EditorStore(initial), [initial])
+export function Editor({ initial, warnings, linkCode, onClose, onDirty }: { initial: Diagram; warnings?: string[]; linkCode?: boolean; onClose: () => void; onDirty?: (dirty: boolean) => void }) {
+  const store = useMemo(() => new EditorStore(initial, { linkCode }), [initial, linkCode])
   const canvasApi = useRef<CanvasApi | null>(null)
   useEditorKeys(store)
   useEditorClipboard(store, canvasApi)
@@ -330,6 +331,8 @@ export function Editor({ initial, warnings, onClose, onDirty }: { initial: Diagr
   }, [dirty, onDirty])
   // Closing the sheet leaves nothing unsaved behind.
   useEffect(() => () => markUnsaved(false), [])
+  // Closing the sheet stops its boards.
+  useEffect(() => () => disposeRuns(store), [store])
   const parts = usePartMaker(store, canvasApi)
   // Only the tool: the whole state would re-render the editor (and the canvas) on every change.
   const simTool = useSyncExternalStore(store.subscribe, () => store.getState().simTool)

@@ -4,7 +4,10 @@
 // only the user's frames (R11), input() waits for a line (R12), threads and unsupported modules fail
 // with the spec's words, Stop is a KeyboardInterrupt that runs finally blocks.
 import { describe, expect, it } from 'vitest'
+import { loadPyodide } from 'pyodide'
 import { runScript } from './pyHarness.testing.ts'
+import { PY_FILES } from './pyFiles.ts'
+import { type PyodideLike, installFiles, runMain } from './worker/serve.ts'
 
 describe('the Python run-time (spec 5.2, 5.3)', () => {
   it('sleeps on the run clock and reads time from it', async () => {
@@ -101,5 +104,13 @@ describe('the Python run-time (spec 5.2, 5.3)', () => {
     expect(await stopped("    LED(17).blink(on_time=float('inf'))\n    pause()")).toEqual(['stopped', '', '2.0\n'])
     expect(await stopped("    LED(17).blink(on_time=float('inf'), background=False)")).toEqual(['stopped', '', '2.0\n'])
     expect(await stopped("    time.sleep(float('inf'))")).toEqual(['stopped', '', '2.0\n'])
+  })
+  it('calls a Stop that lands before the script starts (Pyodide still compiling) stopped, not an error (spec 5.4)', async () => {
+    const p = (await loadPyodide()) as unknown as PyodideLike
+    installFiles(p, PY_FILES)
+    const buf = new Int32Array(new SharedArrayBuffer(4))
+    p.setInterruptBuffer(buf)
+    buf[0] = 2
+    expect(runMain(p, 'print(1)\n', 'main.py')).toBe('stopped')
   })
 })
