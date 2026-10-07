@@ -29,7 +29,84 @@
   },
   "electrical": {
     "model": "servo",
-    "params": {}
+    "params": {},
+    "sim": {
+      "power": {
+        "domains": [
+          {
+            "name": "VCC",
+            "pin": "VCC",
+            "ret": "GND",
+            "nominal": 5
+          }
+        ],
+        "draw": [
+          {
+            "domain": "VCC",
+            "typical": {
+              "value": 0.01,
+              "unit": "A",
+              "source": "https://protosupplies.com/product/servo-motor-micro-sg90/",
+              "provenance": "estimate",
+              "note": "Idle current, horn holding position. ProtoSupplies (a distributor, not Tower Pro) product page, specifications table, for a unit it lists as \"Generic SG90 (China)\": \"Current (idle) 10mA (typical)\", and the text \"current draw about 10mA at idle\" on 5 V. Tower Pro's SG90 pages give no idle current, so this is flagged."
+            },
+            "peak": {
+              "value": 0.36,
+              "unit": "A",
+              "source": "https://protosupplies.com/product/servo-motor-micro-sg90/",
+              "provenance": "estimate",
+              "note": "Stall current. DISPUTED, readings differ widely: ProtoSupplies (a distributor, not Tower Pro; unit listed as \"Generic SG90 (China)\") specifications table: \"Current (stall) 360mA (measured)\" on 5 V, sample size and test conditions not given; Circuit Rocks' SG90 page (https://docs.circuit.rocks/motors/sg90-servo/): \"Stall current ~550 mA\", no conditions; Tower Pro's SG90 Digital page (https://towerpro.com.tw/product/sg90-7/), an admin reply in its reviews: \"The operation current for our SG90 is about 0.5A - 2A\", not stated as a stall figure and not on the SG90 Analog page. 0.36 A is the lowest of these. Kept at or above the moving current (0.175 A), as the simulation needs.",
+              "label": "stalled"
+            }
+          }
+        ]
+      },
+      "servo": {
+        "shaft": {
+          "x": 122,
+          "y": 24
+        },
+        "signal": "PWM",
+        "pulseMin": {
+          "value": 0.0005,
+          "unit": "s",
+          "source": "https://www.friendlywire.com/projects/ne555-servo-safe/SG90-datasheet.pdf https://handsontec.com/dataspecs/motor_fan/SG90-Servo.pdf",
+          "provenance": "estimate",
+          "note": "500 us for 0 degrees: the travel real units show, as sellers list it (FriendlyWire's compiled SG90 PDF p. 2 \"TowerPro SG90 - Micro Servo\": \"Pulse Width: 500-2400 us\", \"Rotational Range: 180\"; Handsontec SG90 user guide p. 1: \"Pulse Width: 500-2400 us\"). Flagged because it conflicts with the Tower Pro SG90 sheet's 1 to 2 ms for -90 to +90 degrees (FriendlyWire PDF p. 1: \"-90\" (~1ms pulse), \"0\" (1.5 ms), \"90\" (~2ms)). Individual units differ; the mechanical end stop may come before 500 us."
+        },
+        "pulseMax": {
+          "value": 0.0024,
+          "unit": "s",
+          "source": "https://www.friendlywire.com/projects/ne555-servo-safe/SG90-datasheet.pdf https://handsontec.com/dataspecs/motor_fan/SG90-Servo.pdf",
+          "provenance": "estimate",
+          "note": "2400 us for 180 degrees: the travel real units show, as sellers list it (FriendlyWire's compiled SG90 PDF p. 2: \"Pulse Width: 500-2400 us\"; Handsontec SG90 user guide p. 1: \"Pulse Width: 500-2400 us\"). Flagged because it conflicts with the Tower Pro SG90 sheet's 1 to 2 ms for -90 to +90 degrees (FriendlyWire PDF p. 1). Individual units differ."
+        },
+        "slew": {
+          "value": 0.1,
+          "unit": "s",
+          "source": "https://towerpro.com.tw/product/sg90-analog/ https://www.friendlywire.com/projects/ne555-servo-safe/SG90-datasheet.pdf",
+          "provenance": "datasheet",
+          "note": "Time per 60 degrees of travel, at 4.8 V; load not stated by Tower Pro (servo speeds are conventionally quoted unloaded). Tower Pro's SG90 Analog product page, PRODUCT CONFIGURE TABLE: \"Speed(sec/60deg) 0.1\" (torque column at 4.8v); Tower Pro's SG90 Digital page (https://towerpro.com.tw/product/sg90-7/): \"Operating speed: 0.1sec/60degree(4.8v)\" and 0.1 in its table; the widely copied SG90 sheet (unbranded, pictures a Tower Pro unit; FriendlyWire's compiled PDF, p. 1): \"Operating speed: 0.1 s/60 degree\", operating voltage 4.8 V (~5V). Conflict: the same SG90 Analog page's Specifications list says \"0.12 sec/60degree(4.8v)\", as do Handsontec's guide p. 1 and ProtoSupplies' table (\"0.12s / 60 degree\"). Kept as datasheet because Tower Pro's own pages state 0.1 s; real units may be up to 20% slower."
+        },
+        "moving": {
+          "value": 0.175,
+          "unit": "A",
+          "source": "https://protosupplies.com/product/servo-motor-micro-sg90/",
+          "provenance": "estimate",
+          "note": "Current while the horn travels. ProtoSupplies (a distributor, not Tower Pro; unit listed as \"Generic SG90 (China)\") product page, specifications table: \"Current (typical during movement) 100-250mA\", on 5 V, \"depending on how it is being operated\"; the midpoint is taken. Tower Pro publishes no moving current in its specifications; an admin reply on its SG90 Digital page (https://towerpro.com.tw/product/sg90-7/) says \"The operation current for our SG90 is about 0.5A - 2A\", without conditions. Below the stall peak (0.36 A)."
+        },
+        "signalLoad": {
+          "value": 100000,
+          "unit": "ohm",
+          "provenance": "estimate",
+          "note": "The PWM input's resistance to GND. No source: Tower Pro publishes no schematic and does not name the control IC, and no input impedance figure was found. A hobby servo's signal pin drives a logic input, so the DC load is small; 100 kohm assumed, about 33 uA from a 3.3 V GPIO or 50 uA from 5 V. Treat the number as a placeholder for \"a light load\", not a measurement."
+        }
+      },
+      "unaccounted": [
+        "Inrush and start-up spikes when the motor starts: no sourced figure; the simulation uses only the idle, moving and stall currents.",
+        "Current under a load on the horn: the moving current is for bench use; a loaded horn draws more, up to the stall current."
+      ]
+    }
   },
   "art": {
     "w": 150,
@@ -160,7 +237,8 @@
         "w": 44,
         "h": 16,
         "fill": "#F4F6F8",
-        "radius": 8
+        "radius": 8,
+        "horn": true
       },
       {
         "type": "rect",
@@ -169,7 +247,8 @@
         "w": 16,
         "h": 16,
         "fill": "#F4F6F8",
-        "radius": 8
+        "radius": 8,
+        "horn": true
       },
       {
         "type": "rect",
@@ -179,7 +258,8 @@
         "h": 6,
         "fill": "#8E96A1",
         "radius": 3,
-        "outline": false
+        "outline": false,
+        "horn": true
       },
       {
         "type": "rect",

@@ -5,6 +5,7 @@
 // repeats, the channel allocation table. An invalid netlist exits 2; one that cannot be laid out
 // (no seat, needs a distribution point, strip full, blocked routes) exits 1. A partial that names a
 // part its intent lacks is laid out anyway, with a warning (stderr, or `warnings` in --json).
+import { dirname } from 'node:path'
 import { serializeDiagram } from '../format/diagram.ts'
 import { libraryLookup } from '../agent/catalog.ts'
 import { SPACINGS, layoutNetlist } from '../agent/layout.ts'
@@ -16,7 +17,8 @@ import { reportText } from '../agent/readability.ts'
 import { LABEL_MODES, type LabelMode } from '../agent/labelling.ts'
 import { bomQuantities, channelTable, channelsText, quantitiesText, sheetBom } from '../agent/tables.ts'
 import type { Args } from './args.ts'
-import { CliError, EXIT, type Io, flag, printJson, readJson, writeFile } from './io.ts'
+import { embedCode } from './codeFiles.ts'
+import { CliError, EXIT, type Io, flag, pathIn, printJson, readJson, writeFile } from './io.ts'
 
 /** Designators the partial keeps that are not parts of its intent (after repeat expansion). */
 function unknownKept(path: string, intent: unknown, keep: KeepMap): string[] {
@@ -47,7 +49,7 @@ export function layoutCommand(args: Args, io: Io): number {
     raw = p.intent
     keep = p.keep
     warnings = unknownKept(keepPath, raw, keep)
-  } else raw = readJson(io, input!)
+  } else raw = embedCode(readJson(io, input!), dirname(pathIn(io, input!)), input!)
   if (!json) for (const w of warnings) io.stderr(`warning: ${w}\n`)
   const r = layoutNetlist(raw, { keep, labels })
   if (!r.ok) {

@@ -23,6 +23,7 @@ import { verifyDiagram } from '../agent/verify.ts'
 import { intentLookup } from '../agent/netlist.ts'
 import { parseNetlist } from '../agent/netlist.ts'
 import { libraryLookup } from '../agent/catalog.ts'
+import { codeFindings } from './codeFindings.ts'
 import { NOT_CHECKED } from '../agent/notChecked.ts'
 import { customPartNote, sheetCustomParts } from '../agent/customParts.ts'
 import { READABILITY_RULES, readabilityFindings } from '../agent/readabilityWarnings.ts'
@@ -201,13 +202,15 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
     return finish()
   }
   const d = v.diagram
-  v.warnings.forEach((w, i) => note('load', String(i), w.includes(VALUE_DROPPED) || w.includes(MISSING_MODULE) ? 'error' : 'warning', w))
+  // The loader's "won't run" warning is codeFindings' `code-language` error; it is not reported twice.
+  v.warnings.forEach((w, i) => w.endsWith("won't run") || note('load', String(i), w.includes(VALUE_DROPPED) || w.includes(MISSING_MODULE) ? 'error' : 'warning', w))
 
   // Verify against the intent, the wiring checker, and routes.
   const verified = verifyDiagram(d, libraryLookup)
   const checked = withoutStale(checkDiagram(d), verified)
   found.push(...verified.filter((f) => !alsoChecked(f, checked)).map(cliFinding))
   found.push(...checked.map(cliFinding))
+  found.push(...codeFindings(d, libraryLookup))
   const routes = computeRoutes(d)
   // Blocked as drawn: wirePaths re-checks a wire that separation nudged, so a route that was clear
   // but was pushed through a body (drawn dashed) blocks too.

@@ -3,18 +3,22 @@
 // maximum drawn dark red with a warning ring (never "burnt"), and the simulation's finding badges
 // (the checker's SeverityMark, centred above a part; the checker lights its own at the top
 // left), with a ring on each pin a finding names. Static, so reduced motion needs nothing more.
+// A running board wears a "running" pill at its top right (red "error" when an exception stopped it), and a servo's
+// horn is drawn at its angle (with reduced motion it jumps to the target).
 // Stale readings (the last good result while a solve fails) are dimmed and say so.
 // Imports from src/sim are types and display.ts only: the compute code stays in the lazy chunk.
 import { memo } from 'react'
-import { type Diagram, moduleOf, resolveEndpoint } from '../format/diagram.ts'
-import { bodyRect } from '../format/geometry.ts'
-import { isObj, layoutModule } from '../format/module.ts'
+import { type Diagram, type PartInstance, moduleOf, resolveEndpoint } from '../format/diagram.ts'
+import { type Pt, bodyRect, toWorld } from '../format/geometry.ts'
+import { type ModuleDef, isObj, layoutModule } from '../format/module.ts'
+import { simOf } from '../format/simModel.ts'
 import { formatValue } from '../format/values.ts'
 import { LIT_AMPS } from '../sim/display.ts'
 import type { Circuit } from '../sim/model.ts'
 import type { SimFinding, SimOutcome, SimResult } from '../sim/results.ts'
 import { captionBox } from '../render/captionBox.ts'
 import { SeverityMark } from './SeverityMark.tsx'
+import type { RunView } from './store.ts'
 
 /** Glow colours by `values.color`; an unknown colour glows red, the LED module's default. */
 export const LED_GLOW: Record<string, string> = { red: '#FF3B30', green: '#34D158', yellow: '#FFD60A', orange: '#FF9F0A', blue: '#3A8DFF', white: '#FFFFFF' }
@@ -49,11 +53,52 @@ export function currentFindings(o: SimOutcome | undefined): SimFinding[] {
 // Three significant figures, as the findings' messages give them.
 const amps = (a: number) => formatValue(Number(a.toPrecision(3)), 'A')
 
+/** Ruling R14: a pill at the body's top-right corner (the checker's mark owns the top left, simulation findings the top centre). */
+export function runBadges(d: Diagram, run: RunView): { uid: string; kind: 'running' | 'error'; x: number; y: number }[] {
+  return Object.entries(run.boards).flatMap(([uid, b]) => {
+    const kind = b.status === 'running' || b.status === 'starting' ? 'running' : b.status === 'error' ? 'error' : null
+    const p = d.parts.find((x) => x.uid === uid)
+    const m = p && moduleOf(d, p.module)
+    if (!kind || !p || !m) return []
+    const box = bodyRect(p, layoutModule(m))
+    return [{ uid, kind, x: box.x + box.w - 62, y: box.y - 10 }]
+  })
+}
+
+/** A servo horn from the pivot at `angle` degrees: 0 points left, 90 up, 180 right. */
+export function hornPath(cx: number, cy: number, r: number, angle: number): string {
+  const a = Math.PI - (angle * Math.PI) / 180
+  const f = (x: number) => Number(x.toFixed(2))
+  return `M${f(cx)} ${f(cy)} L${f(cx + r * Math.cos(a))} ${f(cy - r * Math.sin(a))}`
+}
+
+/** A servo's output shaft in art coordinates (sim.servo.shaft), or null when the module does not say. */
+export const servoShaft = (m: ModuleDef) => simOf(m)?.servo?.shaft ?? null
+
+/** Half the length of the SG90's drawn horn (art rects 100 to 144 wide): the live arm matches it. */
+export const HORN_REACH = 20
+
+/**
+ * Where the live horn turns, in world coordinates: the module's shaft point, placed the way Part.tsx
+ * places its art (centred in the layout) and rotated with the part; the body's centre when the module names none.
+ */
+export function servoPivot(p: PartInstance, m: ModuleDef): Pt {
+  const lay = layoutModule(m)
+  const sh = servoShaft(m)
+  if (!sh || !m.art) {
+    const box = bodyRect(p, lay)
+    return { x: box.x + box.w / 2, y: box.y + box.h / 2 }
+  }
+  return toWorld(p, lay, { x: (lay.w - m.art.w) / 2 + sh.x, y: (lay.h - m.art.h) / 2 + sh.y })
+}
+
+const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+
 /**
  * `result` draws the glow (the last good one, dimmed, while `stale`); `findings` draws the badges,
  * the current state's (currentFindings), so a failed solve still badges what it found.
  */
-export const SimLayer = memo(function SimLayer({ diagram, result, stale, circuit, findings }: { diagram: Diagram; result: SimResult | null; stale: boolean; circuit: Circuit | null; findings: SimFinding[] }) {
+export const SimLayer = memo(function SimLayer({ diagram, result, stale, circuit, findings, run }: { diagram: Diagram; result: SimResult | null; stale: boolean; circuit: Circuit | null; findings: SimFinding[]; run: RunView }) {
   const staleWord = stale ? ' (stale, from before your last edit)' : ''
   const leds = diagram.parts.flatMap((p) => {
     const r = result?.corners.typical.parts[p.uid]
@@ -143,6 +188,25 @@ export const SimLayer = memo(function SimLayer({ diagram, result, stale, circuit
             <title>{`Simulation: ${b.messages.join('\n')}`}</title>
             {/* Centred above the body, clear of the side pins' wire ends and the checker's top-left mark. */}
             <SeverityMark severity={b.severity} at={{ x: box.x + box.w / 2 - 9, y: box.y - 20, size: 18 }} />
+          </g>
+        )
+      })}
+      {runBadges(diagram, run).map((b) => (
+        <g key={`run-${b.uid}`} className={`run-badge ${b.kind}`} data-run-badge={b.uid} pointerEvents="none">
+          <rect x={b.x} y={b.y} width={60} height={18} rx={9} />
+          <text x={b.x + 30} y={b.y + 9} textAnchor="middle" dominantBaseline="central">{b.kind === 'running' ? 'running' : 'error'}</text>
+        </g>
+      ))}
+      {Object.entries(run.servos).map(([uid, s]) => {
+        const p = diagram.parts.find((x) => x.uid === uid)
+        const m = p && moduleOf(diagram, p.module)
+        if (!p || !m) return null
+        const { x: cx, y: cy } = servoPivot(p, m)
+        return (
+          <g key={`horn-${uid}`} className="servo-horn" data-servo-horn={uid} data-angle={s.angle.toFixed(1)} pointerEvents="none">
+            <title>{`${p.designator} at ${Math.round(s.angle)} degrees`}</title>
+            <path d={hornPath(cx, cy, HORN_REACH, (reducedMotion() ? s.target : s.angle) + (p.rotation ?? 0))} />
+            <circle cx={cx} cy={cy} r={4} />
           </g>
         )
       })}

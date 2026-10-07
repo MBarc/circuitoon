@@ -17,6 +17,8 @@ npm run validate
 npm run check:gen
 npm test
 npm run build
+# Older plugins pin older Pyodide releases (firmware spec 2.7): keep every published py/<version>/.
+node scripts/carry-py.mjs --remote "$(git remote get-url origin)"
 touch dist/.nojekyll
 
 remote=$(git remote get-url origin)

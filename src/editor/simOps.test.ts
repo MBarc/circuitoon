@@ -1,6 +1,6 @@
 // Spec 4.0, 4.6 and 6.3: clicking a switch while simulating flips and saves it; a button is
 // momentary (found, never saved); clicking a GPIO pin cycles input, high, low, skipping what its
-// caps and the module's sim.gpio forbid. A built-in part reads the library's sim (withLibrarySim).
+// caps and the module's sim.gpio forbid. A built-in part reads the library's sim (withLibraryData).
 import { describe, expect, it } from 'vitest'
 import { cycleGpio, flipContact, gpioChoices, momentaryGroup, setSimValue, simModule } from './ops.ts'
 import { boardModule, sheet } from '../sim/testing.ts'

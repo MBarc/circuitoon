@@ -6,7 +6,7 @@ import { type ModuleDef, isCustom, isNum, isObj, show, terminalsKey } from './mo
 
 export type Provenance = 'datasheet' | 'representative' | 'estimate'
 export const PROVENANCES: readonly Provenance[] = ['datasheet', 'representative', 'estimate']
-export type SimUnit = 'ohm' | 'V' | 'A' | 'W' | 'F' | '1'
+export type SimUnit = 'ohm' | 'V' | 'A' | 'W' | 'F' | '1' | 's'
 /** One number with its unit and where it came from: provenance is per value, never per part. */
 export interface Quantity { value: number; unit: SimUnit; source?: string; provenance: Provenance; note?: string }
 export const LIMIT_KINDS = ['current', 'absMaxCurrent', 'power', 'vinMax', 'vinMin', 'sourceCurrent', 'ioTotalCurrent'] as const
@@ -51,13 +51,26 @@ export interface Rail {
 }
 export interface SourceSpec { domain: string; voltage: 'param:voltage' | Quantity; rInternal: Quantity; imax?: Quantity }
 export interface PowerSpec { domains: PowerDomain[]; draw?: Draw[]; rails?: Rail[]; source?: SourceSpec }
-export interface GpioSpec { domain: string; pins: string[]; outputResistance: Quantity; pullup?: Quantity; pulldown?: Quantity; inputLeakage?: Quantity }
+export interface GpioSpec { domain: string; pins: string[]; outputResistance: Quantity; pullup?: Quantity; pulldown?: Quantity; inputLeakage?: Quantity
+  /** Logic thresholds (firmware spec 3.3): below inputLow reads 0, above inputHigh reads 1. */
+  inputLow?: Quantity
+  inputHigh?: Quantity
+  /** Always-present pull-ups to the GPIO domain on the board itself (the Pi's 1.8 kohm on GPIO2 and GPIO3), ruling R3. */
+  fixedPullups?: { pin: string; ohms: Quantity }[]
+}
+/**
+ * A hobby servo (firmware spec 3.4, ruling R4): the signal pin, the pulse widths that map to 0 and
+ * 180 degrees, the slew time per 60 degrees, the current while the horn travels (its idle current
+ * is the ordinary sim.power draw) and the signal pin's input load.
+ */
+export interface ServoSpec { /** The output shaft's centre in art coordinates, where the editor draws the live horn. */ shaft?: { x: number; y: number }; signal: string; pulseMin: Quantity; pulseMax: Quantity; slew: Quantity; moving: Quantity; signalLoad: Quantity }
 export interface SimSpec {
   /** Physics: diode is, n, rs; rInternal; contactResistance; dcr. */
   modelParams?: Record<string, Quantity>
   limits?: Limit[]
   power?: PowerSpec
   gpio?: GpioSpec
+  servo?: ServoSpec
   /** A USB pin's ground pin (spec 4.7). */
   usbPorts?: Record<string, { gnd: string }>
   /** What the data leaves out, in words (sourcing protocol item 3: a board extra with no sourced number). */
@@ -71,21 +84,24 @@ export function simOf(m: ModuleDef | undefined): SimSpec | null {
 }
 
 /**
- * The module a stored copy is simulated and validated as. `electrical.sim` is library data, like
- * the KiCad mapping (format/kicad.ts mappingOf): a built-in part whose stored copy has the
- * library's pins takes the library's sim, so a sheet saved before the library had it still
- * simulates and keeps its saved sim values. A custom part, or a copy whose pins changed, keeps its own.
+ * The module a stored copy is simulated, validated and run as (firmware spec 3.2). `electrical.sim`
+ * and `firmware` are library data, like the KiCad mapping (format/kicad.ts mappingOf): a built-in
+ * part whose stored copy has the library's terminals takes both from the library, so a sheet saved
+ * before the library had them still simulates and runs code. The stored copy comes back unchanged
+ * only when both already match; a custom part, or a copy whose pins changed, keeps its own.
  */
-export function withLibrarySim(stored: ModuleDef, library: ((id: string) => ModuleDef | undefined) | undefined): ModuleDef {
+export function withLibraryData(stored: ModuleDef, library: ((id: string) => ModuleDef | undefined) | undefined): ModuleDef {
   if (!library || isCustom(stored)) return stored
   const lib = library(stored.id)
   if (!lib || lib === stored || terminalsKey(stored) !== terminalsKey(lib)) return stored
   const sim = isObj(lib.electrical) ? lib.electrical.sim : undefined
+  const storedSim = isObj(stored.electrical) ? stored.electrical.sim : undefined
+  if (storedSim === sim && stored.firmware === lib.firmware) return stored
   const e: Record<string, unknown> = isObj(stored.electrical) ? { ...stored.electrical } : {}
-  if (e.sim === sim) return stored
   if (sim === undefined) delete e.sim
   else e.sim = sim
-  return { ...stored, electrical: e }
+  const { firmware: _old, ...rest } = stored
+  return { ...rest, electrical: e, ...(lib.firmware ? { firmware: lib.firmware } : {}) }
 }
 
 const RAIL_REQUIRED: Record<RailKind, (keyof Rail)[]> = {
@@ -147,7 +163,7 @@ export function validateSim(raw: Record<string, unknown>, names: Set<string>, er
   }
   /** A quantity's value when it is a finite number. */
   const val = (v: unknown) => (isObj(v) && isNum(v.value) ? v.value : undefined)
-  keys(s, ['modelParams', 'limits', 'power', 'gpio', 'usbPorts', 'unaccounted'], at)
+  keys(s, ['modelParams', 'limits', 'power', 'gpio', 'servo', 'usbPorts', 'unaccounted'], at)
   if (s.unaccounted !== undefined && !(Array.isArray(s.unaccounted) && s.unaccounted.every((x) => typeof x === 'string' && x.trim())))
     errors.push(`${at}.unaccounted: must be a list of non-empty strings`)
 
@@ -254,13 +270,42 @@ export function validateSim(raw: Record<string, unknown>, names: Set<string>, er
     const g = s.gpio
     if (!isObj(g)) errors.push(`${w}: must be an object`)
     else {
-      keys(g, ['domain', 'pins', 'outputResistance', 'pullup', 'pulldown', 'inputLeakage'], w)
+      keys(g, ['domain', 'pins', 'outputResistance', 'pullup', 'pulldown', 'inputLeakage', 'inputLow', 'inputHigh', 'fixedPullups'], w)
       if (typeof g.domain !== 'string' || !domainNames.has(g.domain)) errors.push(`${w}.domain: no domain "${show(g.domain)}" in ${at}.power.domains`)
       if (!Array.isArray(g.pins) || !g.pins.length) errors.push(`${w}.pins: required, a list of GPIO pin names`)
       else g.pins.forEach((n, i) => { if (typeof n !== 'string' || !names.has(n)) errors.push(`${w}.pins[${i}]: no pin "${show(n)}"`) })
       quantity(g.outputResistance, `${w}.outputResistance`, 'ohm', { positive: true })
       for (const k of ['pullup', 'pulldown']) if (g[k] !== undefined) quantity(g[k], `${w}.${k}`, 'ohm', { positive: true })
       if (g.inputLeakage !== undefined) quantity(g.inputLeakage, `${w}.inputLeakage`, 'A')
+      for (const k of ['inputLow', 'inputHigh']) if (g[k] !== undefined) quantity(g[k], `${w}.${k}`, 'V', { positive: true })
+      const lo = val(g.inputLow)
+      const hi = val(g.inputHigh)
+      if (lo !== undefined && hi !== undefined && lo >= hi) errors.push(`${w}.inputLow: must be below inputHigh`)
+      if (g.fixedPullups !== undefined) {
+        const gpioPins = Array.isArray(g.pins) ? g.pins : []
+        ;(Array.isArray(g.fixedPullups) ? g.fixedPullups : [null]).forEach((fp, i) => {
+          const at2 = `${w}.fixedPullups[${i}]`
+          if (!isObj(fp)) return void errors.push(`${at2}: must be { "pin", "ohms" }`)
+          keys(fp, ['pin', 'ohms'], at2)
+          if (typeof fp.pin !== 'string' || !gpioPins.includes(fp.pin)) errors.push(`${at2}.pin: "${show(fp.pin)}" is not one of the GPIO pins`)
+          quantity(fp.ohms, `${at2}.ohms`, 'ohm', { positive: true })
+        })
+      }
+    }
+  }
+
+  if (s.servo !== undefined) {
+    const w = `${at}.servo`
+    const v = s.servo
+    if (!isObj(v)) errors.push(`${w}: must be an object`)
+    else {
+      keys(v, ['shaft', 'signal', 'pulseMin', 'pulseMax', 'slew', 'moving', 'signalLoad'], w)
+      if (typeof v.signal !== 'string' || !names.has(v.signal)) errors.push(`${w}.signal: no pin "${show(v.signal)}"`)
+      if (v.shaft !== undefined && !(isObj(v.shaft) && typeof v.shaft.x === 'number' && Number.isFinite(v.shaft.x) && typeof v.shaft.y === 'number' && Number.isFinite(v.shaft.y))) errors.push(`${w}.shaft: must be { "x", "y" } in art coordinates`)
+      for (const [k, unit] of [['pulseMin', 's'], ['pulseMax', 's'], ['slew', 's'], ['moving', 'A'], ['signalLoad', 'ohm']] as const) quantity(v[k], `${w}.${k}`, unit, { positive: true })
+      const lo = val(v.pulseMin)
+      const hi = val(v.pulseMax)
+      if (lo !== undefined && hi !== undefined && lo >= hi) errors.push(`${w}.pulseMin: must be below pulseMax`)
     }
   }
 

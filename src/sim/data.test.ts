@@ -6,6 +6,8 @@ import { join } from 'node:path'
 import { load } from '../format/builtinModules.testing.ts'
 import { simOf } from '../format/simModel.ts'
 import { LED_COLOURS } from './ledModels.ts'
+import { buildCircuit } from './build.ts'
+import { boardModule, sheet } from './testing.ts'
 
 const DIR = join(import.meta.dirname, '..', '..', 'scripts', 'sim-data')
 export const patches = (): { id: string; sim: Record<string, unknown>; unaccounted?: string[]; review: unknown[] }[] =>
@@ -19,11 +21,12 @@ describe('sourced simulation data', () => {
   it('has been checked by two independent reviewers (spec 3.4)', () => {
     for (const p of patches()) expect(p.review.length, p.id).toBeGreaterThanOrEqual(2)
   })
-  it('words what the editor and the CLI show in plain terms: no solver names, no board-internal refs (spec 5.2)', () => {
-    for (const p of patches()) {
-      const minLoad = ((p.sim.power as { rails?: { minLoad?: { note: string } }[] } | undefined)?.rails ?? []).flatMap((r) => (r.minLoad ? [r.minLoad.note] : []))
-      for (const text of [...(p.unaccounted ?? []), ...minLoad]) expect(text, p.id).not.toMatch(/rInternal|\biq\b|solver|\((?:U|IC|D|R)\d+\)|\b(?:RN|RP)\d[A-D]\b/)
-    }
+  it('words what the editor and the CLI show in plain terms: no solver names, no board-internal refs, no review process (spec 5.2)', () => {
+    // Every note (rails, draws, limits, GPIO, servo, sources) and every unaccounted line: `circuitoon part --json` prints them all.
+    const notes = (o: unknown): string[] =>
+      Array.isArray(o) ? o.flatMap(notes) : o && typeof o === 'object' ? Object.entries(o).flatMap(([k, v]) => (k === 'note' && typeof v === 'string' ? [v] : notes(v))) : []
+    for (const p of patches())
+      for (const text of [...(p.unaccounted ?? []), ...notes(p.sim)]) expect(text, p.id).not.toMatch(/rInternal|\biq\b|solver|\((?:U|IC|D|R)\d+\)|\b(?:RN|RP)\d[A-D]\b|ruling|reviewers? disagreed/i)
   })
 })
 
@@ -142,5 +145,44 @@ describe('Arduino Uno, Nano and Pi Pico (spec 3.4)', () => {
     expect(sim.power!.draw!.some((d) => /chip, not board/.test(d.typical.note ?? ''))).toBe(true)
     expect(sim.power!.rails!.some((r) => r.kind !== 'switch')).toBe(true)
     expect(sim.gpio!.domain).toBe(io)
+  })
+})
+
+describe('the SG90 servo (firmware spec 3.4)', () => {
+  it('maps 500 to 2400 us as a flagged estimate and slews 0.1 s per 60 degrees from the datasheet', () => {
+    const s = simOf(load('servo-sg90'))!.servo!
+    expect([s.pulseMin.value, s.pulseMax.value]).toEqual([0.0005, 0.0024])
+    expect([s.pulseMin.provenance, s.pulseMax.provenance]).toEqual(['estimate', 'estimate'])
+    expect(s.pulseMin.note).toMatch(/1 to 2 ms/)
+    expect(s).toMatchObject({ signal: 'PWM', slew: { value: 0.1, unit: 's', provenance: 'datasheet' } })
+    expect(simOf(load('servo-sg90'))!.power!.domains).toEqual([{ name: 'VCC', pin: 'VCC', ret: 'GND', nominal: 5 }])
+  })
+})
+
+describe('the Raspberry Pis (firmware spec 3.3)', () => {
+  const PIS = ['rpi-4-model-b', 'rpi-5', 'rpi-zero-2-w']
+  it.each(PIS)('%s: 5V, the input port and 3V3, GPIO2 to GPIO27 on 3V3 with thresholds and pulls', (id) => {
+    const sim = simOf(load(id))!
+    expect(sim.power!.domains.map((d) => d.name).sort()).toEqual(['3V3', '5V', 'USB'])
+    expect(sim.power!.draw!.map((d) => d.domain)).toEqual(['5V'])
+    expect(sim.power!.draw![0].minVolts).toBeDefined()
+    expect(sim.gpio!.domain).toBe('3V3')
+    expect(sim.gpio!.pins).toEqual(Array.from({ length: 26 }, (_, i) => `GPIO${i + 2}`))
+    expect(sim.gpio!.inputLow!.value).toBeLessThan(sim.gpio!.inputHigh!.value)
+    expect(sim.gpio!.pullup!.value).toBeGreaterThan(40_000)
+    expect(sim.gpio!.fixedPullups!.map((f) => [f.pin, f.ohms.value])).toEqual([['GPIO2', 1800], ['GPIO3', 1800]])
+  })
+  it('flags the Pi 5 RP1 thresholds as estimates (partly undocumented)', () => {
+    const g = simOf(load('rpi-5'))!.gpio!
+    expect([g.inputLow!.provenance, g.inputHigh!.provenance]).toEqual(['estimate', 'estimate'])
+  })
+  it('builds GPIO2 and GPIO3 pull-ups as internal resistors, not user resistors', () => {
+    const c = buildCircuit(sheet([{ uid: 'u1', module: 'rpi-4-model-b' }], []))
+    expect(c.devices.filter((d) => d.kind === 'resistor' && d.id.startsWith('u1.pullup.')).map((d) => [d.id, d.kind === 'resistor' && d.role])).toEqual([['u1.pullup.GPIO2', 'internal'], ['u1.pullup.GPIO3', 'internal']])
+  })
+  it('keeps the USB-A ports "not simulated": a USB device on one is listed, with no cable compiled', () => {
+    const c = buildCircuit(sheet([{ uid: 'u1', module: 'rpi-4-model-b' }, { uid: 'u2', module: boardModule({}, 'test-dev') }], [['u1.USB2-1', 'u2.USB']]))
+    expect(c.unsimulated).toContainEqual({ part: 'u2', reason: 'powered from U1 USB2-1, whose USB power is not simulated' })
+    expect(c.usb).toEqual([])
   })
 })

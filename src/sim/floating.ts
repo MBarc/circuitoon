@@ -53,6 +53,9 @@ export function deviceNodes(d: Device): string[] {
 /** The resistive pairs, conducting both ways: resistors, closed contacts and a GPIO's state resistor (never its leakage). */
 function resistive(d: Device): [string, string][] {
   if (d.kind === 'resistor' || (d.kind === 'switch' && d.closed)) return [[d.a, d.b]]
+  // A PWM pin is high in some runs and low in others: it conducts both ways for classification, so
+  // the classification is the same at both levels (firmware spec 4.2).
+  if (d.kind === 'gpio' && d.state === 'pwm') return [[d.vdd, d.node], [d.node, d.ret]]
   const g = d.kind === 'gpio' ? gpioBranch(d) : null
   return g && !g.leak ? [[g.a, g.b]] : []
 }
@@ -252,6 +255,11 @@ export function classifyCached(c: Circuit, analysis: Kind = OP): Classification 
   let hit = byKind.get(analysis.kind)
   if (!hit) byKind.set(analysis.kind, (hit = classify(c, analysis)))
   return hit
+}
+/** Records `cls` as the `op` classification of `c` (session.ts: a circuit patched from one with the same pin states). */
+export function rememberClassification(c: Circuit, cls: Classification): void {
+  if (!memo.has(c)) memo.set(c, new Map())
+  memo.get(c)!.set('op', cls)
 }
 
 /** A node's state: driven (powered), defined (held by a return through resistance) or floating. */

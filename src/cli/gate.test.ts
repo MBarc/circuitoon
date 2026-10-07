@@ -26,6 +26,9 @@ import { captionBox } from '../render/captionBox.ts'
 import { layoutModule } from '../format/module.ts'
 import { ledNetlist, tiltSensors } from '../agent/fixtures.testing.ts'
 import { runAllOf } from '../sim/testing.ts'
+import { serializeDiagram } from '../format/diagram.ts'
+import { piBlink } from '../run/sheets.testing.ts'
+import { load } from '../format/builtinModules.testing.ts'
 
 const browser = findBrowser(process.env)
 const noBrowser = (dir: string) => ({ CIRCUITOON_BROWSER: join(dir, 'no-such-browser.exe') })
@@ -658,4 +661,19 @@ describe('gate/4: simulation (spec 7)', () => {
     expect(report.notes.some((f) => f.rule === 'sim-brownout' && f.message.includes('nothing on the sheet supplies it'))).toBe(true)
     expect(report.warnings.some((f) => f.rule === 'sim-brownout')).toBe(false)
   }, 120_000)
+})
+
+describe('gate: code on boards (firmware spec 7)', () => {
+  it('blocks code a board does not accept and warns about unsupported imports, without running the code', async () => {
+    const d = piBlink()
+    d.parts = d.parts.map((p) => (p.uid === 'u1' ? { ...p, code: { language: 'python-rpi', source: 'import smbus\nfrom gpiozero import LED\n', file: 'main.py' } } : p))
+    d.parts.push({ uid: 'u2', designator: 'U2', module: 'arduino-uno-r3', x: 900, y: 0, code: { language: 'python-rpi', source: 'print(1)\n' } })
+    d.modules['arduino-uno-r3'] = load('arduino-uno-r3')
+    const dir = tempDir()
+    const { report } = await runGate(new TextEncoder().encode(serializeDiagram(d)), { sheetPath: 'sheet.json', outDir: join(dir, 'out'), io: quietIo(dir) })
+    expect(report.blocking.find((f) => f.rule === 'code-language')?.message).toBe("U2 is an Arduino Uno R3; its code is Raspberry Pi Python and won't run.")
+    expect(report.warnings.find((f) => f.rule === 'code-unsupported-import')?.message).toBe("U1's code: smbus needs I2C devices, coming in a later update.")
+    expect([...report.blocking, ...report.warnings].filter((f) => f.message.includes("won't run"))).toHaveLength(1)
+    expect(report.format).toBe('circuitoon-cli/gate/4')
+  })
 })

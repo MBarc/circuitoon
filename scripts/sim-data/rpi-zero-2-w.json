@@ -1,0 +1,702 @@
+{
+  "id": "rpi-zero-2-w",
+  "researched": "2026-10-06",
+  "sim": {
+    "limits": [
+      {
+        "of": {
+          "pin": "GPIO2"
+        },
+        "kind": "current",
+        "value": 0.016,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "datasheet",
+        "conditions": "any drive strength; damage limit, not the drive rating",
+        "note": "chip, not board. \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA."
+      },
+      {
+        "of": {
+          "pin": "GPIO3"
+        },
+        "kind": "current",
+        "value": 0.016,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "datasheet",
+        "conditions": "any drive strength; damage limit, not the drive rating",
+        "note": "chip, not board. \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA."
+      },
+      {
+        "of": {
+          "pin": "GPIO4"
+        },
+        "kind": "current",
+        "value": 0.016,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "datasheet",
+        "conditions": "any drive strength; damage limit, not the drive rating",
+        "note": "chip, not board. \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA."
+      },
+      {
+        "of": {
+          "pin": "GPIO5"
+        },
+        "kind": "current",
+        "value": 0.016,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "datasheet",
+        "conditions": "any drive strength; damage limit, not the drive rating",
+        "note": "chip, not board. \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA."
+      },
+      {
+        "of": {
+          "pin": "GPIO6"
+        },
+        "kind": "current",
+        "value": 0.016,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "datasheet",
+        "conditions": "any drive strength; damage limit, not the drive rating",
+        "note": "chip, not board. \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA."
+      },
+      {
+        "of": {
+          "pin": "GPIO7"
+        },
+        "kind": "current",
+        "value": 0.016,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "datasheet",
+        "conditions": "any drive strength; damage limit, not the drive rating",
+        "note": "chip, not board. \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA."
+      },
+      {
+        "of": {
+          "pin": "GPIO8"
+        },
+        "kind": "current",
+        "value": 0.016,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "datasheet",
+        "conditions": "any drive strength; damage limit, not the drive rating",
+        "note": "chip, not board. \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA."
+      },
+      {
+        "of": {
+          "pin": "GPIO9"
+        },
+        "kind": "current",
+        "value": 0.016,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "datasheet",
+        "conditions": "any drive strength; damage limit, not the drive rating",
+        "note": "chip, not board. \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA."
+      },
+      {
+        "of": {
+          "pin": "GPIO10"
+        },
+        "kind": "current",
+        "value": 0.016,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "datasheet",
+        "conditions": "any drive strength; damage limit, not the drive rating",
+        "note": "chip, not board. \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA."
+      },
+      {
+        "of": {
+          "pin": "GPIO11"
+        },
+        "kind": "current",
+        "value": 0.016,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "datasheet",
+        "conditions": "any drive strength; damage limit, not the drive rating",
+        "note": "chip, not board. \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA."
+      },
+      {
+        "of": {
+          "pin": "GPIO12"
+        },
+        "kind": "current",
+        "value": 0.016,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "datasheet",
+        "conditions": "any drive strength; damage limit, not the drive rating",
+        "note": "chip, not board. \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA."
+      },
+      {
+        "of": {
+          "pin": "GPIO13"
+        },
+        "kind": "current",
+        "value": 0.016,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "datasheet",
+        "conditions": "any drive strength; damage limit, not the drive rating",
+        "note": "chip, not board. \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA."
+      },
+      {
+        "of": {
+          "pin": "GPIO14"
+        },
+        "kind": "current",
+        "value": 0.016,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "datasheet",
+        "conditions": "any drive strength; damage limit, not the drive rating",
+        "note": "chip, not board. \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA."
+      },
+      {
+        "of": {
+          "pin": "GPIO15"
+        },
+        "kind": "current",
+        "value": 0.016,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "datasheet",
+        "conditions": "any drive strength; damage limit, not the drive rating",
+        "note": "chip, not board. \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA."
+      },
+      {
+        "of": {
+          "pin": "GPIO16"
+        },
+        "kind": "current",
+        "value": 0.016,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "datasheet",
+        "conditions": "any drive strength; damage limit, not the drive rating",
+        "note": "chip, not board. \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA."
+      },
+      {
+        "of": {
+          "pin": "GPIO17"
+        },
+        "kind": "current",
+        "value": 0.016,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "datasheet",
+        "conditions": "any drive strength; damage limit, not the drive rating",
+        "note": "chip, not board. \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA."
+      },
+      {
+        "of": {
+          "pin": "GPIO18"
+        },
+        "kind": "current",
+        "value": 0.016,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "datasheet",
+        "conditions": "any drive strength; damage limit, not the drive rating",
+        "note": "chip, not board. \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA."
+      },
+      {
+        "of": {
+          "pin": "GPIO19"
+        },
+        "kind": "current",
+        "value": 0.016,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "datasheet",
+        "conditions": "any drive strength; damage limit, not the drive rating",
+        "note": "chip, not board. \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA."
+      },
+      {
+        "of": {
+          "pin": "GPIO20"
+        },
+        "kind": "current",
+        "value": 0.016,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "datasheet",
+        "conditions": "any drive strength; damage limit, not the drive rating",
+        "note": "chip, not board. \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA."
+      },
+      {
+        "of": {
+          "pin": "GPIO21"
+        },
+        "kind": "current",
+        "value": 0.016,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "datasheet",
+        "conditions": "any drive strength; damage limit, not the drive rating",
+        "note": "chip, not board. \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA."
+      },
+      {
+        "of": {
+          "pin": "GPIO22"
+        },
+        "kind": "current",
+        "value": 0.016,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "datasheet",
+        "conditions": "any drive strength; damage limit, not the drive rating",
+        "note": "chip, not board. \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA."
+      },
+      {
+        "of": {
+          "pin": "GPIO23"
+        },
+        "kind": "current",
+        "value": 0.016,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "datasheet",
+        "conditions": "any drive strength; damage limit, not the drive rating",
+        "note": "chip, not board. \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA."
+      },
+      {
+        "of": {
+          "pin": "GPIO24"
+        },
+        "kind": "current",
+        "value": 0.016,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "datasheet",
+        "conditions": "any drive strength; damage limit, not the drive rating",
+        "note": "chip, not board. \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA."
+      },
+      {
+        "of": {
+          "pin": "GPIO25"
+        },
+        "kind": "current",
+        "value": 0.016,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "datasheet",
+        "conditions": "any drive strength; damage limit, not the drive rating",
+        "note": "chip, not board. \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA."
+      },
+      {
+        "of": {
+          "pin": "GPIO26"
+        },
+        "kind": "current",
+        "value": 0.016,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "datasheet",
+        "conditions": "any drive strength; damage limit, not the drive rating",
+        "note": "chip, not board. \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA."
+      },
+      {
+        "of": {
+          "pin": "GPIO27"
+        },
+        "kind": "current",
+        "value": 0.016,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "datasheet",
+        "conditions": "any drive strength; damage limit, not the drive rating",
+        "note": "chip, not board. \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \"Safe current\": \"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA."
+      },
+      {
+        "of": {
+          "domain": "3V3"
+        },
+        "kind": "ioTotalCurrent",
+        "value": 0.05,
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "datasheet",
+        "conditions": "sum of all GPIO pin currents",
+        "note": "\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc adds: \"The Raspberry Pi 3.3 V supply was designed with a maximum current of ~3mA per GPIO pin.\""
+      }
+    ],
+    "power": {
+      "domains": [
+        {
+          "name": "5V",
+          "pin": "5V",
+          "ret": "GND",
+          "nominal": 5
+        },
+        {
+          "name": "USB",
+          "pin": "PWR IN#vbus",
+          "ret": "PWR IN#gnd",
+          "nominal": 5
+        },
+        {
+          "name": "3V3",
+          "pin": "3V3",
+          "ret": "GND",
+          "nominal": 3.3
+        }
+      ],
+      "draw": [
+        {
+          "domain": "5V",
+          "typical": {
+            "value": 0.35,
+            "unit": "A",
+            "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc",
+            "provenance": "datasheet",
+            "note": "Board, not chip. Raspberry Pi documentation, \"Power supply\" section (source file power-supplies.adoc), table \"Typical power requirements\": Zero 2 W \"Typical bare-board active current consumption\" 350mA (recommended PSU 2A)."
+          },
+          "peak": {
+            "value": 0.75,
+            "unit": "A",
+            "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc",
+            "provenance": "estimate",
+            "note": "No Raspberry Pi stress figure for the Zero 2 W. Scaled from the Pi 4B in the same documentation (Stress Max 1.25 A / bare-board 600 mA = 2.08): 0.35 A x 2.08 = 0.73 A, rounded to 0.75 A. The Pi 3B (same BCM2837 family) ratio is higher (Stress Max 1.34 A / bare-board 400 mA = 3.35, giving 1.17 A) but the Pi 3B has an on-board USB hub and Ethernet and was measured with Wi-Fi, keyboard and mouse; the lower ratio was taken. Board, not chip.",
+            "label": "CPU stress"
+          },
+          "minVolts": {
+            "value": 3.5,
+            "unit": "V",
+            "source": "https://www.diodes.com/assets/Datasheets/PAM2306.pdf https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-reduced-schematics.pdf",
+            "provenance": "estimate",
+            "note": "Not documented. The 3V3 rail is a PAM2306 buck (U3, L1 4.7 uH): below about 3.3 V plus its P-MOSFET drop it runs at 100 % duty and VOUT = VIN - ILOAD (RDS(ON) + RL), RL the inductor DC resistance (PAM2306 \"100% Duty Cycle Operation\", p. 11; RDS(ON) P MOSFET 0.3 ohm typ, p. 4), so 3V3 falls out of regulation from about 3.4 V in. 3.5 V taken as the brown-out point. The Zero range has no 4.63 V low-voltage detection (power-supplies.adoc)."
+          }
+        }
+      ],
+      "rails": [
+        {
+          "id": "microusb-5v",
+          "inputs": [
+            {
+              "domain": "USB",
+              "via": "direct"
+            }
+          ],
+          "output": "5V",
+          "kind": "switch",
+          "ron": {
+            "value": 0.01,
+            "unit": "ohm",
+            "source": "https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-reduced-schematics.pdf",
+            "provenance": "estimate",
+            "note": "Zero 2 W reduced schematic: micro-USB J1 (690-005-298-486) pin 1 VBUS goes straight to the 5V net (C1 47u, test points PP1 and PP70); no fuse, diode or switch in series. 10 mohm stands for the connector and copper (assumed; not measured)."
+          },
+          "reverse": "body-diode"
+        },
+        {
+          "id": "pam2306-3v3",
+          "inputs": [
+            {
+              "domain": "5V",
+              "via": "direct"
+            }
+          ],
+          "output": "3V3",
+          "kind": "buck",
+          "vout": {
+            "value": 3.3,
+            "unit": "V",
+            "source": "https://www.diodes.com/assets/Datasheets/PAM2306.pdf https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-reduced-schematics.pdf",
+            "provenance": "datasheet",
+            "note": "U3 on the Zero 2 W reduced schematic is a PAM2306AYPKE (Diodes Inc.); its ordering code (p. 13) gives Output Voltage V1 \"K: 3.3V\", V2 \"E: 1.8V\". Channel 1 (LX1, L1 4.7 uH, FB1 to the output) drives the 3V3 net."
+          },
+          "efficiency": {
+            "value": 0.88,
+            "unit": "1",
+            "source": "https://www.diodes.com/assets/Datasheets/PAM2306.pdf",
+            "provenance": "estimate",
+            "note": "Read from PAM2306 \"Efficiency VS Output Current (Vo=3.3V)\" (p. 5), VIN = 5 V curve, L = 4.7 uH: about 80 % at 30 mA, about 88 % at 100 mA, about 92 % at 200 to 500 mA, about 88 % at 1 A. 0.88 for tens to hundreds of mA."
+          },
+          "vinMin": {
+            "value": 3.4,
+            "unit": "V",
+            "source": "https://www.diodes.com/assets/Datasheets/PAM2306.pdf",
+            "provenance": "estimate",
+            "note": "The PAM2306 input range is 2.5 to 5.5 V (p. 4), but as a buck it cannot hold 3.3 V below about VOUT plus the P-MOSFET drop (100 % duty, p. 11; RDS(ON) 0.3 ohm typ at 100 mA, p. 4): 3.3 V + 0.2 A x 0.3 ohm = 3.36 V, rounded to 3.4 V. The simulation holds the output steady over the whole input range it allows, so the lowest input is set where regulation ends, not the chip's 2.5 V."
+          },
+          "vinMax": {
+            "value": 5.5,
+            "unit": "V",
+            "source": "https://www.diodes.com/assets/Datasheets/PAM2306.pdf",
+            "provenance": "datasheet",
+            "note": "chip, not board. PAM2306 Electrical Characteristics (p. 4): Input Voltage Range 2.5 to 5.5 V."
+          },
+          "ioutMax": {
+            "value": 1,
+            "unit": "A",
+            "source": "https://www.diodes.com/assets/Datasheets/PAM2306.pdf",
+            "provenance": "datasheet",
+            "note": "chip, not board. PAM2306 Features (p. 1): \"Output Current: Up to 1A per Channel\". No 3.3 V header budget is documented for the Zero 2 W; the channel also feeds the board's own 3.3 V loads (RP3A0 I/O, wireless)."
+          },
+          "reverse": "body-diode",
+          "offPath": "open"
+        }
+      ]
+    },
+    "gpio": {
+      "domain": "3V3",
+      "pins": [
+        "GPIO2",
+        "GPIO3",
+        "GPIO4",
+        "GPIO5",
+        "GPIO6",
+        "GPIO7",
+        "GPIO8",
+        "GPIO9",
+        "GPIO10",
+        "GPIO11",
+        "GPIO12",
+        "GPIO13",
+        "GPIO14",
+        "GPIO15",
+        "GPIO16",
+        "GPIO17",
+        "GPIO18",
+        "GPIO19",
+        "GPIO20",
+        "GPIO21",
+        "GPIO22",
+        "GPIO23",
+        "GPIO24",
+        "GPIO25",
+        "GPIO26",
+        "GPIO27"
+      ],
+      "outputResistance": {
+        "value": 80,
+        "unit": "ohm",
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+        "provenance": "estimate",
+        "note": "BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc. At maximum drive (16 mA): IOL min 18 mA at VO = 0.4 V, 0.4 / 0.018 = 22 ohm; IOH min 17 mA at VO = 2.3 V, (3.3 - 2.3) / 0.017 = 59 ohm. The default is 8 mA (reset DRIVE = 3, gpio-pad-controls.adoc), half the parallel drivers of 16 mA, so about 44 and 118 ohm, mean 81, rounded to 80 ohm. Within the default-drive limits of the same table: VOL max 0.14 V and VOH min 3.0 V at 2 mA give at most 70 and 150 ohm. Chip, not board."
+      },
+      "pullup": {
+        "value": 57500,
+        "unit": "ohm",
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc",
+        "provenance": "estimate",
+        "note": "gpio-on-raspberry-pi.adoc, table for BCM2835, BCM2836, BCM2837 and RP3A0-based products: RPU pull-up resistor min 50, max 65 kohm, no typical; midpoint taken. Chip, not board."
+      },
+      "pulldown": {
+        "value": 57500,
+        "unit": "ohm",
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc",
+        "provenance": "estimate",
+        "note": "Same table: RPD pull-down resistor min 50, max 65 kohm, no typical; midpoint taken. Chip, not board."
+      },
+      "inputLeakage": {
+        "value": 0.000005,
+        "unit": "A",
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc",
+        "provenance": "datasheet",
+        "note": "chip, not board. gpio-on-raspberry-pi.adoc, BCM2835/6/7 and RP3A0 table: IIL input leakage current max 5 uA at TA = +85 C."
+      },
+      "inputLow": {
+        "value": 0.9,
+        "unit": "V",
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc",
+        "provenance": "datasheet",
+        "note": "chip, not board. gpio-on-raspberry-pi.adoc, BCM2835/6/7 and RP3A0 table: VIL input low voltage max 0.9 V. One source."
+      },
+      "inputHigh": {
+        "value": 1.6,
+        "unit": "V",
+        "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc",
+        "provenance": "datasheet",
+        "note": "chip, not board. gpio-on-raspberry-pi.adoc, BCM2835/6/7 and RP3A0 table: VIH input high voltage min 1.6 V (hysteresis enabled). One source."
+      },
+      "fixedPullups": [
+        {
+          "pin": "GPIO2",
+          "ohms": {
+            "value": 1800,
+            "unit": "ohm",
+            "source": "https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-reduced-schematics.pdf",
+            "provenance": "datasheet",
+            "note": "Board value. Zero 2 W reduced schematic: R23 1.8K 1% on GPIO2 and R24 1.8K 1% on GPIO3, both to 3V3."
+          }
+        },
+        {
+          "pin": "GPIO3",
+          "ohms": {
+            "value": 1800,
+            "unit": "ohm",
+            "source": "https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-reduced-schematics.pdf",
+            "provenance": "datasheet",
+            "note": "Board value. Zero 2 W reduced schematic: R23 1.8K 1% on GPIO2 and R24 1.8K 1% on GPIO3, both to 3V3."
+          }
+        }
+      ]
+    },
+    "usbPorts": {
+      "PWR IN": {
+        "gnd": "GND"
+      }
+    }
+  },
+  "notes": [
+    "Board: Zero 2 W reduced schematic https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-reduced-schematics.pdf (2021): micro-USB J1 VBUS -> 5V net -> U3 PAM2306AYPKE dual buck (channel 1 3V3 via L1 4.7 uH, channel 2 1V8 via L2 2.2 uH); U16 RT8088AWSC makes VDD_CORE from the 5V_CORE net. Header J8 pins 2 and 4 are on the same 5V net.",
+    "SoC: RP3A0 system-in-package with a BCM2710A1 die (product brief https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-product-brief.pdf, PDF p. 2). GPIO figures come from the Raspberry Pi documentation table \"for BCM2835, BCM2836, BCM2837 and RP3A0-based products\" (https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc).",
+    "The Zero range has no 4.63 V low-voltage detection: power-supplies.adoc, \"Power supply warnings\": \"On all models of Raspberry Pi since the Raspberry Pi B+ (2014) except the Zero range, there is low-voltage detection circuitry ...\".",
+    "PAM2306 offPath \"open\": \"During shutdown, the input is disconnected from the output\" (p. 1). Reverse \"body-diode\": not documented; the high-side P-MOSFET body diode runs from the switch node to VIN.",
+    "No iq on the 3V3 rail: the board draw is a whole-board figure and already includes it (PAM2306 quiescent 40 uA typ per channel, p. 4).",
+    "GPIO pins: GPIO2 to GPIO27; GPIO0 and GPIO1 (ID_SD, ID_SC) are the HAT ID EEPROM pins and stay out. The header is unpopulated on the Zero 2 W (product brief)."
+  ],
+  "unaccounted": [
+    "USB devices on the micro-USB data port (USB OTG): the documentation gives no budget (\"Limited by PSU, board, and connector ratings only.\"); not simulated.",
+    "The camera (CSI) connector: the Camera Module needs about 250 mA (power-supplies.adoc), not in the board draw.",
+    "HATs and anything else powered from the 5V or 3V3 header pins beyond the user circuit the sheet draws: the board draw covers the board only.",
+    "Mini-HDMI output (about 50 mA per power-supplies.adoc) and Wi-Fi/Bluetooth transmit bursts are not separated from the bare-board figure."
+  ],
+  "review": [
+    {
+      "date": "2026-10-06",
+      "reviewer": "A",
+      "checked": [
+        "sim.limits[0]",
+        "sim.limits[1]",
+        "sim.limits[2]",
+        "sim.limits[3]",
+        "sim.limits[4]",
+        "sim.limits[5]",
+        "sim.limits[6]",
+        "sim.limits[7]",
+        "sim.limits[8]",
+        "sim.limits[9]",
+        "sim.limits[10]",
+        "sim.limits[11]",
+        "sim.limits[12]",
+        "sim.limits[13]",
+        "sim.limits[14]",
+        "sim.limits[15]",
+        "sim.limits[16]",
+        "sim.limits[17]",
+        "sim.limits[18]",
+        "sim.limits[19]",
+        "sim.limits[20]",
+        "sim.limits[21]",
+        "sim.limits[22]",
+        "sim.limits[23]",
+        "sim.limits[24]",
+        "sim.limits[25]",
+        "sim.limits[26]",
+        "sim.power.domains",
+        "sim.power.draw[0].typical",
+        "sim.power.draw[0].peak",
+        "sim.power.draw[0].minVolts",
+        "sim.power.rails[0].inputs",
+        "sim.power.rails[0].output",
+        "sim.power.rails[0].kind",
+        "sim.power.rails[0].ron",
+        "sim.power.rails[0].reverse",
+        "sim.power.rails[1].inputs",
+        "sim.power.rails[1].output",
+        "sim.power.rails[1].kind",
+        "sim.power.rails[1].vout",
+        "sim.power.rails[1].efficiency",
+        "sim.power.rails[1].vinMin",
+        "sim.power.rails[1].vinMax",
+        "sim.power.rails[1].ioutMax",
+        "sim.power.rails[1].reverse",
+        "sim.power.rails[1].offPath",
+        "sim.gpio.outputResistance",
+        "sim.gpio.pullup",
+        "sim.gpio.pulldown",
+        "sim.gpio.inputLeakage",
+        "sim.gpio.inputLow",
+        "sim.gpio.inputHigh",
+        "sim.gpio.domain",
+        "sim.gpio.pins",
+        "sim.gpio.fixedPullups[0].ohms",
+        "sim.gpio.fixedPullups[1].ohms",
+        "sim.usbPorts",
+        "notes",
+        "unaccounted"
+      ],
+      "corrected": [
+        {
+          "path": "sim.limits[26].source",
+          "was": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc",
+          "now": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc",
+          "why": "The note quotes gpio-pad-controls.adoc (\"designed with a maximum current of ~3mA per GPIO pin\"), which was not in source; quote verified there."
+        }
+      ],
+      "disputed": []
+    },
+    {
+      "date": "2026-10-06",
+      "reviewer": "B",
+      "checked": [
+        "sim.limits[0]",
+        "sim.limits[1]",
+        "sim.limits[2]",
+        "sim.limits[3]",
+        "sim.limits[4]",
+        "sim.limits[5]",
+        "sim.limits[6]",
+        "sim.limits[7]",
+        "sim.limits[8]",
+        "sim.limits[9]",
+        "sim.limits[10]",
+        "sim.limits[11]",
+        "sim.limits[12]",
+        "sim.limits[13]",
+        "sim.limits[14]",
+        "sim.limits[15]",
+        "sim.limits[16]",
+        "sim.limits[17]",
+        "sim.limits[18]",
+        "sim.limits[19]",
+        "sim.limits[20]",
+        "sim.limits[21]",
+        "sim.limits[22]",
+        "sim.limits[23]",
+        "sim.limits[24]",
+        "sim.limits[25]",
+        "sim.limits[26]",
+        "sim.power.domains",
+        "sim.power.draw[0].domain",
+        "sim.power.draw[0].typical",
+        "sim.power.draw[0].peak",
+        "sim.power.draw[0].minVolts",
+        "sim.power.rails[0].inputs",
+        "sim.power.rails[0].output",
+        "sim.power.rails[0].kind",
+        "sim.power.rails[0].ron",
+        "sim.power.rails[0].reverse",
+        "sim.power.rails[1].inputs",
+        "sim.power.rails[1].output",
+        "sim.power.rails[1].kind",
+        "sim.power.rails[1].vout",
+        "sim.power.rails[1].efficiency",
+        "sim.power.rails[1].vinMin",
+        "sim.power.rails[1].vinMax",
+        "sim.power.rails[1].ioutMax",
+        "sim.power.rails[1].reverse",
+        "sim.power.rails[1].offPath",
+        "sim.gpio.domain",
+        "sim.gpio.pins",
+        "sim.gpio.outputResistance",
+        "sim.gpio.pullup",
+        "sim.gpio.pulldown",
+        "sim.gpio.inputLeakage",
+        "sim.gpio.inputLow",
+        "sim.gpio.inputHigh",
+        "sim.gpio.fixedPullups[0]",
+        "sim.gpio.fixedPullups[1]",
+        "sim.usbPorts",
+        "notes[0]",
+        "notes[1]",
+        "notes[2]",
+        "notes[3]",
+        "notes[4]",
+        "notes[5]",
+        "unaccounted[0]",
+        "unaccounted[1]",
+        "unaccounted[2]",
+        "unaccounted[3]"
+      ],
+      "corrected": [
+        {
+          "path": "sim.power.rails[1].efficiency.note",
+          "was": "Read from PAM2306 \"Efficiency VS Output Current (Vo=3.3V)\" (p. 5), VIN = 5 V curve, L = 4.7 uH: about 85 % at 30 mA, about 89 % at 100 mA, about 90 % at 200 to 500 mA, about 88 % at 1 A. 0.88 for tens to hundreds of mA.",
+          "now": "Read from PAM2306 \"Efficiency VS Output Current (Vo=3.3V)\" (p. 5), VIN = 5 V curve, L = 4.7 uH: about 80 % at 30 mA, about 88 % at 100 mA, about 92 % at 200 to 500 mA, about 88 % at 1 A. 0.88 for tens to hundreds of mA.",
+          "why": "Re-read the VIN = 5 V (dotted) curve on PAM2306 p. 5: about 80 % at 30 mA (not 85 %) and about 92 % at 200 to 500 mA (not 90 %); value 0.88 unchanged."
+        },
+        {
+          "path": "notes[0]",
+          "was": "Board: Zero 2 W reduced schematic https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-reduced-schematics.pdf (2021): micro-USB J1 VBUS -> 5V net -> U3 PAM2306AYPKE dual buck (channel 1 3V3 via L1 4.7 uH, channel 2 1V8 via L2 2.2 uH); U16 RT8088AWSC makes VDD_CORE from 5V. Header J8 pins 2 and 4 are on the same 5V net.",
+          "now": "Board: Zero 2 W reduced schematic https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-reduced-schematics.pdf (2021): micro-USB J1 VBUS -> 5V net -> U3 PAM2306AYPKE dual buck (channel 1 3V3 via L1 4.7 uH, channel 2 1V8 via L2 2.2 uH); U16 RT8088AWSC makes VDD_CORE from the 5V_CORE net. Header J8 pins 2 and 4 are on the same 5V net.",
+          "why": "Zero 2 W reduced schematic: U16 AVIN/EN are on the 5V_CORE net, not the 5V net."
+        }
+      ],
+      "disputed": []
+    }
+  ]
+}

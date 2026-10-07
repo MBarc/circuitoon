@@ -27,7 +27,7 @@ import type { Connection, Diagram, Endpoint, ProbeAnchor } from '../format/diagr
 import type { Selection } from './ops.ts'
 import { partCaption } from '../format/values.ts'
 import { SeverityMark } from './SeverityMark.tsx'
-import { SimLayer, currentFindings, shownResult } from './SimLayer.tsx'
+import { SimLayer, currentFindings, servoShaft, shownResult } from './SimLayer.tsx'
 import { ProbeLayer } from './ProbeLayer.tsx'
 import { addProbe, sameAnchor } from '../sim/probes.ts'
 import { gridOnly, snapMove, type SnapResult } from './snap.ts'
@@ -126,7 +126,7 @@ export interface CanvasApi {
 }
 
 export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api: CanvasApi) => void }) {
-  const { diagram, selection, highlight, reveal, snapObjects, simulate, simTool, sim } = useEditorState(store)
+  const { diagram, selection, highlight, reveal, snapObjects, simulate, simTool, sim, run } = useEditorState(store)
   // While simulating: the readings to draw (the last good ones, stale, after a failed solve) and the current findings.
   const simOutcome = simulate && sim?.phase === 'done' ? sim.outcome : undefined
   const simShown = shownResult(simOutcome)
@@ -820,7 +820,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     const m = moduleOf(diagram, p.module)
     const label = !!m && isNetLabel(m)
     return m ? (
-      <g key={p.uid} data-part={p.uid} data-label-lit={litLabels.includes(p.uid) ? '' : undefined}>
+      <g key={p.uid} data-part={p.uid} data-servo-live={run.servos[p.uid] && servoShaft(m) ? '' : undefined} data-label-lit={litLabels.includes(p.uid) ? '' : undefined}>
         {label && litLabels.includes(p.uid) && (() => {
           const r = flagRect(p, m, flags.get(p.uid) === 'ground' || flags.get(p.uid) === 'mains')
           return <rect className="label-lit" x={r.x - 4} y={r.y - 4} width={r.w + 8} height={r.h + 8} rx={6} pointerEvents="none" />
@@ -956,11 +956,11 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
         {(diagram.annotations ?? []).filter((a) => a.type === 'text').map((a) => (
           <NoteMark key={a.uid} a={a} interactive selected={!!selection.annotations?.includes(a.uid)} />
         ))}
-        {simOutcome && (
-          <SimLayer diagram={diagram} result={simShown?.result ?? null} stale={!!simShown?.stale} circuit={sim?.phase === 'done' ? sim.circuit : null} findings={simFindings} />
+        {(simOutcome || Object.keys(run.boards).length > 0) && (
+          <SimLayer diagram={diagram} result={simShown?.result ?? null} stale={!!simShown?.stale} circuit={sim?.phase === 'done' ? sim.circuit : null} findings={simFindings} run={run} />
         )}
         {/* Probes (saved with the sheet) show "-" until Simulate gives them readings. */}
-        {(diagram.probes?.length ?? 0) > 0 && <ProbeLayer diagram={diagram} readings={simShown?.result.probes ?? null} stale={!!simShown?.stale} />}
+        {(diagram.probes?.length ?? 0) > 0 && <ProbeLayer diagram={diagram} readings={simShown?.result.probes ?? null} stale={!!simShown?.stale} avg={!!simShown?.result.pwm} />}
         {/* A connection the netlist could not join (a missing part, pin, group or hole) has no
             route to draw, but a short dashed red stub at whichever end still resolves lets a
             user find and repair it instead of a wire silently vanishing from the sheet. Drawn after the

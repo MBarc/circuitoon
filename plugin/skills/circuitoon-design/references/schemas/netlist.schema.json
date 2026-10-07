@@ -15,7 +15,7 @@
       "properties": {
         "format": { "const": "circuitoon-netlist/1" },
         "title": { "type": "string" },
-        "parts": { "type": "array" },
+        "parts": { "type": "array", "items": { "type": "object", "properties": { "code": { "type": "object", "required": ["language"], "properties": { "language": { "type": "string" }, "path": { "type": "string" }, "source": { "type": "string" }, "file": { "type": "string" } }, "additionalProperties": false } } } },
         "nets": { "type": "array" }
       }
     }

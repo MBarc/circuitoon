@@ -2,6 +2,7 @@
 // Spec: docs/PRD.md, "Module definition format". Erasable TS only, so node can run it directly.
 import { REQUIREMENTS, type Requirement, claimInternalNodes, validateMains } from './mainsModel.ts'
 import { validateSim } from './simModel.ts'
+import { KNOWN_LANGUAGES } from './code.ts'
 
 export const MODULE_FORMAT = 'circuitoon-module/1'
 export const GRID = 10 // px per grid unit at 100% zoom; also the pin pitch
@@ -111,6 +112,8 @@ export interface ArtShape {
   labelSize?: number
   /** Resistor color band slot 1 to 4; the renderer colors it from the part's resistance. */
   band?: 1 | 2 | 3 | 4
+  /** Part of a servo's drawn horn: hidden while the editor draws the live horn over the shaft (sim.servo.shaft). */
+  horn?: true
 }
 export interface Art {
   w: number
@@ -222,6 +225,8 @@ export interface ModuleDef {
    * library: unverified. Its id starts with "custom-", which no built-in id does.
    */
   custom?: true
+  /** The languages code on this part may be in (firmware spec 3.2); read only through languagesOf. */
+  firmware?: { languages: string[] }
 }
 
 /** The id prefix every custom part has and no built-in part may use. */
@@ -355,6 +360,14 @@ export function validateModule(raw: unknown): ValidationResult {
   if (raw.custom !== undefined) {
     if (raw.custom !== true) errors.push('custom: must be true when present')
     else if (typeof raw.id === 'string' && !raw.id.startsWith(CUSTOM_PREFIX)) errors.push(`custom: a custom part's id must start with "${CUSTOM_PREFIX}"`)
+  }
+  if (raw.firmware !== undefined) {
+    const f = raw.firmware
+    if (!isObj(f) || Object.keys(f).some((k) => k !== 'languages') || !Array.isArray(f.languages) || !f.languages.length) errors.push('firmware: must be { "languages": [<language id>, ...] }')
+    else
+      f.languages.forEach((l, i) => {
+        if (!(KNOWN_LANGUAGES as readonly unknown[]).includes(l)) errors.push(`firmware.languages[${i}]: unknown language "${show(l)}" (${KNOWN_LANGUAGES.join(', ')})`)
+      })
   }
 
   // Electrical metadata shared by pins and hole groups.
@@ -514,6 +527,7 @@ export function validateModule(raw: unknown): ValidationResult {
         if (s.label !== undefined && typeof s.label !== 'string') errors.push(`${at}.label: must be a string`)
         if (s.labelColor !== undefined && typeof s.labelColor !== 'string') errors.push(`${at}.labelColor: must be a string`)
         if (s.labelSize !== undefined && !isPos(s.labelSize)) errors.push(`${at}.labelSize: must be a positive number`)
+        if (s.horn !== undefined && s.horn !== true) errors.push(`${at}.horn: must be true`)
         if (s.band !== undefined && !(Number.isInteger(s.band) && (s.band as number) >= 1 && (s.band as number) <= 4))
           errors.push(`${at}.band: must be a whole number from 1 to 4`)
       })

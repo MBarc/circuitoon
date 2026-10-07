@@ -75,7 +75,9 @@ export function powerPart(b: Builder, p: PartInstance, m: ModuleDef): void {
     if (!dn) continue
     const tOver = simOverride(p, `sim.draw.${dr.domain}.typical`)
     const pOver = simOverride(p, `sim.draw.${dr.domain}.peak`)
-    const typical = tOver !== null ? b.user(tOver, L(`draw.${dr.domain}.typical`)) : P(dr.typical, `draw.${dr.domain}.typical`)
+    // A servo whose horn is travelling draws its moving current (firmware spec 3.4); else the stated draw.
+    const moving = sim.servo && b.isMoving(p.uid) ? P(sim.servo.moving, 'servo.moving') : null
+    const typical = moving ?? (tOver !== null ? b.user(tOver, L(`draw.${dr.domain}.typical`)) : P(dr.typical, `draw.${dr.domain}.typical`))
     const peak = pOver !== null ? b.user(pOver, L(`draw.${dr.domain}.peak`)) : dr.peak ? P(dr.peak, `draw.${dr.domain}.peak`) : typical
     const minVolts = 'minVolts' in dr && dr.minVolts ? P(dr.minVolts, `draw.${dr.domain}.minVolts`)
       : { value: MIN_VOLTS_FRACTION * dn.nominal, basis: 'estimate' as const, label: L(`draw.${dr.domain}.minVolts`), note: '90 % of the domain nominal (spec 3.2)' }
@@ -152,7 +154,10 @@ export function powerPart(b: Builder, p: PartInstance, m: ModuleDef): void {
   const io = g && domains.get(g.domain)
   if (g && io)
     for (const pin of g.pins) {
-      const state = gpioState(p, m, pin)
+      // A running board's state wins over the saved one (spec 4.1); a PWM pin keeps its duty.
+      const run = b.runPin(p.uid, pin)
+      const state = run === undefined ? gpioState(p, m, pin) : typeof run === 'string' ? run : 'pwm'
+      const duty = run !== undefined && typeof run !== 'string' ? run.pwm : undefined
       b.gpio({ part: p.uid, pin, state, domain: g.domain, key: nodeKey(p.uid, pin) })
       if (state === null) {
         b.unsimulated(p.uid, `pin ${pin}: output-only pin with no state set`)
@@ -164,7 +169,7 @@ export function powerPart(b: Builder, p: PartInstance, m: ModuleDef): void {
       // resistance that leaks that current at the domain's nominal voltage.
       if (node)
         b.add({
-          kind: 'gpio', id: `${p.uid}.gpio.${pin}`, part: p.uid, pin, node, vdd: io.pin, ret: io.ret, domain: g.domain, state,
+          kind: 'gpio', id: `${p.uid}.gpio.${pin}`, part: p.uid, pin, node, vdd: io.pin, ret: io.ret, domain: g.domain, state, ...(duty !== undefined ? { duty } : {}),
           params: {
             outputResistance: R(g.outputResistance, 'outputResistance'),
             ...(g.pullup ? { pullup: R(g.pullup, 'pullup') } : {}),
@@ -172,6 +177,12 @@ export function powerPart(b: Builder, p: PartInstance, m: ModuleDef): void {
             ...(g.inputLeakage && g.inputLeakage.value > 0 ? { leakage: { ...R(g.inputLeakage, 'inputLeakage'), value: io.nominal / g.inputLeakage.value, note: 'derived: domain nominal / inputLeakage' } } : {}),
           },
         })
+    }
+  // Fixed pull-ups on the board (firmware spec 3.3, ruling R3): always there, whatever the code does.
+  if (g && io)
+    for (const fp of g.fixedPullups ?? []) {
+      const node = b.tap(p.uid, fp.pin)
+      if (node) b.add({ kind: 'resistor', id: `${p.uid}.pullup.${fp.pin}`, part: p.uid, a: io.pin, b: node, ohms: P(fp.ohms, `gpio.fixedPullups.${fp.pin}`), role: 'internal' })
     }
   // Spec 3.5, as for a battery: the imax override replaces the module's sourceCurrent limit.
   if (imaxOver === null) return b.partLimits(p, m)
@@ -188,7 +199,7 @@ export function usbLinks(b: Builder, d: Diagram): void {
     const sides = usbSides(link.from, link.to)
     if (!sides) continue
     const [host, dev] = sides
-    // The modules as simulated: a built-in part's sim from the library (withLibrarySim).
+    // The modules as simulated: a built-in part's sim from the library (withLibraryData).
     const hm = b.module(host.part.module) ?? host.module
     const dm = b.module(dev.part.module) ?? dev.module
     // A device that is not simulated has nothing for the cable to feed.
@@ -199,6 +210,12 @@ export function usbLinks(b: Builder, d: Diagram): void {
     }
     if (!simOf(hm)?.power) {
       b.unsimulated(dev.part.uid, `powered from ${b.ref(host.part.uid)} over USB, which has no power data`)
+      continue
+    }
+    // A host port that no power domain feeds (a Pi's USB-A ports, firmware spec 3.3): it powers
+    // nothing here, exactly as before the host had power data.
+    if (!simOf(hm)!.power!.domains.some((x) => x.pin === `${host.name}#vbus`)) {
+      b.unsimulated(dev.part.uid, `powered from ${b.ref(host.part.uid)} ${host.name}, whose USB power is not simulated`)
       continue
     }
     if (!b.simulated(host.part.uid)) {

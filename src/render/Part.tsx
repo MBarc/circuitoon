@@ -255,7 +255,7 @@ export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, 
         {art ? (
           <g transform={`translate(${ax} ${ay})`}>
             {art.shapes.map((s, i) => (
-              <g key={i}>
+              <g key={i} className={s.horn ? 'art-horn' : undefined}>
                 <rect
                   x={s.x} y={s.y} width={s.w} height={s.h} rx={s.radius ?? 0}
                   fill={s.band && bands ? bands[s.band - 1] : s.fill}

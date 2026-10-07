@@ -2,8 +2,8 @@
   position: fixed; inset: 0;
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr) 270px;
-  grid-template-rows: auto minmax(0, 1fr);
-  grid-template-areas: "bar bar bar" "lib canvas inspector";
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas: "bar bar bar" "lib canvas inspector" "lib dock inspector";
   background: var(--bg);
   color: var(--text);
 }
@@ -293,8 +293,10 @@
 .swatch[aria-pressed="true"] { outline: 3px solid var(--focus); outline-offset: 1px; }
 
 @media (max-width: 900px) {
-  .editor { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto auto; grid-template-areas: "bar" "canvas" "inspector" "lib"; }
-  .library, .inspector { max-height: 30vh; border: 0; border-top: 1px solid var(--rule); }
+  .editor { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto auto auto; grid-template-areas: "bar" "canvas" "dock" "inspector" "lib"; }
+  /* position: relative makes each panel the containing block of its visually hidden (absolute) text,
+     so that text is clipped with the panel instead of stretching the scrolling page below it. */
+  .library, .inspector { max-height: 30vh; border: 0; border-top: 1px solid var(--rule); position: relative; }
 }
 
 .start { min-height: 100%; background: var(--bg); color: var(--text); }
@@ -315,6 +317,10 @@
 .start-card.drop { cursor: default; border-style: dashed; }
 .start-card.drop.over { background: var(--paper); }
 .start-card.sample .sheet { border: 1.5px solid #D6DCD2; border-radius: 8px; }
+.start-samples { display: grid; gap: 10px; }
+.start-samples h2 { font: 600 22px/1.2 "Fredoka", system-ui, sans-serif; margin: 0; }
+.start-samples-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 18px; }
+.start-card.small strong { font-size: 17px; }
 .start-icon {
   display: grid; place-items: center; width: 44px; height: 44px; border-radius: 10px;
   background: var(--yellow); color: #23282F; border: 2px solid var(--ink); font: 600 26px/1 "Fredoka", system-ui, sans-serif;
@@ -517,7 +523,7 @@ button.wordmark { background: none; border: 0; padding: 0; cursor: pointer; }
 .probes-panel.stale .probe-value, .probes-panel.stale .supplies .typ { opacity: 0.75; }
 .supplies, .sim-notes, .about-sim { display: grid; gap: 6px; border-top: 1.5px solid var(--rule); padding-top: 10px; }
 .supplies h3, .sim-notes h3 { margin: 0; font: 600 16px/1.2 "Fredoka", system-ui, sans-serif; }
-.supplies h4 { margin: 0; font: 600 14px/1.2 "Fredoka", system-ui, sans-serif; color: var(--muted); }
+.supplies h4, .about-sim h4 { margin: 0; font: 600 14px/1.2 "Fredoka", system-ui, sans-serif; color: var(--muted); }
 .supplies-scroll { overflow-x: auto; border: 1.5px solid var(--rule); border-radius: 8px; background: var(--bg); }
 .supplies table { border-collapse: collapse; font-size: 12px; width: 100%; font-variant-numeric: tabular-nums; }
 .supplies th, .supplies td { text-align: left; vertical-align: top; padding: 5px 4px; border-bottom: 1px solid var(--rule); }
@@ -540,3 +546,12 @@ button.wordmark { background: none; border: 0; padding: 0; cursor: pointer; }
 .about-notice { margin: 0; max-height: 30vh; overflow: auto; font-size: 11px; line-height: 1.45; white-space: pre-wrap; background: var(--bg); border: 1.5px solid var(--rule); border-radius: 8px; padding: 8px; }
 .about-links { margin: 0; padding-left: 18px; font-size: 13px; display: grid; gap: 2px; }
 .about-links a { color: var(--focus); }
+
+.run-badge rect { stroke: var(--card-edge); stroke-width: 1.5; }
+.run-badge.running rect { fill: #1F7A53; }
+.run-badge.error rect { fill: #B8342B; }
+.run-badge text { font: 700 11px/1 "Atkinson Hyperlegible", system-ui, sans-serif; fill: #FFFFFF; }
+.servo-horn path { stroke: #F7F8F3; stroke-width: 7; stroke-linecap: round; filter: drop-shadow(1px 1px 0 #23282F); }
+.servo-horn circle { fill: #23282F; }
+.about-sim h4 { margin-top: 8px; }
+[data-servo-live] .art-horn { display: none; }

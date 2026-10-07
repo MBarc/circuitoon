@@ -803,6 +803,249 @@
         ],
         "note": "600 mA across all four ports with a 3 A supply, shared with the fan header"
       }
+    ],
+    "sim": {
+      "limits": [
+        {
+          "of": {
+            "domain": "3V3"
+          },
+          "kind": "ioTotalCurrent",
+          "value": 0.05,
+          "source": "https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc",
+          "provenance": "representative",
+          "conditions": "sum of all GPIO pin currents, 3.3 V signalling",
+          "note": "Representative: Compute Module 5 (same BCM2712 and RP1; its GPIO0-27 \"correspond to the GPIO pins on the Raspberry Pi 5 40-pin header\") datasheet section 2.9 (p. 11): \"Don't exceed 50 mA for total current load on all 28 GPIO pins.\" Also \"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\" (Raspberry Pi documentation, \"Power supply\" section, power-supplies.adoc; the sentence is not tied to one model)"
+        }
+      ],
+      "power": {
+        "domains": [
+          {
+            "name": "5V",
+            "pin": "5V",
+            "ret": "GND",
+            "nominal": 5
+          },
+          {
+            "name": "USB",
+            "pin": "USB-C#vbus",
+            "ret": "USB-C#gnd",
+            "nominal": 5
+          },
+          {
+            "name": "3V3",
+            "pin": "3V3",
+            "ret": "GND",
+            "nominal": 3.3
+          }
+        ],
+        "draw": [
+          {
+            "domain": "5V",
+            "typical": {
+              "value": 0.8,
+              "unit": "A",
+              "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc",
+              "provenance": "datasheet",
+              "note": "Board, not chip. Raspberry Pi documentation, \"Power supply\" section (source file power-supplies.adoc), table \"Typical power requirements\": Raspberry Pi 5 \"Typical bare-board active current consumption\" 800mA (recommended PSU 5.0A)."
+            },
+            "peak": {
+              "value": 1.7,
+              "unit": "A",
+              "source": "https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc",
+              "provenance": "estimate",
+              "note": "No Raspberry Pi stress figure for the Pi 5 was found (the workload table in power-supplies.adoc stops at the Pi 4B). Scaled from the Pi 4B in the same documentation: Stress Max 1.25 A / bare-board 600 mA = 2.08; 0.8 A x 2.08 = 1.67 A, rounded to 1.7 A. Board, not chip; assumption that the Pi 5 load scales like the Pi 4.",
+              "label": "CPU stress"
+            },
+            "minVolts": {
+              "value": 4,
+              "unit": "V",
+              "source": "https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc",
+              "provenance": "estimate",
+              "note": "Not documented for the Pi 5 (its PMIC has no public data sheet). Taken as the Pi 4's value (MxL7704 buck input minimum 4.0 V). Compute Module 5 datasheet section 3.1 (p. 15) asks that the 5 V rail \"rise monotonically to at least 4.75 V and remain above this level during operation\" and starts power-up above 4.75 V, a supply requirement rather than a brown-out point; the board warns at 4.63 V (power-supplies.adoc)."
+            }
+          }
+        ],
+        "rails": [
+          {
+            "id": "usbc-5v",
+            "inputs": [
+              {
+                "domain": "USB",
+                "via": "direct"
+              }
+            ],
+            "output": "5V",
+            "kind": "switch",
+            "ron": {
+              "value": 0.01,
+              "unit": "ohm",
+              "source": "https://datasheets.raspberrypi.com/rpi5/raspberry-pi-5-product-brief.pdf",
+              "provenance": "estimate",
+              "note": "No Pi 5 schematic is published (the documentation's schematics list has only mechanical drawings and STEP files for the Pi 5). The product brief says only \"5V/5A DC power via USB-C, with Power Delivery support\" (PDF p. 3). Modelled as a near-direct connection like the Pi 4; 10 mohm assumed. Any input switch or protection on the Pi 5 is unknown."
+            },
+            "reverse": "body-diode"
+          },
+          {
+            "id": "pmic-3v3",
+            "inputs": [
+              {
+                "domain": "5V",
+                "via": "direct"
+              }
+            ],
+            "output": "3V3",
+            "kind": "buck",
+            "vout": {
+              "value": 3.3,
+              "unit": "V",
+              "source": "https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc",
+              "provenance": "representative",
+              "note": "Compute Module 5 datasheet pin list (p. 19): \"CM5_3.3V (Output) 3.3 V ± 5%\". The Pi 5 header 3V3 pins are 3.3 V (gpio-on-raspberry-pi.adoc \"Voltage specifications\": \"Two 5V pins and two 3.3 V pins are present on the board\")."
+            },
+            "efficiency": {
+              "value": 0.85,
+              "unit": "1",
+              "provenance": "estimate",
+              "note": "The Pi 5 PMIC is not identified in any source cited here and has no public data sheet. Assumed typical for a 5 V to 3.3 V synchronous buck at a few hundred mA; compare the Pi 4's MxL7704 Buck 1, about 81 to 91 % from 0.1 to 0.6 A."
+            },
+            "vinMin": {
+              "value": 4,
+              "unit": "V",
+              "source": "https://maxlinear.com/document?id=22295 https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf",
+              "provenance": "estimate",
+              "note": "Not documented. Taken as the Pi 4 PMIC's buck input minimum (4.0 V, MxL7704 Table 4 p. 2). CM5 requires the 5 V rail to stay above 4.75 V (CM5 datasheet p. 15), a supply requirement, not the converter limit."
+            },
+            "vinMax": {
+              "value": 5.5,
+              "unit": "V",
+              "source": "https://maxlinear.com/document?id=22295 https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf",
+              "provenance": "estimate",
+              "note": "Not documented for the Pi 5 regulator. 5.5 V assumed (a 5 V-input PMIC; the Pi 4 MxL7704 range is 4.0 to 5.5 V). CM5 absolute maximum 5 V input is 6.0 V (CM5 datasheet Table 7, p. 25)."
+            },
+            "ioutMax": {
+              "value": 0.6,
+              "unit": "A",
+              "source": "https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf",
+              "provenance": "representative",
+              "note": "No 3.3 V header budget is documented for the Pi 5. Representative: Compute Module 5 datasheet section 3.4 Regulator outputs (p. 15): \"These regulators can each deliver up to 600 mA of current to external devices or peripherals connected to the board\"; pin list (p. 19): \"Power output max 300 mA per pin for a total of 600 mA\"."
+            },
+            "reverse": "body-diode",
+            "offPath": "open"
+          }
+        ]
+      },
+      "gpio": {
+        "domain": "3V3",
+        "pins": [
+          "GPIO2",
+          "GPIO3",
+          "GPIO4",
+          "GPIO5",
+          "GPIO6",
+          "GPIO7",
+          "GPIO8",
+          "GPIO9",
+          "GPIO10",
+          "GPIO11",
+          "GPIO12",
+          "GPIO13",
+          "GPIO14",
+          "GPIO15",
+          "GPIO16",
+          "GPIO17",
+          "GPIO18",
+          "GPIO19",
+          "GPIO20",
+          "GPIO21",
+          "GPIO22",
+          "GPIO23",
+          "GPIO24",
+          "GPIO25",
+          "GPIO26",
+          "GPIO27"
+        ],
+        "outputResistance": {
+          "value": 35,
+          "unit": "ohm",
+          "source": "https://datasheets.raspberrypi.com/rp1/rp1-peripherals.pdf https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf",
+          "provenance": "estimate",
+          "note": "RP1 pad DRIVE resets to 0x1 = 4 mA (RP1 peripherals Table 21, p. 33). Representative typicals from Compute Module 5 datasheet Table 8 (p. 26), 4 mA, VGPIO_VREF = 3.3 V: IOL typ 14.3 mA, IOH typ 9.5 mA. The table does not state the output voltage for these currents; assuming VOL 0.4 V and VOH VGPIO_VREF - 0.4 V (Table 8 p. 25): 0.4 / 0.0143 = 28 ohm low, 0.4 / 0.0095 = 42 ohm high, mean 35 ohm. Chip, not board."
+        },
+        "pullup": {
+          "value": 55000,
+          "unit": "ohm",
+          "source": "https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf",
+          "provenance": "representative",
+          "note": "Compute Module 5 datasheet Table 8 (p. 26), RP1 GPIO at VGPIO_VREF = 3.3 V: RPU pull-up resistor min 37, typ 55, max 86 kohm. The RP1 peripherals document gives no value. Chip, not board."
+        },
+        "pulldown": {
+          "value": 55000,
+          "unit": "ohm",
+          "source": "https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf",
+          "provenance": "representative",
+          "note": "Compute Module 5 datasheet Table 8 (p. 26), VGPIO_VREF = 3.3 V: RPD pull-down resistor min 35, typ 55, max 98 kohm. Chip, not board."
+        },
+        "inputLeakage": {
+          "value": 0.000003,
+          "unit": "A",
+          "source": "https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf",
+          "provenance": "representative",
+          "note": "Compute Module 5 datasheet Table 8 (p. 25): IIL input leakage current max 3 uA at VGPIO_VREF = 3.3 V. Chip, not board."
+        },
+        "inputLow": {
+          "value": 0.8,
+          "unit": "V",
+          "source": "https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf https://datasheets.raspberrypi.com/rp1/rp1-peripherals.pdf",
+          "provenance": "estimate",
+          "note": "Flagged estimate: Raspberry Pi documents no RP1 thresholds for the Pi 5 (the RP1 peripherals document, section 3.1.3 Pads, pp. 17 to 18, says only that the default thresholds are \"valid for an VDDIO voltage between 2.5V and 3.3V\"). Reading from the Compute Module 5 datasheet Table 8 (p. 25), same RP1: VIL max 0.8 V at VGPIO_VREF = 3.3 V. One source, a different board."
+        },
+        "inputHigh": {
+          "value": 2,
+          "unit": "V",
+          "source": "https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf https://datasheets.raspberrypi.com/rp1/rp1-peripherals.pdf",
+          "provenance": "estimate",
+          "note": "Flagged estimate, as inputLow: Compute Module 5 datasheet Table 8 (p. 25), VIH min 2.0 V at VGPIO_VREF = 3.3 V. Not documented for the Pi 5 board or in the RP1 peripherals document."
+        },
+        "fixedPullups": [
+          {
+            "pin": "GPIO2",
+            "ohms": {
+              "value": 1800,
+              "unit": "ohm",
+              "source": "https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc",
+              "provenance": "estimate",
+              "note": "Estimate: not on any Pi 5 board document. No Pi 5 schematic is published. gpio-on-raspberry-pi.adoc: \"Pins GPIO2 and GPIO3 have fixed pull-up resistors\" (no value). Value from the Compute Module 5 datasheet section 2.9 (p. 11): \"GPIO2 and GPIO3 include 1.8 k pull-up resistors.\" Value carried over from the CM5; not verified for the Pi 5."
+            }
+          },
+          {
+            "pin": "GPIO3",
+            "ohms": {
+              "value": 1800,
+              "unit": "ohm",
+              "source": "https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc",
+              "provenance": "estimate",
+              "note": "Estimate: not on any Pi 5 board document. No Pi 5 schematic is published. gpio-on-raspberry-pi.adoc: \"Pins GPIO2 and GPIO3 have fixed pull-up resistors\" (no value). Value from the Compute Module 5 datasheet section 2.9 (p. 11): \"GPIO2 and GPIO3 include 1.8 k pull-up resistors.\" Value carried over from the CM5; not verified for the Pi 5."
+            }
+          }
+        ]
+      },
+      "usbPorts": {
+        "USB-C": {
+          "gnd": "GND"
+        }
+      },
+      "unaccounted": [
+        "USB devices on the four USB-A ports (1.6 A budget with a 5 A supply, 600 mA with a 3 A supply, power-supplies.adoc); the ports stay \"not simulated\".",
+        "The two camera/display (CAM/DISP) connectors, the PCIe connector and the fan header: not in the board draw.",
+        "HATs and anything else powered from the 5V or 3V3 header pins beyond the user circuit the sheet draws: the board draw covers the board only.",
+        "The Pi 5 typical draw is Raspberry Pi's \"bare-board active\" figure; the peak is scaled from the Pi 4 (estimate)."
+      ]
+    }
+  },
+  "firmware": {
+    "languages": [
+      "python-rpi"
     ]
   },
   "art": {

@@ -26,7 +26,7 @@ A netlist says what connects to what. The layout decides where everything goes. 
 | Field | Meaning |
 | --- | --- |
 | `format`, `title` | Required. |
-| `parts[]` | Each part has a `ref` and a `module`, plus three optional fields: `values`, `settings` and `on`. |
+| `parts[]` | Each part has a `ref` and a `module`, plus four optional fields: `values`, `settings`, `on` and `code`. |
 | `nets[]` | Each net has a `name` (unique) and `pins`, a list of at least two endpoints. An endpoint belongs to one net only. Optional `"label": true` asks for the net to be drawn with net labels instead of wires (see below). |
 | `nc[]` | Pins that must stay unconnected. Any connection to one of them fails verification. |
 | `groups[]` | `{ "name", "parts": [refs] }`, drawn as a labelled frame. A part is in one group at most. `render --focus <name>` frames it. |
@@ -44,6 +44,7 @@ The part fields:
 - `module`: a built-in id from `circuitoon parts`, or an id under `modules`.
 - `values` (optional): `resistance` in ohm, `capacitance` in F, or `voltage` in V, written as `{ "value": 220, "unit": "ohm" }`, plus the simulation values below (GPIO states, switch positions, draw and cell overrides).
 - `settings` (optional): choices for the part's enumerated settings, as listed in its module's `electrical.settings`, written as `{ "address": "0x3D" }`. A setting the module does not have, or a choice it does not offer, is an error. Leave one out for the module's default (its first choice). Use it to give two identical I2C parts different addresses (two OLEDs at `0x3C` and `0x3D`), or to mark a fuse holder's fuse `absent`. The layout sets them on the sheet, `netlist` extracts them, and verify reports a setting that differs from the intent as `value-drift`.
+- `code` (optional, on a board): the firmware it runs, written as `{ "language": "python-rpi", "path": "blink.py" }`. The path must be relative, inside the netlist's folder, with no `..` (and not leading out of it through a symlink). `layout` reads the file and embeds it on the sheet; `circuitoon netlist -o` writes each board's code beside the netlist as `<ref>.py` and references it. Without `-o` the code is inline: `{ "language", "source", "file" }`.
 - `on` (optional): the ref of a breadboard or rail strip the part plugs into.
 
 Net labels (`"label": true` on a net):

@@ -148,9 +148,9 @@ function headerH(y, at) {
     r(136, 32, 5, 5, '#123356', { radius: 2.5, outline: false }),
     r(68, 8, 68, 54, SERVO, { radius: 3 }),
     r(108, 12, 24, 24, SERVO_DARK, { radius: 12, outline: false }),
-    r(100, 16, 44, 16, WHITE, { radius: 8 }),
-    r(114, 16, 16, 16, WHITE, { radius: 8 }),
-    r(119, 21, 6, 6, CAP_TOP, { radius: 3, outline: false }),
+    r(100, 16, 44, 16, WHITE, { radius: 8, horn: true }),
+    r(114, 16, 16, 16, WHITE, { radius: 8, horn: true }),
+    r(119, 21, 6, 6, CAP_TOP, { radius: 3, outline: false, horn: true }),
     r(72, 44, 36, 12, SERVO, { outline: false, label: 'SG90', labelColor: '#FFFFFF', labelSize: 8 }),
   ]
   write('servo-sg90.json', moduleJson({

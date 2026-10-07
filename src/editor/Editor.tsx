@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import type { Diagram } from '../format/diagram.ts'
 import { EditorStore } from './store.ts'
 import { Canvas, type CanvasApi } from './Canvas.tsx'
+import { CodeDock } from './CodeDock.tsx'
 import { Inspector } from './Inspector.tsx'
 import { LibraryPanel } from './LibraryPanel.tsx'
 import { ProbesPanel } from './ProbesPanel.tsx'
@@ -18,6 +19,7 @@ import { PART_FILE, cleanBaseName, downloadText, saveWithPicker, type SavePicker
 import { ExportDialog } from './ExportDialog.tsx'
 import { copyText, submissionUrl, submitToLibrary } from './partSubmit.ts'
 import { markUnsaved } from '../isolation.ts'
+import { disposeRuns } from './running.ts'
 import './editor.css'
 import './partMaker.css'
 
@@ -104,6 +106,14 @@ function useEditorClipboard(store: EditorStore, canvas: { current: CanvasApi | n
 function useEditorKeys(store: EditorStore) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Ctrl+` toggles the code dock (firmware spec 6.4), from anywhere.
+      if ((e.ctrlKey || e.metaKey) && e.key === '`') {
+        e.preventDefault()
+        const open = !store.getState().dock.open
+        store.setDock({ open })
+        if (open) requestAnimationFrame(() => document.querySelector<HTMLElement>('#code-dock [role="tab"][aria-selected="true"]')?.focus())
+        return
+      }
       if ((e.target as HTMLElement).closest(TEXT_FIELD)) return
       const mod = e.ctrlKey || e.metaKey
       const key = e.key.toLowerCase()
@@ -313,8 +323,8 @@ function usePartMaker(store: EditorStore, canvas: { current: CanvasApi | null })
   return { handlers, editModule, updateModule, ui }
 }
 
-export function Editor({ initial, warnings, onClose, onDirty }: { initial: Diagram; warnings?: string[]; onClose: () => void; onDirty?: (dirty: boolean) => void }) {
-  const store = useMemo(() => new EditorStore(initial), [initial])
+export function Editor({ initial, warnings, linkCode, onClose, onDirty }: { initial: Diagram; warnings?: string[]; linkCode?: boolean; onClose: () => void; onDirty?: (dirty: boolean) => void }) {
+  const store = useMemo(() => new EditorStore(initial, { linkCode }), [initial, linkCode])
   const canvasApi = useRef<CanvasApi | null>(null)
   useEditorKeys(store)
   useEditorClipboard(store, canvasApi)
@@ -330,6 +340,8 @@ export function Editor({ initial, warnings, onClose, onDirty }: { initial: Diagr
   }, [dirty, onDirty])
   // Closing the sheet leaves nothing unsaved behind.
   useEffect(() => () => markUnsaved(false), [])
+  // Closing the sheet stops its boards.
+  useEffect(() => () => disposeRuns(store), [store])
   const parts = usePartMaker(store, canvasApi)
   // Only the tool: the whole state would re-render the editor (and the canvas) on every change.
   const simTool = useSyncExternalStore(store.subscribe, () => store.getState().simTool)
@@ -338,6 +350,7 @@ export function Editor({ initial, warnings, onClose, onDirty }: { initial: Diagr
       <Toolbar store={store} warnings={warnings} onClose={onClose} />
       <LibraryPanel onAdd={(id) => canvasApi.current?.addAtCenter(id)} parts={parts.handlers} />
       <Canvas store={store} onReady={(api) => (canvasApi.current = api)} />
+      <CodeDock store={store} />
       {simTool === 'probe' ? <ProbesPanel store={store} /> : <Inspector store={store} onEditPart={parts.editModule} onUpdatePart={parts.updateModule} />}
       {parts.ui}
     </div>

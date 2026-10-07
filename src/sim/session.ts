@@ -1,39 +1,85 @@
 // The solve loop the editor and the CLI share (spec 2): build the circuit, run the typical and peak
-// corners (2 engine runs), and assemble the SimResult. SimSession keeps at most one solve in flight
-// and one pending (a newer request replaces the pending one); a result for an older revision, or
+// corners (2 engine runs; with PWM pins, every run of the plan, firmware spec 4.2), and assemble the
+// SimResult. SimSession keeps at most one solve in flight and one pending (a newer request replaces the pending one); a result for an older revision, or
 // one that arrives after stop(), is discarded; a failure carries the last good result.
 import type { Diagram, Probe } from '../format/diagram.ts'
-import { type BuildOptions, buildCircuit } from './build.ts'
+import { type BuildOptions, buildCircuit, withRunPins } from './build.ts'
 import type { Engine } from './engine/engine.ts'
-import { classifyCached } from './floating.ts'
-import { analyseFindings, finalize, noConvergence, topologyFindings } from './findings.ts'
-import type { Circuit, Corner } from './model.ts'
+import { type Classification, classify, classifyCached, rememberClassification } from './floating.ts'
+import { analyseRuns, finalize, noConvergence, topologyFindings } from './findings.ts'
+import type { Analysis, Circuit, Corner } from './model.ts'
+import { mixRaws, pwmPlan } from './pwm.ts'
 import { type SimOutcome, type SimResult, budget, probeReadings, readRun } from './results.ts'
 import type { RawRun } from './spice.ts'
 
-/** BuildOptions (held group, library) plus probes beyond the diagram's saved ones (the CLI's). */
-export interface SolveOptions extends BuildOptions { probes?: Probe[] }
+/** BuildOptions (held group, library, run pin states) plus probes beyond the diagram's saved ones (the CLI's), and the code sequences the run pin states were sampled at (handed back with the outcome). */
+export interface SolveOptions extends BuildOptions { probes?: Probe[]; runSeq?: Record<string, number> }
+
+type Prepared = { c: Circuit; cls: Classification; topo: ReturnType<typeof topologyFindings> }
+/**
+ * The last sheet solved only (one slot, replaced by a new sheet): its circuit built with no run pins,
+ * and the classification and topology findings per set of GPIO states. One slot is all a run-state
+ * change needs; keeping every parts array solved would hold a circuit per undo entry.
+ */
+let slot: { parts: Diagram['parts']; key: unknown[]; base: Circuit; byStates: Map<string, Omit<Prepared, 'c'>> } | null = null
+/** Whether the solve cache holds this sheet (tests: a new sheet drops the last one). */
+export const solveCacheHolds = (parts: Diagram['parts']): boolean => slot?.parts === parts
+
+/**
+ * The circuit, its classification and its topology findings (decided before the engine runs, so a
+ * failed or unavailable outcome still names a real short). Perf ruling (firmware slice 1): a
+ * run-state change on an unchanged sheet (the same parts, connections, modules and intent, held
+ * group, library, net names and moving servos) patches the GPIO states of the circuit built with no
+ * run pins (withRunPins) instead of rebuilding it, and reuses the classification and topology
+ * findings of the same GPIO states (a PWM pin conducts both ways whatever its duty, so the duty is
+ * not part of the key). A pin moving between driven, pulled and undriven is a new key: classified afresh.
+ */
+function prepare(d: Diagram, opts: BuildOptions): Prepared {
+  const key = [d.connections, d.modules, d.intent, opts.held?.part, opts.held?.group, opts.library, opts.netNames, JSON.stringify(opts.moving ?? [])]
+  if (slot?.parts !== d.parts || slot.key.some((x, i) => x !== key[i])) slot = { parts: d.parts, key, base: buildCircuit(d, { ...opts, runPins: undefined }), byStates: new Map() }
+  const hit = slot
+  const c = withRunPins(hit.base, opts.runPins)
+  if (!c) {
+    const full = buildCircuit(d, opts)
+    const cls = classifyCached(full, { kind: 'op' })
+    return { c: full, cls, topo: topologyFindings(full, cls) }
+  }
+  const states = JSON.stringify(c.gpio.map((g) => g.state))
+  let known = hit.byStates.get(states)
+  if (!known) {
+    // ponytail: dropped wholesale past 64 state sets; an LRU if a sheet toggles more pins than that.
+    if (hit.byStates.size >= 64) hit.byStates.clear()
+    const cls = classify(c, { kind: 'op' })
+    hit.byStates.set(states, (known = { cls, topo: topologyFindings(c, cls) }))
+  }
+  rememberClassification(c, known.cls)
+  return { c, ...known }
+}
 
 export async function solve(d: Diagram, engine: Engine, revision: number, opts: SolveOptions = {}): Promise<{ outcome: SimOutcome; circuit: Circuit }> {
-  const c = buildCircuit(d, opts)
-  const cls = classifyCached(c, { kind: 'op' })
-  // Decided before the engine runs, so a failed or unavailable outcome still names a real short.
-  const topo = topologyFindings(c, cls)
-  const raws = {} as Record<Corner, RawRun>
+  const { c, cls, topo } = prepare(d, opts)
+  // PWM pins (spec 4.2): the plan's typical runs and the two peak runs, every text in one runAll.
+  const plan = pwmPlan(c)
+  const typical: Analysis[] = plan ? plan.runs.map((pins) => ({ kind: 'op', corner: 'typical', pins })) : [{ kind: 'op', corner: 'typical' }]
+  const peak: Analysis[] = plan ? plan.peak.map((pins) => ({ kind: 'op', corner: 'peak', pins })) : [{ kind: 'op', corner: 'peak' }]
+  const analyses = [...typical, ...peak]
   const before = engine.host.runs
   let ms = 0
-  // Both corners in one worker round trip.
-  const corners = ['typical', 'peak'] as const
-  const runs = await engine.runAll(c, corners.map((corner) => ({ kind: 'op', corner })), revision)
-  for (const [i, corner] of corners.entries()) {
+  const runs = await engine.runAll(c, analyses, revision)
+  const got: RawRun[] = []
+  for (const [i, a] of analyses.entries()) {
     const r = runs[i]
-    if (!r) throw new Error(`the engine gave no answer for the ${corner} corner`)
+    if (!r) throw new Error(`the engine gave no answer for the ${a.corner} corner`)
     if (r.status === 'unavailable') return { circuit: c, outcome: { status: 'unavailable', reason: r.reason, findings: finalize(topo.drafts, '') } }
     if (r.status === 'failed') return { circuit: c, outcome: { status: 'failed', revision, finding: noConvergence(c, r.error, r.nodes), findings: finalize(topo.drafts, '') } }
-    raws[corner] = r.raw
+    got.push(r.raw)
     ms += r.ms
   }
-  const { findings, outside } = analyseFindings(c, cls, raws, topo)
+  const typRaws = got.slice(0, typical.length)
+  const peakRaws = got.slice(typical.length)
+  // Readings, glow and budget use the duty-weighted average; the peak corner reads the all-high run.
+  const raws: Record<Corner, RawRun> = { typical: plan ? mixRaws(typRaws, plan.weights) : typRaws[0], peak: peakRaws[0] }
+  const { findings, outside } = analyseRuns(c, cls, { typical: typRaws, peak: peakRaws }, topo, plan)
   const read = { typical: readRun(c, cls, raws.typical, outside), peak: readRun(c, cls, raws.peak, outside) }
   const info = engine.host.info
   const result: SimResult = {
@@ -47,6 +93,7 @@ export async function solve(d: Diagram, engine: Engine, revision: number, opts: 
     unaccounted: c.unaccounted,
     notes: c.notes,
     engine: { name: 'ngspice', version: info?.version ?? '', build: info?.build ?? '', runs: engine.host.runs - before, ms },
+    ...(plan ? { pwm: { pins: plan.pins.map((p) => ({ part: p.part, pin: p.pin, duty: p.duty })), runs: analyses.length, approximate: plan.approximate.length > 0 } } : {}),
   }
   return { circuit: c, outcome: { status: 'ok', result } }
 }
@@ -58,16 +105,27 @@ export async function solve(d: Diagram, engine: Engine, revision: number, opts: 
 export class SimSession {
   private engine: Engine
   /** The circuit is absent when the solve threw before one was built. */
-  private onOutcome: (o: SimOutcome, c?: Circuit) => void
+  private onOutcome: (o: SimOutcome, c?: Circuit, opts?: SolveOptions) => void
   private pending: { d: Diagram; revision: number; opts: SolveOptions } | null = null
   private running = false
   private latest = 0
   private stopped = false
+  private runMode = false
+  private delivered = 0
   private lastGood: { revision: number; result: SimResult } | null = null
 
-  constructor(engine: Engine, onOutcome: (o: SimOutcome, c?: Circuit) => void) {
+  constructor(engine: Engine, onOutcome: (o: SimOutcome, c?: Circuit, opts?: SolveOptions) => void) {
     this.engine = engine
     this.onOutcome = onOutcome
+  }
+
+  /**
+   * Running mode (firmware spec 2.4), while any board runs: a finished solve is delivered when it is
+   * newer than the last one delivered, so a request every sample never starves the display. Off, the
+   * existing rule holds: only the latest request is delivered.
+   */
+  setRunning(on: boolean): void {
+    this.runMode = on
   }
 
   request(d: Diagram, revision: number, opts: SolveOptions = {}): void {
@@ -91,10 +149,12 @@ export class SimSession {
         // unhandled rejection, and the loop goes on to any request that arrived meanwhile.
         outcome = { status: 'failed', revision: job.revision, finding: noConvergence(null, String(e), []), findings: [] }
       }
-      if (this.stopped || job.revision !== this.latest) continue
+      if (this.stopped) continue
+      if (this.runMode ? job.revision <= this.delivered : job.revision !== this.latest) continue
+      this.delivered = job.revision
       if (outcome.status === 'ok') this.lastGood = { revision: job.revision, result: outcome.result }
       try {
-        this.onOutcome(outcome.status === 'failed' && this.lastGood ? { ...outcome, lastGood: this.lastGood } : outcome, circuit)
+        this.onOutcome(outcome.status === 'failed' && this.lastGood ? { ...outcome, lastGood: this.lastGood } : outcome, circuit, job.opts)
       } catch (e) {
         // A throwing callback is the caller's bug: logged, never allowed to wedge the loop.
         console.error('SimSession: onOutcome threw', e)

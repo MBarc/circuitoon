@@ -9,8 +9,8 @@ import { nodeKey } from '../format/netlist.ts'
 import { analyseMainsCached } from '../format/mains.ts'
 import { convertersInState } from '../format/mainsRules.ts'
 import { mainsOf } from '../format/mainsModel.ts'
-import { type Quantity, simOf, withLibrarySim } from '../format/simModel.ts'
-import { contactPosition, isActive, simOverride, switchGroups } from '../format/simState.ts'
+import { type Quantity, simOf, withLibraryData } from '../format/simModel.ts'
+import { type RunPinState, type RunPins, contactPosition, isActive, simOverride, switchGroups } from '../format/simState.ts'
 import { paramValue } from '../format/values.ts'
 import { sheetNets } from '../agent/extract.ts'
 import { naturalCompare } from '../agent/order.ts'
@@ -23,6 +23,10 @@ import { powerPart, usbLinks } from './power.ts'
 
 export interface BuildOptions {
   held?: { part: string; group: string } | null
+  /** A running board's GPIO states (firmware spec 2.3, 4.1): transient, like `held`; never saved. */
+  runPins?: RunPins
+  /** Servos whose horn is travelling (firmware spec 2.3): they draw their moving current. Transient, never saved. */
+  moving?: string[]
   /** The built-in parts, whose `electrical.sim` the simulator reads (default: the library). */
   library?: ModuleLookup
   /**
@@ -50,7 +54,7 @@ const hasPowerPin = (m: ModuleDef) => [...m.pins, ...(m.holes ?? [])].some((p) =
 export class Builder {
   d: Diagram
   private opts: BuildOptions
-  /** The sheet's modules, each with the sim it is simulated with (withLibrarySim). */
+  /** The sheet's modules, each with the sim it is simulated with (withLibraryData). */
   private modules: Record<string, ModuleDef>
   private mainsKeys: Set<string>
   private netOfKey = new Map<string, string>()
@@ -74,7 +78,7 @@ export class Builder {
     this.d = d
     this.opts = opts
     const library = opts.library ?? libraryLookup
-    this.modules = Object.fromEntries(Object.entries(d.modules).map(([id, m]) => [id, withLibrarySim(m, library)]))
+    this.modules = Object.fromEntries(Object.entries(d.modules).map(([id, m]) => [id, withLibraryData(m, library)]))
     this.mainsKeys = analyseMainsCached(d)?.mainsKeys ?? new Set()
     const sn = sheetNets(d)
     this.refOf = sn.refOf
@@ -254,6 +258,12 @@ export class Builder {
     return this.d.connections.some((c) => [c.from, c.to].some((e) => e.part === p.uid && ac.has(e.pin)))
   }
 
+  runPin(uid: string, pin: string): RunPinState | undefined {
+    return this.opts.runPins?.[uid]?.[pin]
+  }
+  isMoving(uid: string): boolean {
+    return this.opts.moving?.includes(uid) ?? false
+  }
   private isHeld(uid: string, group: string): boolean {
     return this.opts.held?.part === uid && this.opts.held.group === group
   }
@@ -385,6 +395,18 @@ export class Builder {
         if (simOf(m)?.power) return powerPart(this, p, m)
         return this.partLimits(p, m)
       }
+      case 'servo': {
+        // Firmware spec 3.4: a load on its supply (idle, or moving while the horn travels) and an input load on its signal pin.
+        const sim = simOf(m)
+        if (!sim?.power) return this.skip(p.uid, NO_POWER_DATA)
+        powerPart(this, p, m)
+        const s = sim.servo
+        const ret = sim.power.domains[0]?.ret
+        const a = s && this.simulated(p.uid) ? this.tap(p.uid, s.signal) : null
+        const g = a && ret ? this.tap(p.uid, ret) : null
+        if (s && a && g) this.add({ kind: 'resistor', id: `${p.uid}.signal`, part: p.uid, a, b: g, ohms: this.param(s.signalLoad, label('servo.signalLoad')), role: 'internal' })
+        return
+      }
     }
     if (simOf(m)?.power) return powerPart(this, p, m)
     if (mainsOf(m).any) return this.skip(p.uid, 'mains wiring is not simulated')
@@ -446,4 +468,35 @@ export function buildCircuit(d: Diagram, opts: BuildOptions = {}): Circuit {
   for (const p of [...d.parts].sort((x, y) => naturalCompare(x.uid, y.uid))) b.part(p)
   usbLinks(b, d)
   return b.done()
+}
+
+/**
+ * Perf ruling (firmware slice 1): `base`, built with no run pins, with `runPins` applied exactly as
+ * buildCircuit applies them (the GPIO list's states and the GPIO devices' state and duty). Null when
+ * a run pin sets a pin that has no saved state: that adds a device and a tap, so build in full then.
+ */
+export function withRunPins(base: Circuit, runPins: RunPins | undefined): Circuit | null {
+  const run = new Map<string, RunPinState>()
+  for (const g of base.gpio) {
+    const r = runPins?.[g.part]?.[g.pin]
+    if (r === undefined) continue
+    if (g.state === null) return null
+    run.set(nodeKey(g.part, g.pin), r)
+  }
+  if (!run.size) return base
+  const stateOf = (r: RunPinState) => (typeof r === 'string' ? r : 'pwm')
+  return {
+    ...base,
+    gpio: base.gpio.map((g) => {
+      const r = run.get(g.key)
+      return r === undefined ? g : { ...g, state: stateOf(r) }
+    }),
+    devices: base.devices.map((d) => {
+      const r = d.kind === 'gpio' ? run.get(nodeKey(d.part, d.pin)) : undefined
+      if (d.kind !== 'gpio' || r === undefined) return d
+      // Key order as buildCircuit writes it (duty before params).
+      const { params, ...rest } = d
+      return { ...rest, state: stateOf(r), ...(typeof r === 'string' ? {} : { duty: r.pwm }), params }
+    }),
+  }
 }

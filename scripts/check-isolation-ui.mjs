@@ -9,40 +9,30 @@
 //      update never reloads it at all: the first visit is the only reload the guard has to stop.)
 //   5. A window that bypasses the service worker reloads at most once (no reload loop).
 //   6. The kill switch (scripts/rollback/coi-serviceworker.js) unregisters cleanly and reloads.
+//   7. Twenty first visits in a row all end isolated (the reload waits for an active worker).
 // Usage (after `npm run build`): npm run check:isolation-ui -- [--out <dir>] [--port 4213]
-import { createServer } from 'node:http'
-import { existsSync, mkdirSync, readFileSync } from 'node:fs'
-import { extname, join, resolve } from 'node:path'
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { encodePayload } from '../src/format/link.ts'
-import { checker, flagOf, launchChrome } from './lib/browser-check.mjs'
+import { checker, flagOf, launchChrome, startStatic } from './lib/browser-check.mjs'
 
 const out = resolve(flagOf('--out', '.superpowers/isolation-ui'))
 const port = Number(flagOf('--port', '4213'))
 mkdirSync(out, { recursive: true })
-if (!existsSync('dist/index.html')) {
-  console.error('No build found. Run `npm run build` first.')
-  process.exit(2)
-}
-const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.wasm': 'application/wasm', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.txt': 'text/plain', '.webmanifest': 'application/manifest+json' }
-// A stand-in code worker script (the real one comes in a later task): it reports whether eval runs,
-// which the CSP's script-src (no 'unsafe-eval') forbids.
-const CODE_WORKER = "let r\ntry { eval('1'); r = 'eval ran' } catch { r = 'eval blocked' }\npostMessage(r)\n"
+// A stand-in code worker script: it reports whether eval runs, which the CSP's script-src (no
+// 'unsafe-eval') forbids. The real worker's own script is checked for the header below.
+const standIn = join(out, 'codeWorker-check.js')
+writeFileSync(standIn, "let r\ntry { eval('1'); r = 'eval ran' } catch { r = 'eval blocked' }\npostMessage(r)\n")
 // The service worker file can be swapped for the kill switch mid-check, and its registration fetch
 // (header `Service-Worker: script`, not the page's own <script> load) held back until `swHold` settles.
 let swFile = 'dist/coi-serviceworker.js'
 let swHold = null
-const server = createServer(async (req, res) => {
-  const path = decodeURIComponent(new URL(req.url, 'http://x').pathname)
-  if (!path.startsWith('/circuitoon/')) return void res.writeHead(404).end()
-  const rel = path.slice('/circuitoon/'.length) || 'index.html'
-  if (rel === 'assets/codeWorker-check.js') return void res.writeHead(200, { 'Content-Type': 'text/javascript' }).end(CODE_WORKER)
+const { base, close } = await startStatic(port, async (rel, req) => {
+  if (rel === 'assets/codeWorker-check.js') return standIn
   if (req.headers['service-worker'] === 'script' && swHold) await swHold
-  const file = rel === 'coi-serviceworker.js' ? swFile : join('dist', rel)
-  if (!existsSync(file)) return void res.writeHead(404).end()
-  res.writeHead(200, { 'Content-Type': TYPES[extname(rel)] ?? 'application/octet-stream', 'Cache-Control': 'no-cache' })
-  res.end(readFileSync(file))
-}).listen(port)
-const base = `http://localhost:${port}/circuitoon/`
+  return rel === 'coi-serviceworker.js' ? swFile : null
+})
+const realWorker = `assets/${readdirSync('dist/assets').find((f) => /^codeWorker-.*\.js$/.test(f))}`
 
 const mod = (id) => JSON.parse(readFileSync(`modules/${id}.json`, 'utf8'))
 const link = `${base}#/editor?d=${await encodePayload(
@@ -79,7 +69,7 @@ async function freshPage(scheme) {
   const page = await context.newPage()
   const seen = { loads: 0, foreign: [], errors: [] }
   page.on('load', () => seen.loads++)
-  page.on('request', (r) => !r.url().startsWith(`http://localhost:${port}/`) && !r.url().startsWith('data:') && seen.foreign.push(r.url()))
+  page.on('request', (r) => !r.url().startsWith(new URL(base).origin + '/') && !r.url().startsWith('data:') && seen.foreign.push(r.url()))
   page.on('pageerror', (e) => seen.errors.push(e.message))
   page.on('dialog', (d) => d.accept())
   return { context, page, seen }
@@ -89,6 +79,7 @@ const { check, done } = checker()
 // Whatever isolation headers or CSP the page sees below came from the service worker.
 check(!(await fetch(base)).headers.has('cross-origin-embedder-policy'), 'the server itself sends no isolation headers')
 check(!(await fetch(`${base}assets/codeWorker-check.js`)).headers.has('content-security-policy'), 'the server itself sends no CSP')
+check((await fetch(base + realWorker)).ok && !(await fetch(base + realWorker)).headers.has('content-security-policy'), `the server sends the built ${realWorker} with no CSP`)
 const browser = await launchChrome()
 for (const scheme of ['light', 'dark']) {
   const { context, page, seen } = await freshPage(scheme)
@@ -120,6 +111,8 @@ for (const scheme of ['light', 'dark']) {
   // 3. The code worker script's response carries the CSP through the service worker, and it holds.
   const csp = await page.evaluate(() => fetch('assets/codeWorker-check.js').then((r) => r.headers.get('content-security-policy')))
   check(csp === "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'", `${scheme}: the code worker script carries the CSP (${csp})`)
+  const realCsp = await page.evaluate((u) => fetch(u).then((r) => r.headers.get('content-security-policy')), realWorker)
+  check(realCsp === csp, `${scheme}: the built ${realWorker} gets the same CSP through the service worker (${realCsp})`)
   const ran = await page.evaluate(
     () =>
       new Promise((ok) => {
@@ -207,6 +200,19 @@ for (const scheme of ['light', 'dark']) {
   swFile = 'dist/coi-serviceworker.js'
   await context.close()
 }
+// 7. Every first visit ends isolated: the worker's "updatefound" fires while it is still installing,
+// and a reload then (before index.html's doReload waited for serviceWorker.ready) left about a third
+// of first visits uncontrolled. Twenty fresh visits, none left behind.
+{
+  const left = []
+  for (let i = 0; i < 20; i++) {
+    const { context, page } = await freshPage(i % 2 ? 'dark' : 'light')
+    await page.goto(`${base}#/editor`, { waitUntil: 'networkidle' })
+    if (!(await until(page, () => window.crossOriginIsolated === true, 5000))) left.push(i)
+    await context.close()
+  }
+  check(left.length === 0, `20 first visits all end isolated (not isolated: ${left.join(', ') || 'none'})`)
+}
 await browser.close()
-server.close()
+close()
 done()

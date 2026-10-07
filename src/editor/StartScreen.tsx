@@ -2,6 +2,7 @@
 import { useRef, useState } from 'react'
 import { type Diagram, emptyDiagram } from '../format/diagram.ts'
 import { buttonLed, captions } from '../samples/buttonLed.ts'
+import { PI_SAMPLES } from '../samples/piSamples.ts'
 import { Sheet } from '../render/Sheet.tsx'
 import { readDiagramFile } from './files.ts'
 import { ThemeSwitch } from '../ThemeSwitch.tsx'
@@ -69,6 +70,18 @@ export function StartScreen({ onOpen, notice = null, busy = false }: { onOpen: (
             <span>A battery, button, resistor and LED, ready to rearrange.</span>
           </button>
         </div>
+        <section className="start-samples" aria-labelledby="pi-samples">
+          <h2 id="pi-samples">Raspberry Pi samples</h2>
+          <div className="start-samples-row">
+            {PI_SAMPLES.map((s) => (
+              <button key={s.diagram.title} type="button" className="start-card sample small" onClick={() => onOpen(structuredClone(s.diagram))}>
+                <Sheet diagram={s.diagram} box={s.box} label={`${s.diagram.title} preview`} decorative />
+                <strong>{s.diagram.title}</strong>
+                <span>{s.blurb}</span>
+              </button>
+            ))}
+          </div>
+        </section>
         {busy && <p className="hint" role="status">Opening the linked diagram...</p>}
         {(error ?? notice) && <p className="start-error" role="alert">{error ?? notice}</p>}
         <p className="hint">Diagrams are not saved in the browser yet. Use Export JSON in the editor to keep your work.</p>

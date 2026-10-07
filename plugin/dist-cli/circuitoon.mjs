@@ -1,9 +1,9 @@
 import { createRequire } from "node:module";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { createHash } from "node:crypto";
-import { spawnSync } from "node:child_process";
-import { tmpdir } from "node:os";
+import { constants, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { fork, spawnSync } from "node:child_process";
+import { homedir, tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Worker, isMainThread, parentPort, workerData } from "node:worker_threads";
 //#region \0rolldown/runtime.js
@@ -11,7 +11,11 @@ var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).expor
 var __require = /* #__PURE__ */ (() => createRequire(import.meta.url))();
 //#endregion
 //#region src/cli/args.ts
-var LIST_FLAGS = /* @__PURE__ */ new Set(["--probe"]);
+var LIST_FLAGS = /* @__PURE__ */ new Set([
+	"--probe",
+	"--input",
+	"--press"
+]);
 var VALUE_FLAGS = /* @__PURE__ */ new Set([
 	"--out",
 	"--svg",
@@ -21,7 +25,10 @@ var VALUE_FLAGS = /* @__PURE__ */ new Set([
 	"--keep",
 	"--labels",
 	"--tiles",
-	"--spec"
+	"--spec",
+	"--board",
+	"--for",
+	"--py-dir"
 ]);
 var BOOL_FLAGS = /* @__PURE__ */ new Set([
 	"--json",
@@ -678,23 +685,26 @@ function simOf(m) {
 	return isObj(e) && isObj(e.sim) ? e.sim : null;
 }
 /**
-* The module a stored copy is simulated and validated as. `electrical.sim` is library data, like
-* the KiCad mapping (format/kicad.ts mappingOf): a built-in part whose stored copy has the
-* library's pins takes the library's sim, so a sheet saved before the library had it still
-* simulates and keeps its saved sim values. A custom part, or a copy whose pins changed, keeps its own.
+* The module a stored copy is simulated, validated and run as (firmware spec 3.2). `electrical.sim`
+* and `firmware` are library data, like the KiCad mapping (format/kicad.ts mappingOf): a built-in
+* part whose stored copy has the library's terminals takes both from the library, so a sheet saved
+* before the library had them still simulates and runs code. The stored copy comes back unchanged
+* only when both already match; a custom part, or a copy whose pins changed, keeps its own.
 */
-function withLibrarySim(stored, library) {
+function withLibraryData(stored, library) {
 	if (!library || isCustom(stored)) return stored;
 	const lib = library(stored.id);
 	if (!lib || lib === stored || terminalsKey(stored) !== terminalsKey(lib)) return stored;
 	const sim = isObj(lib.electrical) ? lib.electrical.sim : void 0;
+	if ((isObj(stored.electrical) ? stored.electrical.sim : void 0) === sim && stored.firmware === lib.firmware) return stored;
 	const e = isObj(stored.electrical) ? { ...stored.electrical } : {};
-	if (e.sim === sim) return stored;
 	if (sim === void 0) delete e.sim;
 	else e.sim = sim;
+	const { firmware: _old, ...rest } = stored;
 	return {
-		...stored,
-		electrical: e
+		...rest,
+		electrical: e,
+		...lib.firmware ? { firmware: lib.firmware } : {}
 	};
 }
 var RAIL_REQUIRED = {
@@ -807,6 +817,7 @@ function validateSim(raw, names, errors) {
 		"limits",
 		"power",
 		"gpio",
+		"servo",
 		"usbPorts",
 		"unaccounted"
 	], at);
@@ -940,7 +951,10 @@ function validateSim(raw, names, errors) {
 				"outputResistance",
 				"pullup",
 				"pulldown",
-				"inputLeakage"
+				"inputLeakage",
+				"inputLow",
+				"inputHigh",
+				"fixedPullups"
 			], w);
 			if (typeof g.domain !== "string" || !domainNames.has(g.domain)) errors.push(`${w}.domain: no domain "${show(g.domain)}" in ${at}.power.domains`);
 			if (!Array.isArray(g.pins) || !g.pins.length) errors.push(`${w}.pins: required, a list of GPIO pin names`);
@@ -950,6 +964,48 @@ function validateSim(raw, names, errors) {
 			quantity(g.outputResistance, `${w}.outputResistance`, "ohm", { positive: true });
 			for (const k of ["pullup", "pulldown"]) if (g[k] !== void 0) quantity(g[k], `${w}.${k}`, "ohm", { positive: true });
 			if (g.inputLeakage !== void 0) quantity(g.inputLeakage, `${w}.inputLeakage`, "A");
+			for (const k of ["inputLow", "inputHigh"]) if (g[k] !== void 0) quantity(g[k], `${w}.${k}`, "V", { positive: true });
+			const lo = val(g.inputLow);
+			const hi = val(g.inputHigh);
+			if (lo !== void 0 && hi !== void 0 && lo >= hi) errors.push(`${w}.inputLow: must be below inputHigh`);
+			if (g.fixedPullups !== void 0) {
+				const gpioPins = Array.isArray(g.pins) ? g.pins : [];
+				(Array.isArray(g.fixedPullups) ? g.fixedPullups : [null]).forEach((fp, i) => {
+					const at2 = `${w}.fixedPullups[${i}]`;
+					if (!isObj(fp)) return void errors.push(`${at2}: must be { "pin", "ohms" }`);
+					keys(fp, ["pin", "ohms"], at2);
+					if (typeof fp.pin !== "string" || !gpioPins.includes(fp.pin)) errors.push(`${at2}.pin: "${show(fp.pin)}" is not one of the GPIO pins`);
+					quantity(fp.ohms, `${at2}.ohms`, "ohm", { positive: true });
+				});
+			}
+		}
+	}
+	if (s.servo !== void 0) {
+		const w = `${at}.servo`;
+		const v = s.servo;
+		if (!isObj(v)) errors.push(`${w}: must be an object`);
+		else {
+			keys(v, [
+				"shaft",
+				"signal",
+				"pulseMin",
+				"pulseMax",
+				"slew",
+				"moving",
+				"signalLoad"
+			], w);
+			if (typeof v.signal !== "string" || !names.has(v.signal)) errors.push(`${w}.signal: no pin "${show(v.signal)}"`);
+			if (v.shaft !== void 0 && !(isObj(v.shaft) && typeof v.shaft.x === "number" && Number.isFinite(v.shaft.x) && typeof v.shaft.y === "number" && Number.isFinite(v.shaft.y))) errors.push(`${w}.shaft: must be { "x", "y" } in art coordinates`);
+			for (const [k, unit] of [
+				["pulseMin", "s"],
+				["pulseMax", "s"],
+				["slew", "s"],
+				["moving", "A"],
+				["signalLoad", "ohm"]
+			]) quantity(v[k], `${w}.${k}`, unit, { positive: true });
+			const lo = val(v.pulseMin);
+			const hi = val(v.pulseMax);
+			if (lo !== void 0 && hi !== void 0 && lo >= hi) errors.push(`${w}.pulseMin: must be below pulseMax`);
 		}
 	}
 	if (s.usbPorts !== void 0) {
@@ -989,6 +1045,78 @@ function validateSim(raw, names, errors) {
 		if (l.conditions !== void 0 && !(typeof l.conditions === "string" && l.conditions.trim())) errors.push(`${w}.conditions: must be a non-empty string`);
 		sourced(l, w);
 	});
+}
+//#endregion
+//#region src/format/code.ts
+/** Every language a slice plans (ruling R2): modules may name any of them; RUNNABLE is what this build runs. */
+var KNOWN_LANGUAGES = [
+	"python-rpi",
+	"arduino-avr",
+	"micropython"
+];
+var RUNNABLE = ["python-rpi"];
+var LANGUAGE_NAMES = {
+	"python-rpi": "Raspberry Pi Python",
+	"arduino-avr": "Arduino C++",
+	micropython: "MicroPython"
+};
+/** The file extensions an upload of each language may have (spec 6.2: `.ino` on a Pi is refused). */
+var LANGUAGE_EXT = {
+	"python-rpi": [".py"],
+	"arduino-avr": [".ino", ".cpp"],
+	micropython: [".py"]
+};
+var isObj$1 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+var utf8Bytes = (s) => new TextEncoder().encode(s).length;
+var languageName = (id) => LANGUAGE_NAMES[id] ?? `"${id}"`;
+/** Why a code file name cannot be kept (spec 3.1: at most 255 characters, no path separators), or null. */
+function fileProblem(name) {
+	if (typeof name !== "string" || name === "") return "it must be text";
+	if (name.length > 255) return `it is over 255 characters`;
+	if (/[\\/]/.test(name)) return "it has a path separator";
+	return null;
+}
+/** A part's `code` as loaded: the value to keep (the same object when nothing changed), or null to drop it, and the warnings in words. */
+/** Why a netlist `code.path` is refused (firmware spec 7), or null: relative, inside the netlist's folder, no "..". */
+function pathProblem(path) {
+	return !path || /^([\\/]|[A-Za-z]:)/.test(path) || path.split(/[\\/]/).includes("..") ? "must be a relative path inside the netlist's folder, with no \"..\"" : null;
+}
+function checkCode(raw, who) {
+	const drop = (why) => ({
+		code: null,
+		warnings: [`${who}'s code was dropped: ${why}`]
+	});
+	if (!isObj$1(raw)) return drop("it must be { \"language\", \"source\", \"file\" }");
+	if (typeof raw.language !== "string" || raw.language === "") return drop("its language must be text");
+	if (typeof raw.source !== "string") return drop("its source must be text");
+	if (utf8Bytes(raw.source) > 262144) return drop("its source is over 256 KB");
+	const warnings = [];
+	const extra = Object.keys(raw).filter((k) => k !== "language" && k !== "source" && k !== "file");
+	if (extra.length) warnings.push(`${who}'s code had keys this version does not know (${extra.join(", ")}), which were dropped`);
+	const badFile = raw.file === void 0 ? null : fileProblem(raw.file);
+	if (badFile) warnings.push(`${who}'s code file name was dropped: ${badFile}`);
+	if (!KNOWN_LANGUAGES.includes(raw.language)) warnings.push(`${who}'s code is in "${raw.language}", which this version of Circuitoon does not know; it is kept but will not run`);
+	if (!extra.length && !badFile) return {
+		code: raw,
+		warnings
+	};
+	return {
+		code: {
+			language: raw.language,
+			source: raw.source,
+			...raw.file !== void 0 && !badFile ? { file: raw.file } : {}
+		},
+		warnings
+	};
+}
+/** The languages a module's code may be in (firmware spec 3.2): none on a custom part in this slice. */
+function languagesOf(m) {
+	return m && m.custom !== true ? m.firmware?.languages ?? [] : [];
+}
+/** "U1 is an Arduino Uno R3; its code is Raspberry Pi Python and won't run" for a known language the board does not take (kept, spec 3.1); else null. `m` is the module with its library data. */
+function languageMismatch(who, m, language) {
+	if (!KNOWN_LANGUAGES.includes(language) || languagesOf(m).includes(language)) return null;
+	return `${who} is ${/^[aeiou]/i.test(m.name) ? "an" : "a"} ${m.name}; its code is ${languageName(language)} and won't run`;
 }
 //#endregion
 //#region src/format/module.ts
@@ -1162,6 +1290,13 @@ function validateModule(raw) {
 		if (raw.custom !== true) errors.push("custom: must be true when present");
 		else if (typeof raw.id === "string" && !raw.id.startsWith("custom-")) errors.push(`custom: a custom part's id must start with "${CUSTOM_PREFIX}"`);
 	}
+	if (raw.firmware !== void 0) {
+		const f = raw.firmware;
+		if (!isObj(f) || Object.keys(f).some((k) => k !== "languages") || !Array.isArray(f.languages) || !f.languages.length) errors.push("firmware: must be { \"languages\": [<language id>, ...] }");
+		else f.languages.forEach((l, i) => {
+			if (!KNOWN_LANGUAGES.includes(l)) errors.push(`firmware.languages[${i}]: unknown language "${show(l)}" (${KNOWN_LANGUAGES.join(", ")})`);
+		});
+	}
 	const checkType = (t, at) => {
 		if (t.type !== void 0 && !PIN_TYPES.includes(t.type)) errors.push(`${at}.type: must be one of ${PIN_TYPES.join(", ")}`);
 	};
@@ -1325,6 +1460,7 @@ function validateModule(raw) {
 				if (s.label !== void 0 && typeof s.label !== "string") errors.push(`${at}.label: must be a string`);
 				if (s.labelColor !== void 0 && typeof s.labelColor !== "string") errors.push(`${at}.labelColor: must be a string`);
 				if (s.labelSize !== void 0 && !isPos(s.labelSize)) errors.push(`${at}.labelSize: must be a positive number`);
+				if (s.horn !== void 0 && s.horn !== true) errors.push(`${at}.horn: must be true`);
 				if (s.band !== void 0 && !(Number.isInteger(s.band) && s.band >= 1 && s.band <= 4)) errors.push(`${at}.band: must be a whole number from 1 to 4`);
 			});
 		}
@@ -5677,7 +5813,7 @@ function probeProblem(p, ids, pinsOf, holesOf) {
 * Checks a parsed diagram file. Structural problems refuse the load (errors); a connection
 * that names a missing part or pin still loads (warning), so no wire is silently dropped.
 * `library` is the built-in parts: a saved sim value is checked against the library's sim data
-* (withLibrarySim), so a copy saved before the library had it keeps its values. Pass it on every load.
+* (withLibraryData), so a copy saved before the library had it keeps its values. Pass it on every load.
 */
 function validateDiagram(raw, opts = {}) {
 	const errors = [];
@@ -5744,10 +5880,10 @@ function validateDiagram(raw, opts = {}) {
 				const who = typeof p.designator === "string" && p.designator !== "" ? p.designator : `part ${i}`;
 				const dropped = [];
 				const stored = typeof p.module === "string" ? modules.get(p.module) : void 0;
-				const simModule = stored && withLibrarySim(stored, opts.library);
+				const dataModule = stored && withLibraryData(stored, opts.library);
 				for (const [key, entry] of Object.entries(p.values)) {
 					if (isSimValueKey(key)) {
-						const problem = simValueProblem(key, entry, simModule);
+						const problem = simValueProblem(key, entry, dataModule);
 						if (problem) {
 							dropped.push(key);
 							warnings.push(`${at}.values.${key}: ${who} has ${key} ${JSON.stringify(entry)}, but ${problem.text}; ${problem.electrical ? VALUE_DROPPED : "it was dropped, so the default state is used"}`);
@@ -5811,6 +5947,15 @@ function validateDiagram(raw, opts = {}) {
 				}
 				if (changed) fix(i, { settings: Object.keys(kept).length ? kept : void 0 });
 			}
+		}
+		if (p.code !== void 0) {
+			const who = typeof p.designator === "string" && p.designator !== "" ? p.designator : `part ${i}`;
+			const r = checkCode(p.code, who);
+			for (const w of r.warnings) warnings.push(`${at}.code: ${w}`);
+			if (r.code !== p.code) fix(i, { code: r.code ?? void 0 });
+			const lm = typeof p.module === "string" ? modules.get(p.module) : void 0;
+			const mismatch = r.code && lm ? languageMismatch(who, withLibraryData(lm, opts.library), r.code.language) : null;
+			if (mismatch) warnings.push(`${at}.code: ${mismatch}`);
 		}
 	});
 	if (Array.isArray(raw.parts)) raw.parts.forEach((p, i) => {
@@ -6096,7 +6241,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 						"unit": "ohm",
 						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
 						"provenance": "estimate",
-						"note": "Typical 12 V barrel adapter, assumed to be the Mean Well NGE12 12-P1J (the module's own source; 12 V is electrical.params.voltage's default): load regulation +/-3.0% (SPECIFICATION p. 2), band +/-3% x 12 V = +/-0.36 V, whole swing up to 0.72 V over 0 to 1.0 A, 0.72 ohm. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). The same value is used whatever voltage the user sets. Controller ruling (reviewers disagreed): the two readings are 0.36 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.72 ohm (a band about a reference, up to twice the swing). 0.36 ohm is used: it is nearer typical droop, and this estimate never blocks."
+						"note": "Typical 12 V barrel adapter, assumed to be the Mean Well NGE12 12-P1J (the module's own source; 12 V is electrical.params.voltage's default): load regulation +/-3.0% (SPECIFICATION p. 2), band +/-3% x 12 V = +/-0.36 V, whole swing up to 0.72 V over 0 to 1.0 A, 0.72 ohm. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). The same value is used whatever voltage the user sets. The figure can be read two ways: 0.36 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.72 ohm (a band about a reference, up to twice the swing). 0.36 ohm is used: it is nearer typical droop, and this estimate never blocks."
 					},
 					"imax": {
 						"value": 1,
@@ -6398,7 +6543,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 						"unit": "ohm",
 						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
 						"provenance": "estimate",
-						"note": "Typical 12 V barrel adapter, assumed to be the Mean Well NGE12 12-P1J (the module's own source; 12 V is electrical.params.voltage's default): load regulation +/-3.0% (SPECIFICATION p. 2), band +/-3% x 12 V = +/-0.36 V, whole swing up to 0.72 V over 0 to 1.0 A, 0.72 ohm. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). The same value is used whatever voltage the user sets. Controller ruling (reviewers disagreed): the two readings are 0.36 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.72 ohm (a band about a reference, up to twice the swing). 0.36 ohm is used: it is nearer typical droop, and this estimate never blocks."
+						"note": "Typical 12 V barrel adapter, assumed to be the Mean Well NGE12 12-P1J (the module's own source; 12 V is electrical.params.voltage's default): load regulation +/-3.0% (SPECIFICATION p. 2), band +/-3% x 12 V = +/-0.36 V, whole swing up to 0.72 V over 0 to 1.0 A, 0.72 ohm. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). The same value is used whatever voltage the user sets. The figure can be read two ways: 0.36 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.72 ohm (a band about a reference, up to twice the swing). 0.36 ohm is used: it is nearer typical droop, and this estimate never blocks."
 					},
 					"imax": {
 						"value": 1,
@@ -6595,7 +6740,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 						"unit": "ohm",
 						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
 						"provenance": "estimate",
-						"note": "Typical 12 V barrel adapter, assumed to be the Mean Well NGE12 12-P1J (the module's own source; 12 V is electrical.params.voltage's default): load regulation +/-3.0% (SPECIFICATION p. 2), band +/-3% x 12 V = +/-0.36 V, whole swing up to 0.72 V over 0 to 1.0 A, 0.72 ohm. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). The same value is used whatever voltage the user sets. Controller ruling (reviewers disagreed): the two readings are 0.36 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.72 ohm (a band about a reference, up to twice the swing). 0.36 ohm is used: it is nearer typical droop, and this estimate never blocks."
+						"note": "Typical 12 V barrel adapter, assumed to be the Mean Well NGE12 12-P1J (the module's own source; 12 V is electrical.params.voltage's default): load regulation +/-3.0% (SPECIFICATION p. 2), band +/-3% x 12 V = +/-0.36 V, whole swing up to 0.72 V over 0 to 1.0 A, 0.72 ohm. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). The same value is used whatever voltage the user sets. The figure can be read two ways: 0.36 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.72 ohm (a band about a reference, up to twice the swing). 0.36 ohm is used: it is nearer typical droop, and this estimate never blocks."
 					},
 					"imax": {
 						"value": 1,
@@ -6787,7 +6932,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 						"unit": "ohm",
 						"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
 						"provenance": "estimate",
-						"note": "Typical 12 V barrel adapter, assumed to be the Mean Well NGE12 12-P1J (the module's own source; 12 V is electrical.params.voltage's default): load regulation +/-3.0% (SPECIFICATION p. 2), band +/-3% x 12 V = +/-0.36 V, whole swing up to 0.72 V over 0 to 1.0 A, 0.72 ohm. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). The same value is used whatever voltage the user sets. Controller ruling (reviewers disagreed): the two readings are 0.36 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.72 ohm (a band about a reference, up to twice the swing). 0.36 ohm is used: it is nearer typical droop, and this estimate never blocks."
+						"note": "Typical 12 V barrel adapter, assumed to be the Mean Well NGE12 12-P1J (the module's own source; 12 V is electrical.params.voltage's default): load regulation +/-3.0% (SPECIFICATION p. 2), band +/-3% x 12 V = +/-0.36 V, whole swing up to 0.72 V over 0 to 1.0 A, 0.72 ohm. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). The same value is used whatever voltage the user sets. The figure can be read two ways: 0.36 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.72 ohm (a band about a reference, up to twice the swing). 0.36 ohm is used: it is nearer typical droop, and this estimate never blocks."
 					},
 					"imax": {
 						"value": 1,
@@ -26783,7 +26928,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 							"unit": "ohm",
 							"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
 							"provenance": "estimate",
-							"note": "Derived from the Mean Well NGE12 05-USB load regulation, +/-5.0% (SPECIFICATION p. 2): band +/-5% x 5 V = +/-0.25 V, whole swing up to 0.5 V over 0 to 2.4 A, 0.5 / 2.4 = 0.208 ohm, rounded to 0.21. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). Controller ruling (reviewers disagreed): the two readings are 0.1 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.21 ohm (a band about a reference, up to twice the swing). 0.1 ohm is used: it is nearer typical droop, and this estimate never blocks."
+							"note": "Derived from the Mean Well NGE12 05-USB load regulation, +/-5.0% (SPECIFICATION p. 2): band +/-5% x 5 V = +/-0.25 V, whole swing up to 0.5 V over 0 to 2.4 A, 0.5 / 2.4 = 0.208 ohm, rounded to 0.21. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). The figure can be read two ways: 0.1 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.21 ohm (a band about a reference, up to twice the swing). 0.1 ohm is used: it is nearer typical droop, and this estimate never blocks."
 						},
 						"imax": {
 							"value": 2.4,
@@ -27091,7 +27236,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 							"unit": "ohm",
 							"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
 							"provenance": "estimate",
-							"note": "Derived from the Mean Well NGE12 05-USB load regulation, +/-5.0% (SPECIFICATION p. 2): band +/-5% x 5 V = +/-0.25 V, whole swing up to 0.5 V over 0 to 2.4 A, 0.5 / 2.4 = 0.208 ohm, rounded to 0.21. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). Controller ruling (reviewers disagreed): the two readings are 0.1 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.21 ohm (a band about a reference, up to twice the swing). 0.1 ohm is used: it is nearer typical droop, and this estimate never blocks."
+							"note": "Derived from the Mean Well NGE12 05-USB load regulation, +/-5.0% (SPECIFICATION p. 2): band +/-5% x 5 V = +/-0.25 V, whole swing up to 0.5 V over 0 to 2.4 A, 0.5 / 2.4 = 0.208 ohm, rounded to 0.21. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). The figure can be read two ways: 0.1 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.21 ohm (a band about a reference, up to twice the swing). 0.1 ohm is used: it is nearer typical droop, and this estimate never blocks."
 						},
 						"imax": {
 							"value": 2.4,
@@ -27294,7 +27439,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 							"unit": "ohm",
 							"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
 							"provenance": "estimate",
-							"note": "Derived from the Mean Well NGE12 05-USB load regulation, +/-5.0% (SPECIFICATION p. 2): band +/-5% x 5 V = +/-0.25 V, whole swing up to 0.5 V over 0 to 2.4 A, 0.5 / 2.4 = 0.208 ohm, rounded to 0.21. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). Controller ruling (reviewers disagreed): the two readings are 0.1 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.21 ohm (a band about a reference, up to twice the swing). 0.1 ohm is used: it is nearer typical droop, and this estimate never blocks."
+							"note": "Derived from the Mean Well NGE12 05-USB load regulation, +/-5.0% (SPECIFICATION p. 2): band +/-5% x 5 V = +/-0.25 V, whole swing up to 0.5 V over 0 to 2.4 A, 0.5 / 2.4 = 0.208 ohm, rounded to 0.21. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). The figure can be read two ways: 0.1 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.21 ohm (a band about a reference, up to twice the swing). 0.1 ohm is used: it is nearer typical droop, and this estimate never blocks."
 						},
 						"imax": {
 							"value": 2.4,
@@ -27492,7 +27637,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 							"unit": "ohm",
 							"source": "https://www.meanwell.com/Upload/PDF/NGE12/NGE12-SPEC.PDF",
 							"provenance": "estimate",
-							"note": "Derived from the Mean Well NGE12 05-USB load regulation, +/-5.0% (SPECIFICATION p. 2): band +/-5% x 5 V = +/-0.25 V, whole swing up to 0.5 V over 0 to 2.4 A, 0.5 / 2.4 = 0.208 ohm, rounded to 0.21. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). Controller ruling (reviewers disagreed): the two readings are 0.1 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.21 ohm (a band about a reference, up to twice the swing). 0.1 ohm is used: it is nearer typical droop, and this estimate never blocks."
+							"note": "Derived from the Mean Well NGE12 05-USB load regulation, +/-5.0% (SPECIFICATION p. 2): band +/-5% x 5 V = +/-0.25 V, whole swing up to 0.5 V over 0 to 2.4 A, 0.5 / 2.4 = 0.208 ohm, rounded to 0.21. Mean Well NGE12 SPECIFICATION p. 3, Note 6, reads \"Load regulation is measured from 0% to 100% rated load\"; the plus-minus figure is a band about the output at a reference load, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). The figure can be read two ways: 0.1 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.21 ohm (a band about a reference, up to twice the swing). 0.1 ohm is used: it is nearer typical droop, and this estimate never blocks."
 						},
 						"imax": {
 							"value": 2.4,
@@ -33511,7 +33656,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 						"unit": "ohm",
 						"source": "https://drive.google.com/file/d/1akkTcKPDKsjRavcggvhdrLv0_S19H-UG/view https://www.hlktech.net/index.php?id=105",
 						"provenance": "estimate",
-						"note": "Derived from the load regulation, +/-0.5% (datasheet V2.9 section 5.3 (5V/600mA); the product page says the same): band +/-0.5% x 5 V = +/-0.025 V, whole swing up to 0.05 V over 0 to 0.6 A, 0.05 / 0.6 = 0.0833 ohm. The datasheet does not define how load regulation is measured; read the same way as Mean Well's, a plus-minus band, so the whole 0 to rated-load swing can be up to twice the figure and this value uses that upper bound (real units usually droop less). The no-load (+/-0.1 V) and full-load (+/-0.2 V) windows would allow a larger drop. Controller ruling (reviewers disagreed): the two readings are 0.042 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.083 ohm (a band about a reference, up to twice the swing). 0.042 ohm is used: it is nearer typical droop, and this estimate never blocks."
+						"note": "Derived from the load regulation, +/-0.5% (datasheet V2.9 section 5.3 (5V/600mA); the product page says the same): band +/-0.5% x 5 V = +/-0.025 V, whole swing up to 0.05 V over 0 to 0.6 A, 0.05 / 0.6 = 0.0833 ohm. The datasheet does not define how load regulation is measured; read the same way as Mean Well's, a plus-minus band, so the whole 0 to rated-load swing can be up to twice the figure and this value uses that upper bound (real units usually droop less). The no-load (+/-0.1 V) and full-load (+/-0.2 V) windows would allow a larger drop. The figure can be read two ways: 0.042 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.083 ohm (a band about a reference, up to twice the swing). 0.042 ohm is used: it is nearer typical droop, and this estimate never blocks."
 					},
 					"imax": {
 						"value": .6,
@@ -33675,7 +33820,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 						"unit": "ohm",
 						"source": "https://drive.google.com/file/d/1akkTcKPDKsjRavcggvhdrLv0_S19H-UG/view https://www.hlktech.net/index.php?id=106",
 						"provenance": "estimate",
-						"note": "Derived from the load regulation, +/-0.5% (datasheet V2.9 section 5.2 (3.3V/1000mA); the product page says the same): band +/-0.5% x 3.3 V = +/-0.0165 V, whole swing up to 0.033 V over 0 to 1 A, 0.033 ohm. The datasheet does not define how load regulation is measured; read the same way as Mean Well's, a plus-minus band, so the whole 0 to rated-load swing can be up to twice the figure and this value uses that upper bound (real units usually droop less). The no-load (+/-0.1 V) and full-load (+/-0.2 V) windows would allow a larger drop. Controller ruling (reviewers disagreed): the two readings are 0.017 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.033 ohm (a band about a reference, up to twice the swing). 0.017 ohm is used: it is nearer typical droop, and this estimate never blocks."
+						"note": "Derived from the load regulation, +/-0.5% (datasheet V2.9 section 5.2 (3.3V/1000mA); the product page says the same): band +/-0.5% x 3.3 V = +/-0.0165 V, whole swing up to 0.033 V over 0 to 1 A, 0.033 ohm. The datasheet does not define how load regulation is measured; read the same way as Mean Well's, a plus-minus band, so the whole 0 to rated-load swing can be up to twice the figure and this value uses that upper bound (real units usually droop less). The no-load (+/-0.1 V) and full-load (+/-0.2 V) windows would allow a larger drop. The figure can be read two ways: 0.017 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.033 ohm (a band about a reference, up to twice the swing). 0.017 ohm is used: it is nearer typical droop, and this estimate never blocks."
 					},
 					"imax": {
 						"value": 1,
@@ -34437,7 +34582,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 						"unit": "ohm",
 						"source": "https://www.meanwell.com/Upload/PDF/IRM-03/IRM-03-SPEC.PDF",
 						"provenance": "estimate",
-						"note": "Derived from the load regulation, +/-1.0% (IRM-03-3.3, SPECIFICATION p. 2): band +/-1% x 3.3 V = +/-0.033 V, whole swing up to 0.066 V over 0 to 900 mA, 0.066 / 0.9 = 0.0733 ohm. Mean Well's IRM datasheet does not define load regulation (Note 3 only says the tolerance includes it); its NGE12 sibling Note 6 says it is measured from 0% to 100% rated load, and the plus-minus figure is a band, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). Controller ruling (reviewers disagreed): the two readings are 0.037 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.073 ohm (a band about a reference, up to twice the swing). 0.037 ohm is used: it is nearer typical droop, and this estimate never blocks."
+						"note": "Derived from the load regulation, +/-1.0% (IRM-03-3.3, SPECIFICATION p. 2): band +/-1% x 3.3 V = +/-0.033 V, whole swing up to 0.066 V over 0 to 900 mA, 0.066 / 0.9 = 0.0733 ohm. Mean Well's IRM datasheet does not define load regulation (Note 3 only says the tolerance includes it); its NGE12 sibling Note 6 says it is measured from 0% to 100% rated load, and the plus-minus figure is a band, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). The figure can be read two ways: 0.037 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.073 ohm (a band about a reference, up to twice the swing). 0.037 ohm is used: it is nearer typical droop, and this estimate never blocks."
 					},
 					"imax": {
 						"value": .9,
@@ -34685,7 +34830,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 						"unit": "ohm",
 						"source": "https://www.meanwell.com/Upload/PDF/IRM-03/IRM-03-SPEC.PDF",
 						"provenance": "estimate",
-						"note": "Derived from the load regulation, +/-0.5% (IRM-03-5, SPECIFICATION p. 2): band +/-0.5% x 5 V = +/-0.025 V, whole swing up to 0.05 V over 0 to 600 mA, 0.05 / 0.6 = 0.0833 ohm. Mean Well's IRM datasheet does not define load regulation (Note 3 only says the tolerance includes it); its NGE12 sibling Note 6 says it is measured from 0% to 100% rated load, and the plus-minus figure is a band, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). Controller ruling (reviewers disagreed): the two readings are 0.042 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.083 ohm (a band about a reference, up to twice the swing). 0.042 ohm is used: it is nearer typical droop, and this estimate never blocks."
+						"note": "Derived from the load regulation, +/-0.5% (IRM-03-5, SPECIFICATION p. 2): band +/-0.5% x 5 V = +/-0.025 V, whole swing up to 0.05 V over 0 to 600 mA, 0.05 / 0.6 = 0.0833 ohm. Mean Well's IRM datasheet does not define load regulation (Note 3 only says the tolerance includes it); its NGE12 sibling Note 6 says it is measured from 0% to 100% rated load, and the plus-minus figure is a band, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). The figure can be read two ways: 0.042 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.083 ohm (a band about a reference, up to twice the swing). 0.042 ohm is used: it is nearer typical droop, and this estimate never blocks."
 					},
 					"imax": {
 						"value": .6,
@@ -34893,7 +35038,7 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 						"unit": "ohm",
 						"source": "https://www.meanwell.com/Upload/PDF/IRM-05/IRM-05-SPEC.PDF",
 						"provenance": "estimate",
-						"note": "Derived from the load regulation, +/-0.5% (IRM-05-5, SPECIFICATION p. 2): band +/-0.5% x 5 V = +/-0.025 V, whole swing up to 0.05 V over 0 to 1 A, 0.05 ohm. Mean Well's IRM datasheet does not define load regulation (Note 3 only says the tolerance includes it); its NGE12 sibling Note 6 says it is measured from 0% to 100% rated load, and the plus-minus figure is a band, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). Controller ruling (reviewers disagreed): the two readings are 0.025 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.05 ohm (a band about a reference, up to twice the swing). 0.025 ohm is used: it is nearer typical droop, and this estimate never blocks."
+						"note": "Derived from the load regulation, +/-0.5% (IRM-05-5, SPECIFICATION p. 2): band +/-0.5% x 5 V = +/-0.025 V, whole swing up to 0.05 V over 0 to 1 A, 0.05 ohm. Mean Well's IRM datasheet does not define load regulation (Note 3 only says the tolerance includes it); its NGE12 sibling Note 6 says it is measured from 0% to 100% rated load, and the plus-minus figure is a band, so the whole 0 to rated-load swing can be up to twice the figure. This value uses that upper bound (real units usually droop less). The figure can be read two ways: 0.025 ohm (the +/-x% figure taken as the whole no-load to full-load swing) and 0.05 ohm (a band about a reference, up to twice the swing). 0.025 ohm is used: it is nearer typical droop, and this estimate never blocks."
 					},
 					"imax": {
 						"value": 1,
@@ -49952,25 +50097,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"type": "io"
 			}
 		],
-		electrical: {
-			"model": "computer",
-			"params": {},
-			"external": [{
-				"pin": "5V",
-				"volts": 5,
-				"via": "USB-C"
-			}],
-			"usbBudget": [{
-				"ports": [
-					"USB3-1",
-					"USB3-2",
-					"USB2-1",
-					"USB2-2"
-				],
-				"mA": 1200,
-				"note": "1.2 A across all four ports"
-			}]
-		},
+		electrical: /* @__PURE__ */ JSON.parse("{\"model\":\"computer\",\"params\":{},\"external\":[{\"pin\":\"5V\",\"volts\":5,\"via\":\"USB-C\"}],\"usbBudget\":[{\"ports\":[\"USB3-1\",\"USB3-2\",\"USB2-1\",\"USB2-2\"],\"mA\":1200,\"note\":\"1.2 A across all four ports\"}],\"sim\":{\"limits\":[{\"of\":{\"pin\":\"GPIO2\"},\"kind\":\"current\",\"value\":0.008,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"estimate\",\"conditions\":\"any drive strength; the 4-series maximum drive strength taken as the per-pin limit\",\"note\":\"Two readings; 8 mA, the 4-series maximum drive, is used. 16 mA: \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\"; Pi 4 datasheet Table 3 note c (p. 8): \\\"Maximum drive strength (16mA)\\\". 8 mA: gpio-pad-controls.adoc warns \\\"On 4-series devices, the current level is half the value shown in the diagram\\\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.\"},{\"of\":{\"pin\":\"GPIO3\"},\"kind\":\"current\",\"value\":0.008,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"estimate\",\"conditions\":\"any drive strength; the 4-series maximum drive strength taken as the per-pin limit\",\"note\":\"Two readings; 8 mA, the 4-series maximum drive, is used. 16 mA: \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\"; Pi 4 datasheet Table 3 note c (p. 8): \\\"Maximum drive strength (16mA)\\\". 8 mA: gpio-pad-controls.adoc warns \\\"On 4-series devices, the current level is half the value shown in the diagram\\\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.\"},{\"of\":{\"pin\":\"GPIO4\"},\"kind\":\"current\",\"value\":0.008,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"estimate\",\"conditions\":\"any drive strength; the 4-series maximum drive strength taken as the per-pin limit\",\"note\":\"Two readings; 8 mA, the 4-series maximum drive, is used. 16 mA: \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\"; Pi 4 datasheet Table 3 note c (p. 8): \\\"Maximum drive strength (16mA)\\\". 8 mA: gpio-pad-controls.adoc warns \\\"On 4-series devices, the current level is half the value shown in the diagram\\\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.\"},{\"of\":{\"pin\":\"GPIO5\"},\"kind\":\"current\",\"value\":0.008,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"estimate\",\"conditions\":\"any drive strength; the 4-series maximum drive strength taken as the per-pin limit\",\"note\":\"Two readings; 8 mA, the 4-series maximum drive, is used. 16 mA: \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\"; Pi 4 datasheet Table 3 note c (p. 8): \\\"Maximum drive strength (16mA)\\\". 8 mA: gpio-pad-controls.adoc warns \\\"On 4-series devices, the current level is half the value shown in the diagram\\\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.\"},{\"of\":{\"pin\":\"GPIO6\"},\"kind\":\"current\",\"value\":0.008,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"estimate\",\"conditions\":\"any drive strength; the 4-series maximum drive strength taken as the per-pin limit\",\"note\":\"Two readings; 8 mA, the 4-series maximum drive, is used. 16 mA: \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\"; Pi 4 datasheet Table 3 note c (p. 8): \\\"Maximum drive strength (16mA)\\\". 8 mA: gpio-pad-controls.adoc warns \\\"On 4-series devices, the current level is half the value shown in the diagram\\\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.\"},{\"of\":{\"pin\":\"GPIO7\"},\"kind\":\"current\",\"value\":0.008,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"estimate\",\"conditions\":\"any drive strength; the 4-series maximum drive strength taken as the per-pin limit\",\"note\":\"Two readings; 8 mA, the 4-series maximum drive, is used. 16 mA: \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\"; Pi 4 datasheet Table 3 note c (p. 8): \\\"Maximum drive strength (16mA)\\\". 8 mA: gpio-pad-controls.adoc warns \\\"On 4-series devices, the current level is half the value shown in the diagram\\\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.\"},{\"of\":{\"pin\":\"GPIO8\"},\"kind\":\"current\",\"value\":0.008,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"estimate\",\"conditions\":\"any drive strength; the 4-series maximum drive strength taken as the per-pin limit\",\"note\":\"Two readings; 8 mA, the 4-series maximum drive, is used. 16 mA: \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\"; Pi 4 datasheet Table 3 note c (p. 8): \\\"Maximum drive strength (16mA)\\\". 8 mA: gpio-pad-controls.adoc warns \\\"On 4-series devices, the current level is half the value shown in the diagram\\\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.\"},{\"of\":{\"pin\":\"GPIO9\"},\"kind\":\"current\",\"value\":0.008,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"estimate\",\"conditions\":\"any drive strength; the 4-series maximum drive strength taken as the per-pin limit\",\"note\":\"Two readings; 8 mA, the 4-series maximum drive, is used. 16 mA: \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\"; Pi 4 datasheet Table 3 note c (p. 8): \\\"Maximum drive strength (16mA)\\\". 8 mA: gpio-pad-controls.adoc warns \\\"On 4-series devices, the current level is half the value shown in the diagram\\\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.\"},{\"of\":{\"pin\":\"GPIO10\"},\"kind\":\"current\",\"value\":0.008,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"estimate\",\"conditions\":\"any drive strength; the 4-series maximum drive strength taken as the per-pin limit\",\"note\":\"Two readings; 8 mA, the 4-series maximum drive, is used. 16 mA: \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\"; Pi 4 datasheet Table 3 note c (p. 8): \\\"Maximum drive strength (16mA)\\\". 8 mA: gpio-pad-controls.adoc warns \\\"On 4-series devices, the current level is half the value shown in the diagram\\\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.\"},{\"of\":{\"pin\":\"GPIO11\"},\"kind\":\"current\",\"value\":0.008,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"estimate\",\"conditions\":\"any drive strength; the 4-series maximum drive strength taken as the per-pin limit\",\"note\":\"Two readings; 8 mA, the 4-series maximum drive, is used. 16 mA: \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\"; Pi 4 datasheet Table 3 note c (p. 8): \\\"Maximum drive strength (16mA)\\\". 8 mA: gpio-pad-controls.adoc warns \\\"On 4-series devices, the current level is half the value shown in the diagram\\\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.\"},{\"of\":{\"pin\":\"GPIO12\"},\"kind\":\"current\",\"value\":0.008,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"estimate\",\"conditions\":\"any drive strength; the 4-series maximum drive strength taken as the per-pin limit\",\"note\":\"Two readings; 8 mA, the 4-series maximum drive, is used. 16 mA: \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\"; Pi 4 datasheet Table 3 note c (p. 8): \\\"Maximum drive strength (16mA)\\\". 8 mA: gpio-pad-controls.adoc warns \\\"On 4-series devices, the current level is half the value shown in the diagram\\\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.\"},{\"of\":{\"pin\":\"GPIO13\"},\"kind\":\"current\",\"value\":0.008,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"estimate\",\"conditions\":\"any drive strength; the 4-series maximum drive strength taken as the per-pin limit\",\"note\":\"Two readings; 8 mA, the 4-series maximum drive, is used. 16 mA: \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\"; Pi 4 datasheet Table 3 note c (p. 8): \\\"Maximum drive strength (16mA)\\\". 8 mA: gpio-pad-controls.adoc warns \\\"On 4-series devices, the current level is half the value shown in the diagram\\\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.\"},{\"of\":{\"pin\":\"GPIO14\"},\"kind\":\"current\",\"value\":0.008,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"estimate\",\"conditions\":\"any drive strength; the 4-series maximum drive strength taken as the per-pin limit\",\"note\":\"Two readings; 8 mA, the 4-series maximum drive, is used. 16 mA: \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\"; Pi 4 datasheet Table 3 note c (p. 8): \\\"Maximum drive strength (16mA)\\\". 8 mA: gpio-pad-controls.adoc warns \\\"On 4-series devices, the current level is half the value shown in the diagram\\\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.\"},{\"of\":{\"pin\":\"GPIO15\"},\"kind\":\"current\",\"value\":0.008,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"estimate\",\"conditions\":\"any drive strength; the 4-series maximum drive strength taken as the per-pin limit\",\"note\":\"Two readings; 8 mA, the 4-series maximum drive, is used. 16 mA: \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\"; Pi 4 datasheet Table 3 note c (p. 8): \\\"Maximum drive strength (16mA)\\\". 8 mA: gpio-pad-controls.adoc warns \\\"On 4-series devices, the current level is half the value shown in the diagram\\\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.\"},{\"of\":{\"pin\":\"GPIO16\"},\"kind\":\"current\",\"value\":0.008,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"estimate\",\"conditions\":\"any drive strength; the 4-series maximum drive strength taken as the per-pin limit\",\"note\":\"Two readings; 8 mA, the 4-series maximum drive, is used. 16 mA: \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\"; Pi 4 datasheet Table 3 note c (p. 8): \\\"Maximum drive strength (16mA)\\\". 8 mA: gpio-pad-controls.adoc warns \\\"On 4-series devices, the current level is half the value shown in the diagram\\\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.\"},{\"of\":{\"pin\":\"GPIO17\"},\"kind\":\"current\",\"value\":0.008,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"estimate\",\"conditions\":\"any drive strength; the 4-series maximum drive strength taken as the per-pin limit\",\"note\":\"Two readings; 8 mA, the 4-series maximum drive, is used. 16 mA: \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\"; Pi 4 datasheet Table 3 note c (p. 8): \\\"Maximum drive strength (16mA)\\\". 8 mA: gpio-pad-controls.adoc warns \\\"On 4-series devices, the current level is half the value shown in the diagram\\\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.\"},{\"of\":{\"pin\":\"GPIO18\"},\"kind\":\"current\",\"value\":0.008,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"estimate\",\"conditions\":\"any drive strength; the 4-series maximum drive strength taken as the per-pin limit\",\"note\":\"Two readings; 8 mA, the 4-series maximum drive, is used. 16 mA: \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\"; Pi 4 datasheet Table 3 note c (p. 8): \\\"Maximum drive strength (16mA)\\\". 8 mA: gpio-pad-controls.adoc warns \\\"On 4-series devices, the current level is half the value shown in the diagram\\\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.\"},{\"of\":{\"pin\":\"GPIO19\"},\"kind\":\"current\",\"value\":0.008,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"estimate\",\"conditions\":\"any drive strength; the 4-series maximum drive strength taken as the per-pin limit\",\"note\":\"Two readings; 8 mA, the 4-series maximum drive, is used. 16 mA: \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\"; Pi 4 datasheet Table 3 note c (p. 8): \\\"Maximum drive strength (16mA)\\\". 8 mA: gpio-pad-controls.adoc warns \\\"On 4-series devices, the current level is half the value shown in the diagram\\\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.\"},{\"of\":{\"pin\":\"GPIO20\"},\"kind\":\"current\",\"value\":0.008,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"estimate\",\"conditions\":\"any drive strength; the 4-series maximum drive strength taken as the per-pin limit\",\"note\":\"Two readings; 8 mA, the 4-series maximum drive, is used. 16 mA: \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\"; Pi 4 datasheet Table 3 note c (p. 8): \\\"Maximum drive strength (16mA)\\\". 8 mA: gpio-pad-controls.adoc warns \\\"On 4-series devices, the current level is half the value shown in the diagram\\\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.\"},{\"of\":{\"pin\":\"GPIO21\"},\"kind\":\"current\",\"value\":0.008,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"estimate\",\"conditions\":\"any drive strength; the 4-series maximum drive strength taken as the per-pin limit\",\"note\":\"Two readings; 8 mA, the 4-series maximum drive, is used. 16 mA: \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\"; Pi 4 datasheet Table 3 note c (p. 8): \\\"Maximum drive strength (16mA)\\\". 8 mA: gpio-pad-controls.adoc warns \\\"On 4-series devices, the current level is half the value shown in the diagram\\\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.\"},{\"of\":{\"pin\":\"GPIO22\"},\"kind\":\"current\",\"value\":0.008,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"estimate\",\"conditions\":\"any drive strength; the 4-series maximum drive strength taken as the per-pin limit\",\"note\":\"Two readings; 8 mA, the 4-series maximum drive, is used. 16 mA: \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\"; Pi 4 datasheet Table 3 note c (p. 8): \\\"Maximum drive strength (16mA)\\\". 8 mA: gpio-pad-controls.adoc warns \\\"On 4-series devices, the current level is half the value shown in the diagram\\\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.\"},{\"of\":{\"pin\":\"GPIO23\"},\"kind\":\"current\",\"value\":0.008,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"estimate\",\"conditions\":\"any drive strength; the 4-series maximum drive strength taken as the per-pin limit\",\"note\":\"Two readings; 8 mA, the 4-series maximum drive, is used. 16 mA: \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\"; Pi 4 datasheet Table 3 note c (p. 8): \\\"Maximum drive strength (16mA)\\\". 8 mA: gpio-pad-controls.adoc warns \\\"On 4-series devices, the current level is half the value shown in the diagram\\\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.\"},{\"of\":{\"pin\":\"GPIO24\"},\"kind\":\"current\",\"value\":0.008,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"estimate\",\"conditions\":\"any drive strength; the 4-series maximum drive strength taken as the per-pin limit\",\"note\":\"Two readings; 8 mA, the 4-series maximum drive, is used. 16 mA: \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\"; Pi 4 datasheet Table 3 note c (p. 8): \\\"Maximum drive strength (16mA)\\\". 8 mA: gpio-pad-controls.adoc warns \\\"On 4-series devices, the current level is half the value shown in the diagram\\\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.\"},{\"of\":{\"pin\":\"GPIO25\"},\"kind\":\"current\",\"value\":0.008,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"estimate\",\"conditions\":\"any drive strength; the 4-series maximum drive strength taken as the per-pin limit\",\"note\":\"Two readings; 8 mA, the 4-series maximum drive, is used. 16 mA: \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\"; Pi 4 datasheet Table 3 note c (p. 8): \\\"Maximum drive strength (16mA)\\\". 8 mA: gpio-pad-controls.adoc warns \\\"On 4-series devices, the current level is half the value shown in the diagram\\\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.\"},{\"of\":{\"pin\":\"GPIO26\"},\"kind\":\"current\",\"value\":0.008,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"estimate\",\"conditions\":\"any drive strength; the 4-series maximum drive strength taken as the per-pin limit\",\"note\":\"Two readings; 8 mA, the 4-series maximum drive, is used. 16 mA: \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\"; Pi 4 datasheet Table 3 note c (p. 8): \\\"Maximum drive strength (16mA)\\\". 8 mA: gpio-pad-controls.adoc warns \\\"On 4-series devices, the current level is half the value shown in the diagram\\\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.\"},{\"of\":{\"pin\":\"GPIO27\"},\"kind\":\"current\",\"value\":0.008,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"estimate\",\"conditions\":\"any drive strength; the 4-series maximum drive strength taken as the per-pin limit\",\"note\":\"Two readings; 8 mA, the 4-series maximum drive, is used. 16 mA: \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model); gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\"; Pi 4 datasheet Table 3 note c (p. 8): \\\"Maximum drive strength (16mA)\\\". 8 mA: gpio-pad-controls.adoc warns \\\"On 4-series devices, the current level is half the value shown in the diagram\\\", and the BCM2711 table in gpio-on-raspberry-pi.adoc gives maximum drive strength 8 mA (note c). Chip, not board.\"},{\"of\":{\"domain\":\"3V3\"},\"kind\":\"ioTotalCurrent\",\"value\":0.05,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://datasheets.raspberrypi.com/cm4/cm4-datasheet.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"sum of all GPIO pin currents, 3.3 V signalling\",\"note\":\"\\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) CM4 datasheet section 2.5 GPIO (p. 7), same BCM2711: \\\"You should keep the load on the 28 GPIO pins to below 50mA in total.\\\"\"},{\"of\":{\"domain\":\"5V\"},\"kind\":\"vinMax\",\"value\":6,\"source\":\"https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"datasheet\",\"conditions\":\"absolute maximum rating\",\"note\":\"Pi 4 datasheet Table 2 Absolute Maximum Ratings (p. 7): VIN 5V Input Voltage, minimum -0.5 V, maximum 6.0 V. Board value.\"}],\"power\":{\"domains\":[{\"name\":\"5V\",\"pin\":\"5V\",\"ret\":\"GND\",\"nominal\":5},{\"name\":\"USB\",\"pin\":\"USB-C#vbus\",\"ret\":\"USB-C#gnd\",\"nominal\":5},{\"name\":\"3V3\",\"pin\":\"3V3\",\"ret\":\"GND\",\"nominal\":3.3}],\"draw\":[{\"domain\":\"5V\",\"typical\":{\"value\":0.6,\"unit\":\"A\",\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc\",\"provenance\":\"datasheet\",\"note\":\"Board, not chip. Raspberry Pi documentation, \\\"Power supply\\\" section (source file power-supplies.adoc), table \\\"Typical power requirements\\\": Raspberry Pi 4 Model B \\\"Typical bare-board active current consumption\\\" 600mA; the workload table in the same section gives Raspberry Pi 4B Idle Avg 0.6 A (measured June 2019, Raspberry Pi OS, room temperature, with an HDMI monitor, USB keyboard and mouse, and Ethernet connected).\"},\"peak\":{\"value\":1.25,\"unit\":\"A\",\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc\",\"provenance\":\"datasheet\",\"note\":\"Board, not chip. Same section, workload table: Raspberry Pi 4B \\\"Stress\\\" Max 1.25 A (Avg 1.2 A); \\\"Boot\\\" Max 0.85 A. Measured with an HDMI monitor, USB keyboard and USB mouse attached, so it includes those small USB loads.\",\"label\":\"CPU stress\"},\"minVolts\":{\"value\":4,\"unit\":\"V\",\"source\":\"https://maxlinear.com/document?id=22295 https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-reduced-schematics.pdf\",\"provenance\":\"estimate\",\"note\":\"Not documented for the board. The PMIC on the Pi 4 reduced schematic (U2, identified as a MaxLinear MxL7704 by its pinout and by the eeNews article) has buck input operational voltage 4.0 to 5.5 V and UVLO rising 3.9 V, hysteresis 210 mV (MxL7704 data sheet Rev 1B, Table 4, p. 2). 4.0 V taken as the brown-out point: below it the 3.3 V and core rails are out of their rated input range. Chip, not board; the board warns earlier, at 4.63 V (see notes).\"}}],\"rails\":[{\"id\":\"usbc-5v\",\"inputs\":[{\"domain\":\"USB\",\"via\":\"direct\"}],\"output\":\"5V\",\"kind\":\"switch\",\"ron\":{\"value\":0.01,\"unit\":\"ohm\",\"source\":\"https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-reduced-schematics.pdf\",\"provenance\":\"estimate\",\"note\":\"Pi 4 reduced schematic (2019), \\\"USB-C POWER IN\\\": J1 VBUS (A4B9, B4A9) is wired straight to the 5V net, with only D1 SMBJ5.0A-TR (TVS to GND) and test points TP1 to TP3 on it; no fuse or switch in series is drawn. 10 mohm stands for the connector and copper (assumed; not measured). The reduced schematic may omit parts.\"},\"reverse\":\"body-diode\"},{\"id\":\"pmic-3v3\",\"inputs\":[{\"domain\":\"5V\",\"via\":\"direct\"}],\"output\":\"3V3\",\"kind\":\"buck\",\"vout\":{\"value\":3.3,\"unit\":\"V\",\"source\":\"https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-reduced-schematics.pdf https://maxlinear.com/document?id=22295\",\"provenance\":\"datasheet\",\"note\":\"Pi 4 datasheet p. 7: \\\"VDD IO is the GPIO bank voltage which is tied to the on-board 3.3V supply rail\\\". Reduced schematic: U2 LX1 through L1 4u7 to the 3V3 net (VOUT1 feedback). MxL7704 Buck 1 programmable 3.0 to 3.6 V (data sheet p. 1).\"},\"efficiency\":{\"value\":0.88,\"unit\":\"1\",\"source\":\"https://maxlinear.com/document?id=22295\",\"provenance\":\"estimate\",\"note\":\"Read from MxL7704 Figure 3 Buck 1 Efficiency (p. 11), VIN = 5 V, VOUT = 3.3 V, 1.5 MHz, includes inductor losses: about 81 % at 0.1 A, about 89 % at 0.2 A, about 91 % at 0.3 to 0.6 A. 0.88 for a 3V3 load of a few hundred mA. Chip, not board.\"},\"vinMin\":{\"value\":4,\"unit\":\"V\",\"source\":\"https://maxlinear.com/document?id=22295\",\"provenance\":\"datasheet\",\"note\":\"chip, not board. MxL7704 Table 4 (p. 2): Buck Regulators 1-4 VIN Operational Voltage Range 4.0 to 5.5 V; Input DC voltage 4.0 min, 5.0 typ, 5.5 max.\"},\"vinMax\":{\"value\":5.5,\"unit\":\"V\",\"source\":\"https://maxlinear.com/document?id=22295\",\"provenance\":\"datasheet\",\"note\":\"chip, not board. MxL7704 Table 4 (p. 2): Buck VIN operational range max 5.5 V (absolute maximum 6 V, Table 1).\"},\"ioutMax\":{\"value\":0.6,\"unit\":\"A\",\"source\":\"https://datasheets.raspberrypi.com/cm4/cm4-datasheet.pdf\",\"provenance\":\"representative\",\"note\":\"No 3.3 V header budget is documented for the Pi 4. Representative: Compute Module 4 (same BCM2711, same MXL7704 PMIC per its pin list) datasheet section 5.4 Regulator outputs (p. 25): \\\"the on-board regulators (+3.3V and +1.8V) can each supply 600mA to devices connected to the CM4\\\". The chip limit is higher: MxL7704 Buck 1 1.5 A (p. 1), shared with the board's own 3.3 V loads.\"},\"reverse\":\"body-diode\",\"offPath\":\"open\"}]},\"gpio\":{\"domain\":\"3V3\",\"pins\":[\"GPIO2\",\"GPIO3\",\"GPIO4\",\"GPIO5\",\"GPIO6\",\"GPIO7\",\"GPIO8\",\"GPIO9\",\"GPIO10\",\"GPIO11\",\"GPIO12\",\"GPIO13\",\"GPIO14\",\"GPIO15\",\"GPIO16\",\"GPIO17\",\"GPIO18\",\"GPIO19\",\"GPIO20\",\"GPIO21\",\"GPIO22\",\"GPIO23\",\"GPIO24\",\"GPIO25\",\"GPIO26\",\"GPIO27\"],\"outputResistance\":{\"value\":140,\"unit\":\"ohm\",\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf\",\"provenance\":\"estimate\",\"note\":\"From guaranteed limits, so an upper bound (no IV curves published). BCM2711 table in gpio-on-raspberry-pi.adoc, default drive strength 4 mA: VOL max 0.4 V at IOL 4 mA, 0.4 / 0.004 = 100 ohm; VOH min 2.6 V at IOH 4 mA, (3.3 - 2.6) / 0.004 = 175 ohm; mean 137.5, rounded to 140 ohm. Pi 4 datasheet Table 3 (p. 8) is looser: VOL 0.4 V and VOH VDD IO - 0.4 V at 2 mA, 200 ohm. Chip, not board.\"},\"pullup\":{\"value\":47000,\"unit\":\"ohm\",\"source\":\"https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc\",\"provenance\":\"datasheet\",\"note\":\"chip, not board. Pi 4 datasheet Table 3 DC Characteristics (p. 8): RPU pull-up resistor min 18, typ 47, max 73 kohm. The BCM2711 table in gpio-on-raspberry-pi.adoc gives 33 to 73 kohm (no typical).\"},\"pulldown\":{\"value\":47000,\"unit\":\"ohm\",\"source\":\"https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc\",\"provenance\":\"datasheet\",\"note\":\"chip, not board. Pi 4 datasheet Table 3 (p. 8): RPD pull-down resistor min 18, typ 47, max 73 kohm. gpio-on-raspberry-pi.adoc BCM2711 table: 33 to 73 kohm.\"},\"inputLeakage\":{\"value\":0.00001,\"unit\":\"A\",\"source\":\"https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc\",\"provenance\":\"datasheet\",\"note\":\"chip, not board. Pi 4 datasheet Table 3 (p. 8): IIL input leakage current max 10 uA at TA = +85 C; the BCM2711 table in gpio-on-raspberry-pi.adoc agrees (10 uA).\"},\"inputLow\":{\"value\":0.8,\"unit\":\"V\",\"source\":\"https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc\",\"provenance\":\"datasheet\",\"note\":\"chip, not board. Two sources agree: Pi 4 datasheet Table 3 (p. 8) VIL input low voltage max 0.8 V at VDD IO = 3.3 V (hysteresis enabled); BCM2711 table in gpio-on-raspberry-pi.adoc VIL max 0.8 V.\"},\"inputHigh\":{\"value\":2,\"unit\":\"V\",\"source\":\"https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc\",\"provenance\":\"datasheet\",\"note\":\"chip, not board. Two sources agree: Pi 4 datasheet Table 3 (p. 8) VIH input high voltage min 2.0 V at VDD IO = 3.3 V (hysteresis enabled); BCM2711 table in gpio-on-raspberry-pi.adoc VIH min 2.0 V.\"},\"fixedPullups\":[{\"pin\":\"GPIO2\",\"ohms\":{\"value\":1800,\"unit\":\"ohm\",\"source\":\"https://datasheets.raspberrypi.com/cm4/cm4-datasheet.pdf https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc\",\"provenance\":\"estimate\",\"note\":\"Estimate: not on the Pi 4 board documents. The Pi 4 reduced schematic does not draw these resistors. gpio-on-raspberry-pi.adoc: \\\"Pins GPIO2 and GPIO3 have fixed pull-up resistors\\\" (no value). Value from the Compute Module 4 datasheet section 2.5 GPIO (p. 7), same BCM2711 GPIO bank: \\\"GPIO2 and GPIO3 have 1.8k pull up resistors.\\\" The Zero 2 W reduced schematic draws them as 1.8K (R23, R24). Value carried over from those boards (CM4 datasheet, Zero 2 W schematic); not verified for the Pi 4.\"}},{\"pin\":\"GPIO3\",\"ohms\":{\"value\":1800,\"unit\":\"ohm\",\"source\":\"https://datasheets.raspberrypi.com/cm4/cm4-datasheet.pdf https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc\",\"provenance\":\"estimate\",\"note\":\"Estimate: not on the Pi 4 board documents. The Pi 4 reduced schematic does not draw these resistors. gpio-on-raspberry-pi.adoc: \\\"Pins GPIO2 and GPIO3 have fixed pull-up resistors\\\" (no value). Value from the Compute Module 4 datasheet section 2.5 GPIO (p. 7), same BCM2711 GPIO bank: \\\"GPIO2 and GPIO3 have 1.8k pull up resistors.\\\" The Zero 2 W reduced schematic draws them as 1.8K (R23, R24). Value carried over from those boards (CM4 datasheet, Zero 2 W schematic); not verified for the Pi 4.\"}}]},\"usbPorts\":{\"USB-C\":{\"gnd\":\"GND\"}},\"unaccounted\":[\"USB devices on the four USB-A ports: downstream USB current is limited to about 1.1 A (Pi 4 datasheet section 5.3) or 1.2 A (power-supplies.adoc table) in aggregate; the ports stay \\\"not simulated\\\".\",\"Camera and display (CSI/DSI) connectors: the Camera Module needs about 250 mA (power-supplies.adoc), not in the board draw.\",\"HATs and anything else powered from the 5V or 3V3 header pins beyond the user circuit the sheet draws: the board draw covers the board only.\",\"The PoE header and a PoE HAT.\",\"The board draw was measured with an HDMI monitor, USB keyboard, USB mouse and Ethernet attached; HDMI uses about 50 mA (power-supplies.adoc). Other HDMI loads and Wi-Fi/Bluetooth activity are not separated out.\"]}}"),
+		firmware: { "languages": ["python-rpi"] },
 		art: {
 			"w": 340,
 			"h": 220,
@@ -51336,37 +51464,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"type": "io"
 			}
 		],
-		electrical: {
-			"model": "computer",
-			"params": {},
-			"settings": { "supply": ["5V 5A (27 W)", "5V 3A"] },
-			"external": [{
-				"pin": "5V",
-				"volts": 5,
-				"via": "USB-C"
-			}],
-			"usbBudget": [{
-				"ports": [
-					"USB2-1",
-					"USB2-2",
-					"USB3-1",
-					"USB3-2"
-				],
-				"mA": 1600,
-				"setting": ["supply", "5V 5A (27 W)"],
-				"note": "1.6 A across all four ports with a 5 A supply, shared with the fan header"
-			}, {
-				"ports": [
-					"USB2-1",
-					"USB2-2",
-					"USB3-1",
-					"USB3-2"
-				],
-				"mA": 600,
-				"setting": ["supply", "5V 3A"],
-				"note": "600 mA across all four ports with a 3 A supply, shared with the fan header"
-			}]
-		},
+		electrical: /* @__PURE__ */ JSON.parse("{\"model\":\"computer\",\"params\":{},\"settings\":{\"supply\":[\"5V 5A (27 W)\",\"5V 3A\"]},\"external\":[{\"pin\":\"5V\",\"volts\":5,\"via\":\"USB-C\"}],\"usbBudget\":[{\"ports\":[\"USB2-1\",\"USB2-2\",\"USB3-1\",\"USB3-2\"],\"mA\":1600,\"setting\":[\"supply\",\"5V 5A (27 W)\"],\"note\":\"1.6 A across all four ports with a 5 A supply, shared with the fan header\"},{\"ports\":[\"USB2-1\",\"USB2-2\",\"USB3-1\",\"USB3-2\"],\"mA\":600,\"setting\":[\"supply\",\"5V 3A\"],\"note\":\"600 mA across all four ports with a 3 A supply, shared with the fan header\"}],\"sim\":{\"limits\":[{\"of\":{\"domain\":\"3V3\"},\"kind\":\"ioTotalCurrent\",\"value\":0.05,\"source\":\"https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc\",\"provenance\":\"representative\",\"conditions\":\"sum of all GPIO pin currents, 3.3 V signalling\",\"note\":\"Representative: Compute Module 5 (same BCM2712 and RP1; its GPIO0-27 \\\"correspond to the GPIO pins on the Raspberry Pi 5 40-pin header\\\") datasheet section 2.9 (p. 11): \\\"Don't exceed 50 mA for total current load on all 28 GPIO pins.\\\" Also \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model)\"}],\"power\":{\"domains\":[{\"name\":\"5V\",\"pin\":\"5V\",\"ret\":\"GND\",\"nominal\":5},{\"name\":\"USB\",\"pin\":\"USB-C#vbus\",\"ret\":\"USB-C#gnd\",\"nominal\":5},{\"name\":\"3V3\",\"pin\":\"3V3\",\"ret\":\"GND\",\"nominal\":3.3}],\"draw\":[{\"domain\":\"5V\",\"typical\":{\"value\":0.8,\"unit\":\"A\",\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc\",\"provenance\":\"datasheet\",\"note\":\"Board, not chip. Raspberry Pi documentation, \\\"Power supply\\\" section (source file power-supplies.adoc), table \\\"Typical power requirements\\\": Raspberry Pi 5 \\\"Typical bare-board active current consumption\\\" 800mA (recommended PSU 5.0A).\"},\"peak\":{\"value\":1.7,\"unit\":\"A\",\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc\",\"provenance\":\"estimate\",\"note\":\"No Raspberry Pi stress figure for the Pi 5 was found (the workload table in power-supplies.adoc stops at the Pi 4B). Scaled from the Pi 4B in the same documentation: Stress Max 1.25 A / bare-board 600 mA = 2.08; 0.8 A x 2.08 = 1.67 A, rounded to 1.7 A. Board, not chip; assumption that the Pi 5 load scales like the Pi 4.\",\"label\":\"CPU stress\"},\"minVolts\":{\"value\":4,\"unit\":\"V\",\"source\":\"https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc\",\"provenance\":\"estimate\",\"note\":\"Not documented for the Pi 5 (its PMIC has no public data sheet). Taken as the Pi 4's value (MxL7704 buck input minimum 4.0 V). Compute Module 5 datasheet section 3.1 (p. 15) asks that the 5 V rail \\\"rise monotonically to at least 4.75 V and remain above this level during operation\\\" and starts power-up above 4.75 V, a supply requirement rather than a brown-out point; the board warns at 4.63 V (power-supplies.adoc).\"}}],\"rails\":[{\"id\":\"usbc-5v\",\"inputs\":[{\"domain\":\"USB\",\"via\":\"direct\"}],\"output\":\"5V\",\"kind\":\"switch\",\"ron\":{\"value\":0.01,\"unit\":\"ohm\",\"source\":\"https://datasheets.raspberrypi.com/rpi5/raspberry-pi-5-product-brief.pdf\",\"provenance\":\"estimate\",\"note\":\"No Pi 5 schematic is published (the documentation's schematics list has only mechanical drawings and STEP files for the Pi 5). The product brief says only \\\"5V/5A DC power via USB-C, with Power Delivery support\\\" (PDF p. 3). Modelled as a near-direct connection like the Pi 4; 10 mohm assumed. Any input switch or protection on the Pi 5 is unknown.\"},\"reverse\":\"body-diode\"},{\"id\":\"pmic-3v3\",\"inputs\":[{\"domain\":\"5V\",\"via\":\"direct\"}],\"output\":\"3V3\",\"kind\":\"buck\",\"vout\":{\"value\":3.3,\"unit\":\"V\",\"source\":\"https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc\",\"provenance\":\"representative\",\"note\":\"Compute Module 5 datasheet pin list (p. 19): \\\"CM5_3.3V (Output) 3.3 V ± 5%\\\". The Pi 5 header 3V3 pins are 3.3 V (gpio-on-raspberry-pi.adoc \\\"Voltage specifications\\\": \\\"Two 5V pins and two 3.3 V pins are present on the board\\\").\"},\"efficiency\":{\"value\":0.85,\"unit\":\"1\",\"provenance\":\"estimate\",\"note\":\"The Pi 5 PMIC is not identified in any source cited here and has no public data sheet. Assumed typical for a 5 V to 3.3 V synchronous buck at a few hundred mA; compare the Pi 4's MxL7704 Buck 1, about 81 to 91 % from 0.1 to 0.6 A.\"},\"vinMin\":{\"value\":4,\"unit\":\"V\",\"source\":\"https://maxlinear.com/document?id=22295 https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf\",\"provenance\":\"estimate\",\"note\":\"Not documented. Taken as the Pi 4 PMIC's buck input minimum (4.0 V, MxL7704 Table 4 p. 2). CM5 requires the 5 V rail to stay above 4.75 V (CM5 datasheet p. 15), a supply requirement, not the converter limit.\"},\"vinMax\":{\"value\":5.5,\"unit\":\"V\",\"source\":\"https://maxlinear.com/document?id=22295 https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf\",\"provenance\":\"estimate\",\"note\":\"Not documented for the Pi 5 regulator. 5.5 V assumed (a 5 V-input PMIC; the Pi 4 MxL7704 range is 4.0 to 5.5 V). CM5 absolute maximum 5 V input is 6.0 V (CM5 datasheet Table 7, p. 25).\"},\"ioutMax\":{\"value\":0.6,\"unit\":\"A\",\"source\":\"https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf\",\"provenance\":\"representative\",\"note\":\"No 3.3 V header budget is documented for the Pi 5. Representative: Compute Module 5 datasheet section 3.4 Regulator outputs (p. 15): \\\"These regulators can each deliver up to 600 mA of current to external devices or peripherals connected to the board\\\"; pin list (p. 19): \\\"Power output max 300 mA per pin for a total of 600 mA\\\".\"},\"reverse\":\"body-diode\",\"offPath\":\"open\"}]},\"gpio\":{\"domain\":\"3V3\",\"pins\":[\"GPIO2\",\"GPIO3\",\"GPIO4\",\"GPIO5\",\"GPIO6\",\"GPIO7\",\"GPIO8\",\"GPIO9\",\"GPIO10\",\"GPIO11\",\"GPIO12\",\"GPIO13\",\"GPIO14\",\"GPIO15\",\"GPIO16\",\"GPIO17\",\"GPIO18\",\"GPIO19\",\"GPIO20\",\"GPIO21\",\"GPIO22\",\"GPIO23\",\"GPIO24\",\"GPIO25\",\"GPIO26\",\"GPIO27\"],\"outputResistance\":{\"value\":35,\"unit\":\"ohm\",\"source\":\"https://datasheets.raspberrypi.com/rp1/rp1-peripherals.pdf https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf\",\"provenance\":\"estimate\",\"note\":\"RP1 pad DRIVE resets to 0x1 = 4 mA (RP1 peripherals Table 21, p. 33). Representative typicals from Compute Module 5 datasheet Table 8 (p. 26), 4 mA, VGPIO_VREF = 3.3 V: IOL typ 14.3 mA, IOH typ 9.5 mA. The table does not state the output voltage for these currents; assuming VOL 0.4 V and VOH VGPIO_VREF - 0.4 V (Table 8 p. 25): 0.4 / 0.0143 = 28 ohm low, 0.4 / 0.0095 = 42 ohm high, mean 35 ohm. Chip, not board.\"},\"pullup\":{\"value\":55000,\"unit\":\"ohm\",\"source\":\"https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf\",\"provenance\":\"representative\",\"note\":\"Compute Module 5 datasheet Table 8 (p. 26), RP1 GPIO at VGPIO_VREF = 3.3 V: RPU pull-up resistor min 37, typ 55, max 86 kohm. The RP1 peripherals document gives no value. Chip, not board.\"},\"pulldown\":{\"value\":55000,\"unit\":\"ohm\",\"source\":\"https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf\",\"provenance\":\"representative\",\"note\":\"Compute Module 5 datasheet Table 8 (p. 26), VGPIO_VREF = 3.3 V: RPD pull-down resistor min 35, typ 55, max 98 kohm. Chip, not board.\"},\"inputLeakage\":{\"value\":0.000003,\"unit\":\"A\",\"source\":\"https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf\",\"provenance\":\"representative\",\"note\":\"Compute Module 5 datasheet Table 8 (p. 25): IIL input leakage current max 3 uA at VGPIO_VREF = 3.3 V. Chip, not board.\"},\"inputLow\":{\"value\":0.8,\"unit\":\"V\",\"source\":\"https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf https://datasheets.raspberrypi.com/rp1/rp1-peripherals.pdf\",\"provenance\":\"estimate\",\"note\":\"Flagged estimate: Raspberry Pi documents no RP1 thresholds for the Pi 5 (the RP1 peripherals document, section 3.1.3 Pads, pp. 17 to 18, says only that the default thresholds are \\\"valid for an VDDIO voltage between 2.5V and 3.3V\\\"). Reading from the Compute Module 5 datasheet Table 8 (p. 25), same RP1: VIL max 0.8 V at VGPIO_VREF = 3.3 V. One source, a different board.\"},\"inputHigh\":{\"value\":2,\"unit\":\"V\",\"source\":\"https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf https://datasheets.raspberrypi.com/rp1/rp1-peripherals.pdf\",\"provenance\":\"estimate\",\"note\":\"Flagged estimate, as inputLow: Compute Module 5 datasheet Table 8 (p. 25), VIH min 2.0 V at VGPIO_VREF = 3.3 V. Not documented for the Pi 5 board or in the RP1 peripherals document.\"},\"fixedPullups\":[{\"pin\":\"GPIO2\",\"ohms\":{\"value\":1800,\"unit\":\"ohm\",\"source\":\"https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc\",\"provenance\":\"estimate\",\"note\":\"Estimate: not on any Pi 5 board document. No Pi 5 schematic is published. gpio-on-raspberry-pi.adoc: \\\"Pins GPIO2 and GPIO3 have fixed pull-up resistors\\\" (no value). Value from the Compute Module 5 datasheet section 2.9 (p. 11): \\\"GPIO2 and GPIO3 include 1.8 k pull-up resistors.\\\" Value carried over from the CM5; not verified for the Pi 5.\"}},{\"pin\":\"GPIO3\",\"ohms\":{\"value\":1800,\"unit\":\"ohm\",\"source\":\"https://datasheets.raspberrypi.com/cm5/cm5-datasheet.pdf https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc\",\"provenance\":\"estimate\",\"note\":\"Estimate: not on any Pi 5 board document. No Pi 5 schematic is published. gpio-on-raspberry-pi.adoc: \\\"Pins GPIO2 and GPIO3 have fixed pull-up resistors\\\" (no value). Value from the Compute Module 5 datasheet section 2.9 (p. 11): \\\"GPIO2 and GPIO3 include 1.8 k pull-up resistors.\\\" Value carried over from the CM5; not verified for the Pi 5.\"}}]},\"usbPorts\":{\"USB-C\":{\"gnd\":\"GND\"}},\"unaccounted\":[\"USB devices on the four USB-A ports (1.6 A budget with a 5 A supply, 600 mA with a 3 A supply, power-supplies.adoc); the ports stay \\\"not simulated\\\".\",\"The two camera/display (CAM/DISP) connectors, the PCIe connector and the fan header: not in the board draw.\",\"HATs and anything else powered from the 5V or 3V3 header pins beyond the user circuit the sheet draws: the board draw covers the board only.\",\"The Pi 5 typical draw is Raspberry Pi's \\\"bare-board active\\\" figure; the peak is scaled from the Pi 4 (estimate).\"]}}"),
+		firmware: { "languages": ["python-rpi"] },
 		art: {
 			"w": 340,
 			"h": 220,
@@ -57232,15 +57331,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 				"type": "io"
 			}
 		],
-		electrical: {
-			"model": "computer",
-			"params": {},
-			"external": [{
-				"pin": "5V",
-				"volts": 5,
-				"via": "micro USB"
-			}]
-		},
+		electrical: /* @__PURE__ */ JSON.parse("{\"model\":\"computer\",\"params\":{},\"external\":[{\"pin\":\"5V\",\"volts\":5,\"via\":\"micro USB\"}],\"sim\":{\"limits\":[{\"of\":{\"pin\":\"GPIO2\"},\"kind\":\"current\",\"value\":0.016,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"datasheet\",\"conditions\":\"any drive strength; damage limit, not the drive rating\",\"note\":\"chip, not board. \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA.\"},{\"of\":{\"pin\":\"GPIO3\"},\"kind\":\"current\",\"value\":0.016,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"datasheet\",\"conditions\":\"any drive strength; damage limit, not the drive rating\",\"note\":\"chip, not board. \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA.\"},{\"of\":{\"pin\":\"GPIO4\"},\"kind\":\"current\",\"value\":0.016,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"datasheet\",\"conditions\":\"any drive strength; damage limit, not the drive rating\",\"note\":\"chip, not board. \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA.\"},{\"of\":{\"pin\":\"GPIO5\"},\"kind\":\"current\",\"value\":0.016,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"datasheet\",\"conditions\":\"any drive strength; damage limit, not the drive rating\",\"note\":\"chip, not board. \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA.\"},{\"of\":{\"pin\":\"GPIO6\"},\"kind\":\"current\",\"value\":0.016,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"datasheet\",\"conditions\":\"any drive strength; damage limit, not the drive rating\",\"note\":\"chip, not board. \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA.\"},{\"of\":{\"pin\":\"GPIO7\"},\"kind\":\"current\",\"value\":0.016,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"datasheet\",\"conditions\":\"any drive strength; damage limit, not the drive rating\",\"note\":\"chip, not board. \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA.\"},{\"of\":{\"pin\":\"GPIO8\"},\"kind\":\"current\",\"value\":0.016,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"datasheet\",\"conditions\":\"any drive strength; damage limit, not the drive rating\",\"note\":\"chip, not board. \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA.\"},{\"of\":{\"pin\":\"GPIO9\"},\"kind\":\"current\",\"value\":0.016,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"datasheet\",\"conditions\":\"any drive strength; damage limit, not the drive rating\",\"note\":\"chip, not board. \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA.\"},{\"of\":{\"pin\":\"GPIO10\"},\"kind\":\"current\",\"value\":0.016,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"datasheet\",\"conditions\":\"any drive strength; damage limit, not the drive rating\",\"note\":\"chip, not board. \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA.\"},{\"of\":{\"pin\":\"GPIO11\"},\"kind\":\"current\",\"value\":0.016,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"datasheet\",\"conditions\":\"any drive strength; damage limit, not the drive rating\",\"note\":\"chip, not board. \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA.\"},{\"of\":{\"pin\":\"GPIO12\"},\"kind\":\"current\",\"value\":0.016,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"datasheet\",\"conditions\":\"any drive strength; damage limit, not the drive rating\",\"note\":\"chip, not board. \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA.\"},{\"of\":{\"pin\":\"GPIO13\"},\"kind\":\"current\",\"value\":0.016,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"datasheet\",\"conditions\":\"any drive strength; damage limit, not the drive rating\",\"note\":\"chip, not board. \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA.\"},{\"of\":{\"pin\":\"GPIO14\"},\"kind\":\"current\",\"value\":0.016,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"datasheet\",\"conditions\":\"any drive strength; damage limit, not the drive rating\",\"note\":\"chip, not board. \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA.\"},{\"of\":{\"pin\":\"GPIO15\"},\"kind\":\"current\",\"value\":0.016,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"datasheet\",\"conditions\":\"any drive strength; damage limit, not the drive rating\",\"note\":\"chip, not board. \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA.\"},{\"of\":{\"pin\":\"GPIO16\"},\"kind\":\"current\",\"value\":0.016,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"datasheet\",\"conditions\":\"any drive strength; damage limit, not the drive rating\",\"note\":\"chip, not board. \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA.\"},{\"of\":{\"pin\":\"GPIO17\"},\"kind\":\"current\",\"value\":0.016,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"datasheet\",\"conditions\":\"any drive strength; damage limit, not the drive rating\",\"note\":\"chip, not board. \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA.\"},{\"of\":{\"pin\":\"GPIO18\"},\"kind\":\"current\",\"value\":0.016,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"datasheet\",\"conditions\":\"any drive strength; damage limit, not the drive rating\",\"note\":\"chip, not board. \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA.\"},{\"of\":{\"pin\":\"GPIO19\"},\"kind\":\"current\",\"value\":0.016,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"datasheet\",\"conditions\":\"any drive strength; damage limit, not the drive rating\",\"note\":\"chip, not board. \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA.\"},{\"of\":{\"pin\":\"GPIO20\"},\"kind\":\"current\",\"value\":0.016,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"datasheet\",\"conditions\":\"any drive strength; damage limit, not the drive rating\",\"note\":\"chip, not board. \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA.\"},{\"of\":{\"pin\":\"GPIO21\"},\"kind\":\"current\",\"value\":0.016,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"datasheet\",\"conditions\":\"any drive strength; damage limit, not the drive rating\",\"note\":\"chip, not board. \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA.\"},{\"of\":{\"pin\":\"GPIO22\"},\"kind\":\"current\",\"value\":0.016,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"datasheet\",\"conditions\":\"any drive strength; damage limit, not the drive rating\",\"note\":\"chip, not board. \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA.\"},{\"of\":{\"pin\":\"GPIO23\"},\"kind\":\"current\",\"value\":0.016,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"datasheet\",\"conditions\":\"any drive strength; damage limit, not the drive rating\",\"note\":\"chip, not board. \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA.\"},{\"of\":{\"pin\":\"GPIO24\"},\"kind\":\"current\",\"value\":0.016,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"datasheet\",\"conditions\":\"any drive strength; damage limit, not the drive rating\",\"note\":\"chip, not board. \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA.\"},{\"of\":{\"pin\":\"GPIO25\"},\"kind\":\"current\",\"value\":0.016,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"datasheet\",\"conditions\":\"any drive strength; damage limit, not the drive rating\",\"note\":\"chip, not board. \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA.\"},{\"of\":{\"pin\":\"GPIO26\"},\"kind\":\"current\",\"value\":0.016,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"datasheet\",\"conditions\":\"any drive strength; damage limit, not the drive rating\",\"note\":\"chip, not board. \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA.\"},{\"of\":{\"pin\":\"GPIO27\"},\"kind\":\"current\",\"value\":0.016,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"datasheet\",\"conditions\":\"any drive strength; damage limit, not the drive rating\",\"note\":\"chip, not board. \\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc \\\"Safe current\\\": \\\"All the electronics of the pads are designed for 16 mA. This is a safe value under which you will not damage the device.\\\" The BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc lists maximum drive strength 16 mA.\"},{\"of\":{\"domain\":\"3V3\"},\"kind\":\"ioTotalCurrent\",\"value\":0.05,\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"datasheet\",\"conditions\":\"sum of all GPIO pin currents\",\"note\":\"\\\"Combined, the GPIO pins can draw 50mA safely; each pin can individually draw up to 16mA.\\\" (Raspberry Pi documentation, \\\"Power supply\\\" section, power-supplies.adoc; the sentence is not tied to one model) gpio-pad-controls.adoc adds: \\\"The Raspberry Pi 3.3 V supply was designed with a maximum current of ~3mA per GPIO pin.\\\"\"}],\"power\":{\"domains\":[{\"name\":\"5V\",\"pin\":\"5V\",\"ret\":\"GND\",\"nominal\":5},{\"name\":\"USB\",\"pin\":\"PWR IN#vbus\",\"ret\":\"PWR IN#gnd\",\"nominal\":5},{\"name\":\"3V3\",\"pin\":\"3V3\",\"ret\":\"GND\",\"nominal\":3.3}],\"draw\":[{\"domain\":\"5V\",\"typical\":{\"value\":0.35,\"unit\":\"A\",\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc\",\"provenance\":\"datasheet\",\"note\":\"Board, not chip. Raspberry Pi documentation, \\\"Power supply\\\" section (source file power-supplies.adoc), table \\\"Typical power requirements\\\": Zero 2 W \\\"Typical bare-board active current consumption\\\" 350mA (recommended PSU 2A).\"},\"peak\":{\"value\":0.75,\"unit\":\"A\",\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc\",\"provenance\":\"estimate\",\"note\":\"No Raspberry Pi stress figure for the Zero 2 W. Scaled from the Pi 4B in the same documentation (Stress Max 1.25 A / bare-board 600 mA = 2.08): 0.35 A x 2.08 = 0.73 A, rounded to 0.75 A. The Pi 3B (same BCM2837 family) ratio is higher (Stress Max 1.34 A / bare-board 400 mA = 3.35, giving 1.17 A) but the Pi 3B has an on-board USB hub and Ethernet and was measured with Wi-Fi, keyboard and mouse; the lower ratio was taken. Board, not chip.\",\"label\":\"CPU stress\"},\"minVolts\":{\"value\":3.5,\"unit\":\"V\",\"source\":\"https://www.diodes.com/assets/Datasheets/PAM2306.pdf https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-reduced-schematics.pdf\",\"provenance\":\"estimate\",\"note\":\"Not documented. The 3V3 rail is a PAM2306 buck (U3, L1 4.7 uH): below about 3.3 V plus its P-MOSFET drop it runs at 100 % duty and VOUT = VIN - ILOAD (RDS(ON) + RL), RL the inductor DC resistance (PAM2306 \\\"100% Duty Cycle Operation\\\", p. 11; RDS(ON) P MOSFET 0.3 ohm typ, p. 4), so 3V3 falls out of regulation from about 3.4 V in. 3.5 V taken as the brown-out point. The Zero range has no 4.63 V low-voltage detection (power-supplies.adoc).\"}}],\"rails\":[{\"id\":\"microusb-5v\",\"inputs\":[{\"domain\":\"USB\",\"via\":\"direct\"}],\"output\":\"5V\",\"kind\":\"switch\",\"ron\":{\"value\":0.01,\"unit\":\"ohm\",\"source\":\"https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-reduced-schematics.pdf\",\"provenance\":\"estimate\",\"note\":\"Zero 2 W reduced schematic: micro-USB J1 (690-005-298-486) pin 1 VBUS goes straight to the 5V net (C1 47u, test points PP1 and PP70); no fuse, diode or switch in series. 10 mohm stands for the connector and copper (assumed; not measured).\"},\"reverse\":\"body-diode\"},{\"id\":\"pam2306-3v3\",\"inputs\":[{\"domain\":\"5V\",\"via\":\"direct\"}],\"output\":\"3V3\",\"kind\":\"buck\",\"vout\":{\"value\":3.3,\"unit\":\"V\",\"source\":\"https://www.diodes.com/assets/Datasheets/PAM2306.pdf https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-reduced-schematics.pdf\",\"provenance\":\"datasheet\",\"note\":\"U3 on the Zero 2 W reduced schematic is a PAM2306AYPKE (Diodes Inc.); its ordering code (p. 13) gives Output Voltage V1 \\\"K: 3.3V\\\", V2 \\\"E: 1.8V\\\". Channel 1 (LX1, L1 4.7 uH, FB1 to the output) drives the 3V3 net.\"},\"efficiency\":{\"value\":0.88,\"unit\":\"1\",\"source\":\"https://www.diodes.com/assets/Datasheets/PAM2306.pdf\",\"provenance\":\"estimate\",\"note\":\"Read from PAM2306 \\\"Efficiency VS Output Current (Vo=3.3V)\\\" (p. 5), VIN = 5 V curve, L = 4.7 uH: about 80 % at 30 mA, about 88 % at 100 mA, about 92 % at 200 to 500 mA, about 88 % at 1 A. 0.88 for tens to hundreds of mA.\"},\"vinMin\":{\"value\":3.4,\"unit\":\"V\",\"source\":\"https://www.diodes.com/assets/Datasheets/PAM2306.pdf\",\"provenance\":\"estimate\",\"note\":\"The PAM2306 input range is 2.5 to 5.5 V (p. 4), but as a buck it cannot hold 3.3 V below about VOUT plus the P-MOSFET drop (100 % duty, p. 11; RDS(ON) 0.3 ohm typ at 100 mA, p. 4): 3.3 V + 0.2 A x 0.3 ohm = 3.36 V, rounded to 3.4 V. The simulation holds the output steady over the whole input range it allows, so the lowest input is set where regulation ends, not the chip's 2.5 V.\"},\"vinMax\":{\"value\":5.5,\"unit\":\"V\",\"source\":\"https://www.diodes.com/assets/Datasheets/PAM2306.pdf\",\"provenance\":\"datasheet\",\"note\":\"chip, not board. PAM2306 Electrical Characteristics (p. 4): Input Voltage Range 2.5 to 5.5 V.\"},\"ioutMax\":{\"value\":1,\"unit\":\"A\",\"source\":\"https://www.diodes.com/assets/Datasheets/PAM2306.pdf\",\"provenance\":\"datasheet\",\"note\":\"chip, not board. PAM2306 Features (p. 1): \\\"Output Current: Up to 1A per Channel\\\". No 3.3 V header budget is documented for the Zero 2 W; the channel also feeds the board's own 3.3 V loads (RP3A0 I/O, wireless).\"},\"reverse\":\"body-diode\",\"offPath\":\"open\"}]},\"gpio\":{\"domain\":\"3V3\",\"pins\":[\"GPIO2\",\"GPIO3\",\"GPIO4\",\"GPIO5\",\"GPIO6\",\"GPIO7\",\"GPIO8\",\"GPIO9\",\"GPIO10\",\"GPIO11\",\"GPIO12\",\"GPIO13\",\"GPIO14\",\"GPIO15\",\"GPIO16\",\"GPIO17\",\"GPIO18\",\"GPIO19\",\"GPIO20\",\"GPIO21\",\"GPIO22\",\"GPIO23\",\"GPIO24\",\"GPIO25\",\"GPIO26\",\"GPIO27\"],\"outputResistance\":{\"value\":80,\"unit\":\"ohm\",\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-pad-controls.adoc\",\"provenance\":\"estimate\",\"note\":\"BCM2835/6/7 and RP3A0 table in gpio-on-raspberry-pi.adoc. At maximum drive (16 mA): IOL min 18 mA at VO = 0.4 V, 0.4 / 0.018 = 22 ohm; IOH min 17 mA at VO = 2.3 V, (3.3 - 2.3) / 0.017 = 59 ohm. The default is 8 mA (reset DRIVE = 3, gpio-pad-controls.adoc), half the parallel drivers of 16 mA, so about 44 and 118 ohm, mean 81, rounded to 80 ohm. Within the default-drive limits of the same table: VOL max 0.14 V and VOH min 3.0 V at 2 mA give at most 70 and 150 ohm. Chip, not board.\"},\"pullup\":{\"value\":57500,\"unit\":\"ohm\",\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc\",\"provenance\":\"estimate\",\"note\":\"gpio-on-raspberry-pi.adoc, table for BCM2835, BCM2836, BCM2837 and RP3A0-based products: RPU pull-up resistor min 50, max 65 kohm, no typical; midpoint taken. Chip, not board.\"},\"pulldown\":{\"value\":57500,\"unit\":\"ohm\",\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc\",\"provenance\":\"estimate\",\"note\":\"Same table: RPD pull-down resistor min 50, max 65 kohm, no typical; midpoint taken. Chip, not board.\"},\"inputLeakage\":{\"value\":0.000005,\"unit\":\"A\",\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc\",\"provenance\":\"datasheet\",\"note\":\"chip, not board. gpio-on-raspberry-pi.adoc, BCM2835/6/7 and RP3A0 table: IIL input leakage current max 5 uA at TA = +85 C.\"},\"inputLow\":{\"value\":0.9,\"unit\":\"V\",\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc\",\"provenance\":\"datasheet\",\"note\":\"chip, not board. gpio-on-raspberry-pi.adoc, BCM2835/6/7 and RP3A0 table: VIL input low voltage max 0.9 V. One source.\"},\"inputHigh\":{\"value\":1.6,\"unit\":\"V\",\"source\":\"https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/gpio-on-raspberry-pi.adoc\",\"provenance\":\"datasheet\",\"note\":\"chip, not board. gpio-on-raspberry-pi.adoc, BCM2835/6/7 and RP3A0 table: VIH input high voltage min 1.6 V (hysteresis enabled). One source.\"},\"fixedPullups\":[{\"pin\":\"GPIO2\",\"ohms\":{\"value\":1800,\"unit\":\"ohm\",\"source\":\"https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-reduced-schematics.pdf\",\"provenance\":\"datasheet\",\"note\":\"Board value. Zero 2 W reduced schematic: R23 1.8K 1% on GPIO2 and R24 1.8K 1% on GPIO3, both to 3V3.\"}},{\"pin\":\"GPIO3\",\"ohms\":{\"value\":1800,\"unit\":\"ohm\",\"source\":\"https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-reduced-schematics.pdf\",\"provenance\":\"datasheet\",\"note\":\"Board value. Zero 2 W reduced schematic: R23 1.8K 1% on GPIO2 and R24 1.8K 1% on GPIO3, both to 3V3.\"}}]},\"usbPorts\":{\"PWR IN\":{\"gnd\":\"GND\"}},\"unaccounted\":[\"USB devices on the micro-USB data port (USB OTG): the documentation gives no budget (\\\"Limited by PSU, board, and connector ratings only.\\\"); not simulated.\",\"The camera (CSI) connector: the Camera Module needs about 250 mA (power-supplies.adoc), not in the board draw.\",\"HATs and anything else powered from the 5V or 3V3 header pins beyond the user circuit the sheet draws: the board draw covers the board only.\",\"Mini-HDMI output (about 50 mA per power-supplies.adoc) and Wi-Fi/Bluetooth transmit bursts are not separated from the bare-board figure.\"]}}"),
+		firmware: { "languages": ["python-rpi"] },
 		art: {
 			"w": 260,
 			"h": 120,
@@ -58123,7 +58215,77 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 		},
 		electrical: {
 			"model": "servo",
-			"params": {}
+			"params": {},
+			"sim": {
+				"power": {
+					"domains": [{
+						"name": "VCC",
+						"pin": "VCC",
+						"ret": "GND",
+						"nominal": 5
+					}],
+					"draw": [{
+						"domain": "VCC",
+						"typical": {
+							"value": .01,
+							"unit": "A",
+							"source": "https://protosupplies.com/product/servo-motor-micro-sg90/",
+							"provenance": "estimate",
+							"note": "Idle current, horn holding position. ProtoSupplies (a distributor, not Tower Pro) product page, specifications table, for a unit it lists as \"Generic SG90 (China)\": \"Current (idle) 10mA (typical)\", and the text \"current draw about 10mA at idle\" on 5 V. Tower Pro's SG90 pages give no idle current, so this is flagged."
+						},
+						"peak": {
+							"value": .36,
+							"unit": "A",
+							"source": "https://protosupplies.com/product/servo-motor-micro-sg90/",
+							"provenance": "estimate",
+							"note": "Stall current. DISPUTED, readings differ widely: ProtoSupplies (a distributor, not Tower Pro; unit listed as \"Generic SG90 (China)\") specifications table: \"Current (stall) 360mA (measured)\" on 5 V, sample size and test conditions not given; Circuit Rocks' SG90 page (https://docs.circuit.rocks/motors/sg90-servo/): \"Stall current ~550 mA\", no conditions; Tower Pro's SG90 Digital page (https://towerpro.com.tw/product/sg90-7/), an admin reply in its reviews: \"The operation current for our SG90 is about 0.5A - 2A\", not stated as a stall figure and not on the SG90 Analog page. 0.36 A is the lowest of these. Kept at or above the moving current (0.175 A), as the simulation needs.",
+							"label": "stalled"
+						}
+					}]
+				},
+				"servo": {
+					"shaft": {
+						"x": 122,
+						"y": 24
+					},
+					"signal": "PWM",
+					"pulseMin": {
+						"value": 5e-4,
+						"unit": "s",
+						"source": "https://www.friendlywire.com/projects/ne555-servo-safe/SG90-datasheet.pdf https://handsontec.com/dataspecs/motor_fan/SG90-Servo.pdf",
+						"provenance": "estimate",
+						"note": "500 us for 0 degrees: the travel real units show, as sellers list it (FriendlyWire's compiled SG90 PDF p. 2 \"TowerPro SG90 - Micro Servo\": \"Pulse Width: 500-2400 us\", \"Rotational Range: 180\"; Handsontec SG90 user guide p. 1: \"Pulse Width: 500-2400 us\"). Flagged because it conflicts with the Tower Pro SG90 sheet's 1 to 2 ms for -90 to +90 degrees (FriendlyWire PDF p. 1: \"-90\" (~1ms pulse), \"0\" (1.5 ms), \"90\" (~2ms)). Individual units differ; the mechanical end stop may come before 500 us."
+					},
+					"pulseMax": {
+						"value": .0024,
+						"unit": "s",
+						"source": "https://www.friendlywire.com/projects/ne555-servo-safe/SG90-datasheet.pdf https://handsontec.com/dataspecs/motor_fan/SG90-Servo.pdf",
+						"provenance": "estimate",
+						"note": "2400 us for 180 degrees: the travel real units show, as sellers list it (FriendlyWire's compiled SG90 PDF p. 2: \"Pulse Width: 500-2400 us\"; Handsontec SG90 user guide p. 1: \"Pulse Width: 500-2400 us\"). Flagged because it conflicts with the Tower Pro SG90 sheet's 1 to 2 ms for -90 to +90 degrees (FriendlyWire PDF p. 1). Individual units differ."
+					},
+					"slew": {
+						"value": .1,
+						"unit": "s",
+						"source": "https://towerpro.com.tw/product/sg90-analog/ https://www.friendlywire.com/projects/ne555-servo-safe/SG90-datasheet.pdf",
+						"provenance": "datasheet",
+						"note": "Time per 60 degrees of travel, at 4.8 V; load not stated by Tower Pro (servo speeds are conventionally quoted unloaded). Tower Pro's SG90 Analog product page, PRODUCT CONFIGURE TABLE: \"Speed(sec/60deg) 0.1\" (torque column at 4.8v); Tower Pro's SG90 Digital page (https://towerpro.com.tw/product/sg90-7/): \"Operating speed: 0.1sec/60degree(4.8v)\" and 0.1 in its table; the widely copied SG90 sheet (unbranded, pictures a Tower Pro unit; FriendlyWire's compiled PDF, p. 1): \"Operating speed: 0.1 s/60 degree\", operating voltage 4.8 V (~5V). Conflict: the same SG90 Analog page's Specifications list says \"0.12 sec/60degree(4.8v)\", as do Handsontec's guide p. 1 and ProtoSupplies' table (\"0.12s / 60 degree\"). Kept as datasheet because Tower Pro's own pages state 0.1 s; real units may be up to 20% slower."
+					},
+					"moving": {
+						"value": .175,
+						"unit": "A",
+						"source": "https://protosupplies.com/product/servo-motor-micro-sg90/",
+						"provenance": "estimate",
+						"note": "Current while the horn travels. ProtoSupplies (a distributor, not Tower Pro; unit listed as \"Generic SG90 (China)\") product page, specifications table: \"Current (typical during movement) 100-250mA\", on 5 V, \"depending on how it is being operated\"; the midpoint is taken. Tower Pro publishes no moving current in its specifications; an admin reply on its SG90 Digital page (https://towerpro.com.tw/product/sg90-7/) says \"The operation current for our SG90 is about 0.5A - 2A\", without conditions. Below the stall peak (0.36 A)."
+					},
+					"signalLoad": {
+						"value": 1e5,
+						"unit": "ohm",
+						"provenance": "estimate",
+						"note": "The PWM input's resistance to GND. No source: Tower Pro publishes no schematic and does not name the control IC, and no input impedance figure was found. A hobby servo's signal pin drives a logic input, so the DC load is small; 100 kohm assumed, about 33 uA from a 3.3 V GPIO or 50 uA from 5 V. Treat the number as a placeholder for \"a light load\", not a measurement."
+					}
+				},
+				"unaccounted": ["Inrush and start-up spikes when the motor starts: no sourced figure; the simulation uses only the idle, moving and stall currents.", "Current under a load on the horn: the moving current is for bench use; a loaded horn draws more, up to the stall current."]
+			}
 		},
 		art: {
 			"w": 150,
@@ -58254,7 +58416,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"w": 44,
 					"h": 16,
 					"fill": "#F4F6F8",
-					"radius": 8
+					"radius": 8,
+					"horn": true
 				},
 				{
 					"type": "rect",
@@ -58263,7 +58426,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"w": 16,
 					"h": 16,
 					"fill": "#F4F6F8",
-					"radius": 8
+					"radius": 8,
+					"horn": true
 				},
 				{
 					"type": "rect",
@@ -58273,7 +58437,8 @@ var library = Object.entries(/* @__PURE__ */ Object.assign({
 					"h": 6,
 					"fill": "#8E96A1",
 					"radius": 3,
-					"outline": false
+					"outline": false,
+					"horn": true
 				},
 				{
 					"type": "rect",
@@ -69465,7 +69630,7 @@ function possibleRoots(g) {
 	for (let i = 0; i < g.n; i++) parent[i] = find(parent, i);
 	return parent;
 }
-function prepare(g) {
+function prepare$1(g) {
 	const possible = possibleRoots(g);
 	const live = /* @__PURE__ */ new Set();
 	for (const s of g.sources) for (const x of [
@@ -72731,7 +72896,7 @@ function convertersInState(d, active) {
 	const plugs = plugsOf(d);
 	const g = buildMainsGraph(d, plugs, netlist(d, plugs));
 	if (!g) return /* @__PURE__ */ new Map();
-	const p = prepare(g);
+	const p = prepare$1(g);
 	if (p.sources.length > 10) return new Map(g.converters.map((c) => [c.part.uid, notChecked(c)]));
 	for (const gi of p.groupIdx) p.groupState[gi] = active(g.groups[gi].part, g.groups[gi].def.id) ? 1 : 0;
 	analyseState(p);
@@ -72753,7 +72918,7 @@ function analyseMains(d) {
 	mainsStats.runs++;
 	const plugs = plugsOf(d);
 	const g = buildMainsGraph(d, plugs, netlist(d, plugs));
-	const p = prepare(g);
+	const p = prepare$1(g);
 	const cands = candidateGroups(g, p.possible);
 	const acc = newAcc(p, cands, null);
 	for (const unit of units(p, cands)) {
@@ -84908,25 +85073,28 @@ var Part = (0, import_react.memo)(function Part({ module: m, x = 0, y = 0, rotat
 					}, p.name)),
 					art ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", {
 						transform: `translate(${ax} ${ay})`,
-						children: art.shapes.map((s, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", {
-							x: s.x,
-							y: s.y,
-							width: s.w,
-							height: s.h,
-							rx: s.radius ?? 0,
-							fill: s.band && bands ? bands[s.band - 1] : s.fill,
-							stroke: i === body ? outline : s.outline === false ? "none" : INK$2,
-							strokeWidth: OUTLINE
-						}), s.label && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("text", {
-							x: s.x + s.w / 2,
-							y: s.y + s.h / 2,
-							textAnchor: "middle",
-							dominantBaseline: "central",
-							fontSize: s.labelSize ?? 8,
-							fontWeight: 700,
-							fill: s.labelColor ?? "#23282F",
-							children: s.label
-						})] }, i))
+						children: art.shapes.map((s, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", {
+							className: s.horn ? "art-horn" : void 0,
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", {
+								x: s.x,
+								y: s.y,
+								width: s.w,
+								height: s.h,
+								rx: s.radius ?? 0,
+								fill: s.band && bands ? bands[s.band - 1] : s.fill,
+								stroke: i === body ? outline : s.outline === false ? "none" : INK$2,
+								strokeWidth: OUTLINE
+							}), s.label && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("text", {
+								x: s.x + s.w / 2,
+								y: s.y + s.h / 2,
+								textAnchor: "middle",
+								dominantBaseline: "central",
+								fontSize: s.labelSize ?? 8,
+								fontWeight: 700,
+								fill: s.labelColor ?? "#23282F",
+								children: s.label
+							})]
+						}, i))
 					}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", {
 						width: lay.w,
 						height: lay.h,
@@ -86302,7 +86470,7 @@ function parseNetlist(raw, library) {
 		if (p.values !== void 0) {
 			if (!isObj(p.values)) errors.push(`${at}.values: must be an object`);
 			else {
-				errors.push(...valueErrors(p.values, `${at}.values`, withLibrarySim(m, library)));
+				errors.push(...valueErrors(p.values, `${at}.values`, withLibraryData(m, library)));
 				part.values = p.values;
 			}
 		}
@@ -86320,6 +86488,23 @@ function parseNetlist(raw, library) {
 					errors.push(`${at}.settings.${key}: must be one of ${offered[key].map((c) => JSON.stringify(c)).join(", ")}`);
 				}
 				if (ok && Object.keys(p.settings).length) part.settings = p.settings;
+			}
+		}
+		if (p.code !== void 0) {
+			const c = p.code;
+			const lang = isObj(c) ? c.language : void 0;
+			if (!isObj(c) || typeof c.path !== "string" && typeof c.source !== "string") errors.push(`${at}.code: must be { "language", "path" } or { "language", "source", "file" }`);
+			else if (typeof lang !== "string" || !KNOWN_LANGUAGES.includes(lang)) errors.push(`${at}.code.language: unknown language "${String(lang)}" (${KNOWN_LANGUAGES.join(", ")})`);
+			else if (typeof c.path === "string") {
+				if (pathProblem(c.path)) errors.push(`${at}.code.path: ${pathProblem(c.path)}`);
+				else part.code = {
+					language: lang,
+					path: c.path
+				};
+			} else {
+				const r = checkCode(c, ref);
+				if (!r.code) errors.push(...r.warnings.map((w) => `${at}.code: ${w}`));
+				else part.code = r.code;
 			}
 		}
 		if (p.on !== void 0) {
@@ -86627,14 +86812,14 @@ function parseNetlist(raw, library) {
 * change never breaks an old sheet), then the library. Ids the intent embeds itself are left to it,
 * unless they are library ids: the netlist then rejects the embedded copy as a built-in part, and
 * module-drift compares it with the library. An embedded copy carries the library's sim data
-* (withLibrarySim), which is library data like the KiCad mapping.
+* (withLibraryData), which is library data like the KiCad mapping.
 */
 function intentLookup(d, library) {
 	const own = isObj(d.intent) && isObj(d.intent.modules) ? new Set(Object.keys(d.intent.modules)) : /* @__PURE__ */ new Set();
 	return (id) => {
 		if (own.has(id) && !library(id)) return void 0;
 		const m = moduleOf(d, id);
-		return m ? withLibrarySim(m, library) : library(id);
+		return m ? withLibraryData(m, library) : library(id);
 	};
 }
 //#endregion
@@ -87054,6 +87239,70 @@ function driftedParts(findings) {
 }
 /** A covered-hole use that comes from a stale embedded copy: its covering part, or its leg's part, drifted. */
 var isStale = (u, stale) => stale.has(u.cover.by) || !!u.leg && stale.has(u.leg.part);
+var PY_FILES = Object.fromEntries(Object.entries(/* @__PURE__ */ Object.assign({
+	"./py/RPi/GPIO.py": "\"\"\"RPi.GPIO for Circuitoon's simulated Raspberry Pi (firmware spec 5.1).\n\nThe RPi.GPIO 0.7 calls on the board's simulated pins: outputs read their own latch, inputs read the\nlevel the simulation solved, edges come from the editor's edge counters and their callbacks run at\nyield points (Circuitoon's scheduler, not a thread). PWM declares its duty and frequency; nothing\ntoggles the pin to fake it.\n\"\"\"\nimport sys\nimport warnings\n\nimport _circuitoon as _rt\nimport circuitoon_hw as _hw\nfrom _circuitoon import BOARD_TO_BCM as _BOARD_TO_BCM\n\nVERSION = '0.7.1'\nRPI_REVISION = 3\nBOARD = 10\nBCM = 11\nOUT = 0\nIN = 1\nLOW = 0\nHIGH = 1\nPUD_OFF = 20\nPUD_DOWN = 21\nPUD_UP = 22\nRISING = 31\nFALLING = 32\nBOTH = 33\nUNKNOWN = -1\nSERIAL = 40\nSPI = 41\nI2C = 42\nHARD_PWM = 43\n\n_INFO = {\n    'pi4': {'TYPE': 'Pi 4 Model B', 'PROCESSOR': 'BCM2711'},\n    'pi5': {'TYPE': 'Pi 5', 'PROCESSOR': 'BCM2712'},\n    'zero2w': {'TYPE': 'Zero 2 W', 'PROCESSOR': 'BCM2710A1'},\n}\n_board = _hw.board()\n# Revision, maker and RAM depend on the unit, which the simulator does not know.\nRPI_INFO = dict(P1_REVISION=3, REVISION='unknown', MANUFACTURER='unknown', RAM='unknown', **_INFO[_board])\nif _board == 'pi5':\n    sys.stderr.write('RPi.GPIO does not work on a real Pi 5; use gpiozero, or install rpi-lgpio\\n')\n\n_PULL_MODE = {PUD_OFF: 1, PUD_UP: 2, PUD_DOWN: 3}\n_mode = None\n_warn = True\n_dir = {}\n_pwm = {}\n_detect = {}\n\n\ndef _bcm(channel):\n    if _mode is None:\n        raise RuntimeError('Please set pin numbering mode using GPIO.setmode(GPIO.BOARD) or GPIO.setmode(GPIO.BCM)')\n    if not isinstance(channel, int) or isinstance(channel, bool):\n        raise ValueError('Channel must be an integer or list/tuple of integers')\n    if _mode == BOARD:\n        if channel not in _BOARD_TO_BCM:\n            raise ValueError('The channel sent is invalid on a Raspberry Pi')\n        bcm = _BOARD_TO_BCM[channel]\n    else:\n        bcm = channel\n    if bcm in (0, 1):\n        raise ValueError(f'GPIO{bcm} is reserved for the HAT ID EEPROM and is not simulated')\n    if not 2 <= bcm <= 27:\n        raise ValueError('The channel sent is invalid on a Raspberry Pi')\n    return bcm\n\n\ndef _channels(channel):\n    return list(channel) if isinstance(channel, (list, tuple)) else [channel]\n\n\ndef setmode(mode):\n    global _mode\n    if mode not in (BOARD, BCM):\n        raise ValueError('An invalid mode was passed to setmode()')\n    if _mode is not None and mode != _mode:\n        raise ValueError('A different mode has already been set!')\n    _mode = mode\n\n\ndef getmode():\n    return _mode\n\n\ndef setwarnings(flag):\n    global _warn\n    _warn = bool(flag)\n\n\ndef setup(channel, direction, pull_up_down=PUD_OFF, initial=-1):\n    if direction not in (IN, OUT):\n        raise ValueError('An invalid direction was passed to setup()')\n    if pull_up_down not in _PULL_MODE:\n        raise ValueError('Invalid value for pull_up_down - should be either PUD_OFF, PUD_UP or PUD_DOWN')\n    if direction == OUT and pull_up_down != PUD_OFF:\n        raise ValueError('pull_up_down parameter is not valid for outputs')\n    if direction == IN and initial != -1:\n        raise ValueError('initial parameter is not valid for inputs')\n    for ch in _channels(channel):\n        bcm = _bcm(ch)\n        if _warn and bcm in _dir:\n            warnings.warn('This channel is already in use, continuing anyway.  Use GPIO.setwarnings(False) to disable warnings.', RuntimeWarning, stacklevel=2)\n        if direction == OUT:\n            _hw.setup(bcm, 4)\n            if initial != -1:\n                _hw.output(bcm, 1 if initial else 0)\n        else:\n            _hw.setup(bcm, _PULL_MODE[pull_up_down])\n        _dir[bcm] = direction\n\n\ndef output(channel, value):\n    chans = _channels(channel)\n    values = list(value) if isinstance(value, (list, tuple)) else [value] * len(chans)\n    if len(values) != len(chans):\n        raise RuntimeError('Number of channels != number of values')\n    for ch, v in zip(chans, values):\n        bcm = _bcm(ch)\n        if _dir.get(bcm) != OUT:\n            raise RuntimeError('The GPIO channel has not been set up as an OUTPUT')\n        _hw.output(bcm, 1 if v else 0)\n\n\ndef input(channel):\n    bcm = _bcm(channel)\n    if bcm not in _dir:\n        raise RuntimeError('You must setup() the GPIO channel first')\n    _rt.yield_point()\n    return _hw.read(bcm)\n\n\ndef cleanup(channel=None):\n    global _mode\n    chans = list(_dir) if channel is None else [_bcm(c) for c in _channels(channel)]\n    for bcm in chans:\n        if bcm in _detect:\n            _detect.pop(bcm).close()\n        if bcm in _pwm:\n            _pwm[bcm].stop()\n        _hw.setup(bcm, 0)\n        _dir.pop(bcm, None)\n    if channel is None:\n        _mode = None\n\n\ndef gpio_function(channel):\n    return _dir.get(_bcm(channel), IN)\n\n\ndef _counts(bcm):\n    return _hw.rising(bcm) & 0xFFFFFFFF, _hw.falling(bcm) & 0xFFFFFFFF\n\n\nclass _Detect:\n    \"\"\"Edge detection on an input (spec 4.4): the editor's edge counters, polled at yield points.\"\"\"\n\n    def __init__(self, bcm, channel, edge, bouncetime):\n        self.bcm, self.channel, self.edge = bcm, channel, edge\n        self.bounce = (bouncetime or 0) / 1000.0\n        self.callbacks = []\n        self.flag = False\n        self.seen = _counts(bcm)\n        self.last = None\n\n    def edges(self):\n        r, f = _counts(self.bcm)\n        n = 0\n        if self.edge in (RISING, BOTH):\n            n += (r - self.seen[0]) & 0xFFFFFFFF\n        if self.edge in (FALLING, BOTH):\n            n += (f - self.seen[1]) & 0xFFFFFFFF\n        self.seen = (r, f)\n        return n\n\n    def poll(self):\n        n = self.edges()\n        if not n:\n            return\n        t = _rt.now()\n        if self.bounce and self.last is not None and t - self.last < self.bounce:\n            return\n        self.last = t\n        self.flag = True\n        for _ in range(n):\n            for cb in list(self.callbacks):\n                _rt.queue(lambda cb=cb: cb(self.channel))\n\n    def close(self):\n        _rt.remove_poller(self.poll)\n\n\ndef add_event_detect(channel, edge, callback=None, bouncetime=None):\n    bcm = _bcm(channel)\n    if _dir.get(bcm) != IN:\n        raise RuntimeError('You must setup() the GPIO channel as an input first')\n    if edge not in (RISING, FALLING, BOTH):\n        raise ValueError('The edge must be set to RISING, FALLING or BOTH')\n    if bcm in _detect:\n        raise RuntimeError('Conflicting edge detection already enabled for this GPIO channel')\n    d = _detect[bcm] = _Detect(bcm, channel, edge, bouncetime)\n    if callback is not None:\n        d.callbacks.append(callback)\n    _rt.add_poller(d.poll)\n\n\ndef add_event_callback(channel, callback):\n    bcm = _bcm(channel)\n    if bcm not in _detect:\n        raise RuntimeError('Add event detection using add_event_detect first before adding a callback')\n    _detect[bcm].callbacks.append(callback)\n\n\ndef remove_event_detect(channel):\n    bcm = _bcm(channel)\n    if bcm in _detect:\n        _detect.pop(bcm).close()\n\n\ndef event_detected(channel):\n    d = _detect.get(_bcm(channel))\n    if d is None:\n        return False\n    _rt.yield_point()\n    hit, d.flag = d.flag, False\n    return hit\n\n\ndef wait_for_edge(channel, edge, bouncetime=None, timeout=None):\n    bcm = _bcm(channel)\n    if _dir.get(bcm) != IN:\n        raise RuntimeError('You must setup() the GPIO channel as an input first')\n    if bcm in _detect:\n        raise RuntimeError('Conflicting edge detection events already exist for this GPIO channel')\n    if edge not in (RISING, FALLING, BOTH):\n        raise ValueError('The edge must be set to RISING, FALLING or BOTH')\n    d = _Detect(bcm, channel, edge, bouncetime)\n    got = _rt.wait(None if timeout is None else timeout / 1000.0, until=lambda: d.edges() > 0)\n    return channel if got else None\n\n\nclass PWM:\n    \"\"\"Software PWM as RPi.GPIO 0.7 offers it; here it declares duty and frequency (spec 2.2).\"\"\"\n\n    def __init__(self, channel, frequency):\n        bcm = _bcm(channel)\n        if _dir.get(bcm) != OUT:\n            raise RuntimeError('You must setup() the GPIO channel as an output first')\n        if bcm in _pwm:\n            raise RuntimeError('A PWM object already exists for this GPIO channel')\n        if frequency <= 0.0:\n            raise ValueError('frequency must be greater than 0.0')\n        self._bcm, self._freq, self._dc, self._running = bcm, float(frequency), 0.0, False\n        _pwm[bcm] = self\n\n    def _write(self):\n        _hw.pwm(self._bcm, self._running, self._dc / 100.0, self._freq)\n\n    @staticmethod\n    def _check(dutycycle):\n        if not 0.0 <= dutycycle <= 100.0:\n            raise ValueError('dutycycle must have a value from 0.0 to 100.0')\n\n    def start(self, dutycycle):\n        self._check(dutycycle)\n        self._dc, self._running = float(dutycycle), True\n        self._write()\n\n    def ChangeDutyCycle(self, dutycycle):\n        self._check(dutycycle)\n        self._dc = float(dutycycle)\n        self._write()\n\n    def ChangeFrequency(self, frequency):\n        if frequency <= 0.0:\n            raise ValueError('frequency must be greater than 0.0')\n        self._freq = float(frequency)\n        self._write()\n\n    def stop(self):\n        self._running = False\n        self._write()\n        _pwm.pop(self._bcm, None)\n",
+	"./py/RPi/__init__.py": "\"\"\"RPi: Circuitoon's stand-in package (see GPIO.py).\"\"\"\n",
+	"./py/_circuitoon.py": "\"\"\"Circuitoon's run-time for scripts on a simulated Raspberry Pi (firmware spec 5.2).\n\nOne scheduler for every wait (time.sleep, input, gpiozero's pause and wait_for_*, RPi.GPIO's\nwait_for_edge and the waits inside our modules): due timers and queued callbacks run at yield points\n(the waits and every pin read), never inside a callback, so it is not re-entrant. Time comes from the\nrun's clock. JS only blocks (circuitoon_hw.block) and reports what woke it.\n\"\"\"\nimport builtins\nimport heapq\nimport linecache\nimport sys\nimport threading\nimport time\nimport traceback\n\nimport circuitoon_hw as hw\n\n# Modules that need devices or libraries the simulator does not have (spec 5.1). The gate scans\n# scripts for the same names: src/run/unsupported.ts reads this dict (one entry per line).\nUNSUPPORTED = {\n    'smbus': 'smbus needs I2C devices, coming in a later update',\n    'smbus2': 'smbus2 needs I2C devices, coming in a later update',\n    'spidev': 'spidev needs SPI devices, coming in a later update',\n    'serial': 'serial (pyserial) needs a serial port, coming in a later update',\n    'pigpio': 'pigpio is not simulated; use gpiozero or RPi.GPIO',\n    'lgpio': 'lgpio is not simulated; use gpiozero or RPi.GPIO',\n    'picamera2': 'picamera2 needs a camera, which is not simulated',\n}\nTHREADS = \"Threads aren't supported in the simulator yet; use gpiozero callbacks or a loop with time.sleep()\"\nNPINS = 28\n# The 40-pin header: BOARD pin number to BCM GPIO number (RPi.GPIO and gpiozero both read it).\nBOARD_TO_BCM = {3: 2, 5: 3, 7: 4, 8: 14, 10: 15, 11: 17, 12: 18, 13: 27, 15: 22, 16: 23, 18: 24, 19: 10,\n                21: 9, 22: 25, 23: 11, 24: 8, 26: 7, 27: 0, 28: 1, 29: 5, 31: 6, 32: 12, 33: 13, 35: 19,\n                36: 16, 37: 26, 38: 20, 40: 21}\n\n_timers = []\n_queue = []\n_pollers = []\n_seq = 0\n_in_callback = False\n_file = 'main.py'\n\n\nclass Timer:\n    \"\"\"A scheduled call; cancel() stops it; `period` repeats it.\"\"\"\n    __slots__ = ('due', 'seq', 'fn', 'period', 'alive')\n\n    def __init__(self, due, fn, period):\n        global _seq\n        _seq += 1\n        self.due, self.seq, self.fn, self.period, self.alive = due, _seq, fn, period, True\n\n    def __lt__(self, other):\n        return (self.due, self.seq) < (other.due, other.seq)\n\n    def cancel(self):\n        self.alive = False\n\n\ndef reset():\n    \"\"\"Forgets every timer, queued callback and poller.\"\"\"\n    global _in_callback\n    _timers.clear()\n    _queue.clear()\n    _pollers.clear()\n    _in_callback = False\n\n\ndef now():\n    \"\"\"Seconds of run time.\"\"\"\n    return hw.monotonic()\n\n\ndef call_later(delay, fn, period=None):\n    timer = Timer(now() + max(0.0, delay), fn, period)\n    heapq.heappush(_timers, timer)\n    hw.pending(True)\n    return timer\n\n\ndef queue(fn):\n    \"\"\"Runs fn at the next yield point, outside any callback.\"\"\"\n    _queue.append(fn)\n    hw.pending(True)\n\n\ndef add_poller(fn):\n    if fn not in _pollers:\n        _pollers.append(fn)\n    hw.pending(True)\n\n\ndef remove_poller(fn):\n    if fn in _pollers:\n        _pollers.remove(fn)\n\n\ndef format_error(e):\n    \"\"\"A traceback listing only the user's own frames (plan ruling R11).\"\"\"\n    te = traceback.TracebackException.from_exception(e)\n    te.stack = traceback.StackSummary.from_list([f for f in te.stack if f.filename == _file])\n    return ''.join(te.format())\n\n\ndef _run(fn):\n    global _in_callback\n    _in_callback = True\n    try:\n        fn()\n    except Exception as e:  # plan ruling R10: printed, and the script goes on\n        sys.stderr.write(format_error(e))\n    finally:\n        _in_callback = False\n\n\ndef dispatch():\n    \"\"\"Polls for edges, then runs queued callbacks and the timers due now. Inside a callback it does nothing.\"\"\"\n    if _in_callback:\n        return\n    for poll in list(_pollers):\n        _run(poll)\n    while _queue:\n        _run(_queue.pop(0))\n    t = now()\n    due = []\n    while _timers and (not _timers[0].alive or _timers[0].due <= t):\n        timer = heapq.heappop(_timers)\n        if timer.alive:\n            due.append(timer)\n    for timer in due:\n        if timer.period is not None:\n            # Behind schedule: the next run is now, never a burst of catch-up runs.\n            timer.due = max(timer.due + timer.period, t)\n            heapq.heappush(_timers, timer)\n        if timer.alive:\n            _run(timer.fn)\n        while _queue:\n            _run(_queue.pop(0))\n\n\ndef _pending():\n    return bool(_queue or _pollers or any(timer.alive for timer in _timers))\n\n\ndef yield_point():\n    \"\"\"A yield point (every pin read and every wait): timers and callbacks may run here.\"\"\"\n    dispatch()\n    hw.yielded(_pending())\n\n\ndef wait(seconds=None, until=None):\n    \"\"\"The one blocking primitive (spec 5.2): runs timers and callbacks until until() is true\n    (returns True) or `seconds` have passed (returns False). None waits forever. Inside a callback it\n    only waits.\"\"\"\n    end = None if seconds is None else now() + max(0.0, seconds)\n    while True:\n        yield_point()\n        if until is not None and until():\n            return True\n        t = now()\n        if end is not None and t >= end:\n            return False\n        nxt = end\n        if not _in_callback:\n            while _timers and not _timers[0].alive:\n                heapq.heappop(_timers)\n            if _timers and (nxt is None or _timers[0].due < nxt):\n                nxt = _timers[0].due\n        hw.block(-1.0 if nxt is None else nxt)\n\n\ndef _sleep(seconds):\n    if seconds < 0:\n        raise ValueError('sleep length must be non-negative')\n    wait(seconds)\n\n\ndef _input(prompt=''):\n    \"\"\"input() (spec 5.3, plan ruling R12): the prompt labels the input box; callbacks run while it waits.\"\"\"\n    hw.input_begin(str(prompt))\n    wait(until=hw.input_ready)\n    return hw.input_take()\n\n\ndef _no_threads(*args, **kwargs):\n    raise RuntimeError(THREADS)\n\n\nclass _Unsupported:\n    \"\"\"Refuses modules the simulator does not have, in plain words (spec 5.1).\"\"\"\n\n    def find_spec(self, name, path=None, target=None):\n        root = name.split('.')[0]\n        if root in UNSUPPORTED:\n            raise ImportError(UNSUPPORTED[root], name=name)\n        return None\n\n\ndef install():\n    \"\"\"Points time, input, signal.pause and threads at the scheduler, and refuses unsupported modules.\"\"\"\n    import _thread\n    import signal\n    # gpiozero's own examples end with `from signal import pause; pause()`.\n    signal.pause = lambda: wait()\n    time.sleep = _sleep\n    time.time = hw.epoch\n    time.monotonic = hw.monotonic\n    time.perf_counter = hw.monotonic\n    time.time_ns = lambda: int(hw.epoch() * 1e9)\n    time.monotonic_ns = lambda: int(hw.monotonic() * 1e9)\n    time.perf_counter_ns = time.monotonic_ns\n    builtins.input = _input\n    threading.Thread.start = _no_threads\n    _thread.start_new_thread = _no_threads\n    sys.meta_path[:] = [f for f in sys.meta_path if type(f).__name__ != '_Unsupported']\n    sys.meta_path.insert(0, _Unsupported())\n\n\ndef shutdown():\n    \"\"\"The end of a run: no timers left, every pin back to unused, so the saved states apply again.\"\"\"\n    reset()\n    for bcm in range(NPINS):\n        hw.setup(bcm, 0)\n\n\ndef main(source, filename):\n    \"\"\"Runs the user's script. Returns 'done', 'stopped' (Stop: KeyboardInterrupt) or 'error'.\"\"\"\n    global _file\n    _file = filename\n    reset()\n    install()\n    linecache.cache[filename] = (len(source), None, source.splitlines(True), filename)\n    g = {'__name__': '__main__', '__file__': filename, '__builtins__': builtins}\n    status = 'done'\n    try:\n        exec(compile(source, filename, 'exec'), g)\n    except KeyboardInterrupt:\n        status = 'stopped'\n    except SystemExit as e:\n        if e.code not in (None, 0):\n            status = 'error'\n            if not isinstance(e.code, int):\n                sys.stderr.write(f'{e.code}\\n')\n    except BaseException as e:\n        sys.stderr.write(format_error(e))\n        status = 'error'\n    finally:\n        shutdown()\n    return status\n",
+	"./py/gpiozero/__init__.py": "\"\"\"gpiozero for Circuitoon's simulated Raspberry Pi (firmware spec 5.1).\r\n\r\nA subset with gpiozero's names and signatures. Callbacks, blink and pulse run from Circuitoon's\r\nscheduler (_circuitoon) at yield points: they are not threads, so a callback that sleeps holds\r\neverything else until it returns (About the simulator says so). Input devices are not smoothed.\r\n\"\"\"\r\nimport inspect\r\n\r\nimport _circuitoon as _rt\r\nimport circuitoon_hw as _hw\r\nfrom _circuitoon import BOARD_TO_BCM as _BOARD_TO_BCM\r\n\r\n# `from gpiozero import *` takes exactly these.\r\n__all__ = ['GPIOZeroError', 'DeviceClosed', 'GPIOPinInUse', 'PinInvalidPin', 'PinInvalidState', 'OutputDeviceBadValue',\r\n           'Device', 'OutputDevice', 'DigitalOutputDevice', 'LED', 'Buzzer', 'InputDevice', 'DigitalInputDevice', 'Button',\r\n           'LineSensor', 'MotionSensor', 'PWMOutputDevice', 'PWMLED', 'RGBLED', 'Servo', 'AngularServo', 'Motor', 'pause']\r\n\r\n# Names gpiozero has that need devices not simulated yet (spec 5.1); one entry per line, read by\r\n# src/run/unsupported.ts for the gate's static scan.\r\nUNSUPPORTED_NAMES = {\r\n    'MCP3001': 'needs SPI devices, coming in a later update',\r\n    'MCP3002': 'needs SPI devices, coming in a later update',\r\n    'MCP3004': 'needs SPI devices, coming in a later update',\r\n    'MCP3008': 'needs SPI devices, coming in a later update',\r\n    'MCP3201': 'needs SPI devices, coming in a later update',\r\n    'MCP3202': 'needs SPI devices, coming in a later update',\r\n    'MCP3204': 'needs SPI devices, coming in a later update',\r\n    'MCP3208': 'needs SPI devices, coming in a later update',\r\n    'MCP3301': 'needs SPI devices, coming in a later update',\r\n    'MCP3302': 'needs SPI devices, coming in a later update',\r\n    'MCP3304': 'needs SPI devices, coming in a later update',\r\n}\r\n_M32 = 0xFFFFFFFF\r\n_FPS = 25\r\n_used = {}\r\n\r\n\r\ndef __getattr__(name):\r\n    if name in UNSUPPORTED_NAMES:\r\n        raise NotImplementedError(f'gpiozero.{name} {UNSUPPORTED_NAMES[name]}')\r\n    if name.startswith('__'):\r\n        raise AttributeError(name)\r\n    raise NotImplementedError(f'gpiozero.{name} is not in the simulator yet')\r\n\r\n\r\nclass GPIOZeroError(Exception):\r\n    pass\r\n\r\n\r\nclass DeviceClosed(GPIOZeroError):\r\n    pass\r\n\r\n\r\nclass GPIOPinInUse(GPIOZeroError):\r\n    pass\r\n\r\n\r\nclass PinInvalidPin(GPIOZeroError, ValueError):\r\n    pass\r\n\r\n\r\nclass PinInvalidState(GPIOZeroError, ValueError):\r\n    pass\r\n\r\n\r\nclass OutputDeviceBadValue(GPIOZeroError, ValueError):\r\n    pass\r\n\r\n\r\ndef _bcm_of(spec):\r\n    \"\"\"A pin as gpiozero names it: 17, '17', 'GPIO17', 'BCM17', 'BOARD11' or 'J8:11'.\"\"\"\r\n    bcm = -1\r\n    if isinstance(spec, int) and not isinstance(spec, bool):\r\n        bcm = spec\r\n    elif isinstance(spec, str):\r\n        s = spec.strip().upper()\r\n        for prefix, board in (('GPIO', False), ('BCM', False), ('BOARD', True), ('J8:', True), ('', False)):\r\n            if s.startswith(prefix) and s[len(prefix):].isdigit():\r\n                n = int(s[len(prefix):])\r\n                bcm = _BOARD_TO_BCM.get(n, -1) if board else n\r\n                break\r\n    if bcm in (0, 1):\r\n        raise PinInvalidPin(f'GPIO{bcm} is reserved for the HAT ID EEPROM and is not simulated')\r\n    if not 2 <= bcm <= 27:\r\n        raise PinInvalidPin(f'{spec!r} is not a valid pin on a Raspberry Pi header')\r\n    return bcm\r\n\r\n\r\ndef _call(fn, device):\r\n    \"\"\"Calls a gpiozero callback: with the device when it takes one argument, else with none.\"\"\"\r\n    try:\r\n        params = [p for p in inspect.signature(fn).parameters.values() if p.default is p.empty and p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]\r\n    except (TypeError, ValueError):\r\n        params = []\r\n    if params:\r\n        fn(device)\r\n    else:\r\n        fn()\r\n\r\n\r\nclass _Pin:\r\n    def __init__(self, bcm):\r\n        self.number = bcm\r\n\r\n    def __repr__(self):\r\n        return f'GPIO{self.number}'\r\n\r\n    __str__ = __repr__\r\n\r\n\r\nclass Device:\r\n    \"\"\"A device on one or more pins; close() frees them (back to unused).\"\"\"\r\n\r\n    def __init__(self, *pins, pin_factory=None):\r\n        bcms = [_bcm_of(p) for p in pins]\r\n        for b in bcms:\r\n            if b in _used:\r\n                raise GPIOPinInUse(f'pin GPIO{b} is already in use by {_used[b]!r}')\r\n        self._pins = bcms\r\n        self._closed = False\r\n        for b in bcms:\r\n            _used[b] = self\r\n\r\n    def _release(self):\r\n        \"\"\"Stops what the device runs on its own (timers, pollers).\"\"\"\r\n\r\n    def close(self):\r\n        if self._closed:\r\n            return\r\n        self._closed = True\r\n        self._release()\r\n        for b in self._pins:\r\n            _used.pop(b, None)\r\n            _hw.setup(b, 0)\r\n\r\n    @property\r\n    def closed(self):\r\n        return self._closed\r\n\r\n    def _check(self):\r\n        if self._closed:\r\n            raise DeviceClosed(f'{type(self).__name__} is closed or uninitialized')\r\n\r\n    @property\r\n    def pin(self):\r\n        return _Pin(self._pins[0]) if self._pins else None\r\n\r\n    @property\r\n    def is_active(self):\r\n        return bool(self.value)\r\n\r\n    def __enter__(self):\r\n        return self\r\n\r\n    def __exit__(self, *exc):\r\n        self.close()\r\n\r\n    def __repr__(self):\r\n        where = f' on pin GPIO{self._pins[0]}' if len(self._pins) == 1 else ''\r\n        return f'<gpiozero.{type(self).__name__} object{where}{\", closed\" if self._closed else \"\"}>'\r\n\r\n\r\nclass _Sequence:\r\n    \"\"\"Steps a device through (value, seconds) pairs, n times or forever, from timers (blink, pulse).\"\"\"\r\n\r\n    def __init__(self, device, steps, n, after):\r\n        self.device, self.steps, self.left, self.after = device, steps, n, after\r\n        self.i = 0\r\n        self.done = False\r\n        self.timer = None\r\n        if not any(secs > 0 for _, secs in steps):\r\n            self._finish()\r\n        else:\r\n            self._step()\r\n\r\n    def _finish(self):\r\n        self.done = True\r\n        self.device._write(self.after)\r\n\r\n    def _step(self):\r\n        while not self.done:\r\n            if self.i == len(self.steps):\r\n                self.i = 0\r\n                if self.left is not None:\r\n                    self.left -= 1\r\n                    if self.left <= 0:\r\n                        return self._finish()\r\n            value, secs = self.steps[self.i]\r\n            self.i += 1\r\n            self.device._write(value)\r\n            if secs > 0:\r\n                self.timer = _rt.call_later(secs, self._step)\r\n                return\r\n\r\n    def cancel(self):\r\n        self.done = True\r\n        if self.timer is not None:\r\n            self.timer.cancel()\r\n\r\n\r\ndef _mix(a, b, t):\r\n    if isinstance(a, tuple):\r\n        return tuple(x + (y - x) * t for x, y in zip(a, b))\r\n    return a + (b - a) * t\r\n\r\n\r\ndef _fade_steps(on_time, off_time, fade_in, fade_out, lo, hi):\r\n    \"\"\"gpiozero's blink sequence: fade in at 25 steps a second, on, fade out, off.\"\"\"\r\n    steps = []\r\n    if fade_in > 0:\r\n        k = int(_FPS * fade_in)\r\n        steps += [(_mix(lo, hi, i / k), 1 / _FPS) for i in range(k)]\r\n    steps.append((hi, on_time))\r\n    if fade_out > 0:\r\n        k = int(_FPS * fade_out)\r\n        steps += [(_mix(hi, lo, i / k), 1 / _FPS) for i in range(k)]\r\n    steps.append((lo, off_time))\r\n    return steps\r\n\r\n\r\nclass OutputDevice(Device):\r\n    def __init__(self, pin=None, *, active_high=True, initial_value=False, pin_factory=None):\r\n        super().__init__(pin)\r\n        self._bcm = self._pins[0]\r\n        self.active_high = active_high\r\n        self._seq = None\r\n        _hw.setup(self._bcm, 4)\r\n        if initial_value is not None:\r\n            self._write(1 if initial_value else 0)\r\n\r\n    def _write(self, value):\r\n        self._check()\r\n        _hw.output(self._bcm, 1 if bool(value) == self.active_high else 0)\r\n\r\n    def _stop_seq(self):\r\n        if self._seq is not None:\r\n            self._seq.cancel()\r\n            self._seq = None\r\n\r\n    def _release(self):\r\n        self._stop_seq()\r\n\r\n    def _run_seq(self, steps, n, background, after):\r\n        self._stop_seq()\r\n        seq = self._seq = _Sequence(self, steps, n, after)\r\n        if not background:\r\n            _rt.wait(until=lambda: seq.done)\r\n\r\n    def on(self):\r\n        self._stop_seq()\r\n        self._write(1)\r\n\r\n    def off(self):\r\n        self._stop_seq()\r\n        self._write(0)\r\n\r\n    def toggle(self):\r\n        self._stop_seq()\r\n        self._write(0 if self.value else 1)\r\n\r\n    @property\r\n    def value(self):\r\n        self._check()\r\n        _rt.yield_point()\r\n        return 1 if _hw.read(self._bcm) == (1 if self.active_high else 0) else 0\r\n\r\n    @value.setter\r\n    def value(self, v):\r\n        self._stop_seq()\r\n        self._write(v)\r\n\r\n\r\nclass DigitalOutputDevice(OutputDevice):\r\n    def blink(self, on_time=1, off_time=1, n=None, background=True):\r\n        self._run_seq([(1, on_time), (0, off_time)], n, background, 0)\r\n\r\n\r\nclass LED(DigitalOutputDevice):\r\n    is_lit = Device.is_active\r\n\r\n\r\nclass Buzzer(DigitalOutputDevice):\r\n    def beep(self, on_time=1, off_time=1, n=None, background=True):\r\n        self.blink(on_time, off_time, n, background)\r\n\r\n\r\nclass InputDevice(Device):\r\n    def __init__(self, pin=None, *, pull_up=False, active_state=None, pin_factory=None):\r\n        super().__init__(pin)\r\n        self._bcm = self._pins[0]\r\n        if pull_up is None:\r\n            if active_state is None:\r\n                raise PinInvalidState(f'Pin GPIO{self._bcm} is defined as floating, but \"active_state\" is not defined')\r\n            self._active_high, mode = bool(active_state), 1\r\n        else:\r\n            if active_state is not None:\r\n                raise PinInvalidState(f'Pin GPIO{self._bcm} is not floating, but \"active_state\" is not None')\r\n            self._active_high, mode = not pull_up, (2 if pull_up else 3)\r\n        self.pull_up = pull_up\r\n        _hw.setup(self._bcm, mode)\r\n\r\n    @property\r\n    def value(self):\r\n        self._check()\r\n        _rt.yield_point()\r\n        return 1 if _hw.read(self._bcm) == (1 if self._active_high else 0) else 0\r\n\r\n\r\nclass DigitalInputDevice(InputDevice):\r\n    \"\"\"Activation and deactivation from the editor's edge counters (spec 4.4), so a press that\r\n    happens while the code sleeps still fires.\"\"\"\r\n\r\n    def __init__(self, pin=None, *, pull_up=False, active_state=None, bounce_time=None, pin_factory=None):\r\n        super().__init__(pin, pull_up=pull_up, active_state=active_state)\r\n        self._bounce = bounce_time or 0\r\n        self._seen = (_hw.rising(self._bcm) & _M32, _hw.falling(self._bcm) & _M32)\r\n        self._last = None\r\n        self._active_since = None\r\n        self._hold = None\r\n        self.when_activated = None\r\n        self.when_deactivated = None\r\n        _rt.add_poller(self._poll)\r\n\r\n    def _release(self):\r\n        _rt.remove_poller(self._poll)\r\n        if self._hold is not None:\r\n            self._hold.cancel()\r\n\r\n    def _poll(self):\r\n        r, f = _hw.rising(self._bcm) & _M32, _hw.falling(self._bcm) & _M32\r\n        ups, downs = (r - self._seen[0]) & _M32, (f - self._seen[1]) & _M32\r\n        self._seen = (r, f)\r\n        if not ups and not downs:\r\n            return\r\n        t = _rt.now()\r\n        if self._bounce and self._last is not None and t - self._last < self._bounce:\r\n            return\r\n        self._last = t\r\n        acts, deacts = (ups, downs) if self._active_high else (downs, ups)\r\n        level_now = _hw.read(self._bcm) == (1 if self._active_high else 0)\r\n        # Alternate the events so the last one matches the level now.\r\n        events = []\r\n        for _ in range(acts + deacts):\r\n            events.append(not events[-1] if events else None)\r\n        if events:\r\n            events[-1] = level_now\r\n            for i in range(len(events) - 2, -1, -1):\r\n                events[i] = not events[i + 1]\r\n        for active in events:\r\n            _rt.queue(lambda active=active: self._edge(active))\r\n\r\n    def _edge(self, active):\r\n        if active:\r\n            self._active_since = _rt.now()\r\n            self._activated()\r\n            if self.when_activated:\r\n                _call(self.when_activated, self)\r\n        else:\r\n            self._active_since = None\r\n            self._deactivated()\r\n            if self.when_deactivated:\r\n                _call(self.when_deactivated, self)\r\n\r\n    def _activated(self):\r\n        pass\r\n\r\n    def _deactivated(self):\r\n        pass\r\n\r\n    @property\r\n    def active_time(self):\r\n        return None if self._active_since is None else _rt.now() - self._active_since\r\n\r\n    def wait_for_active(self, timeout=None):\r\n        return _rt.wait(timeout, until=lambda: self.is_active)\r\n\r\n    def wait_for_inactive(self, timeout=None):\r\n        return _rt.wait(timeout, until=lambda: not self.is_active)\r\n\r\n\r\nclass Button(DigitalInputDevice):\r\n    def __init__(self, pin=None, *, pull_up=True, active_state=None, bounce_time=None, hold_time=1, hold_repeat=False, pin_factory=None):\r\n        super().__init__(pin, pull_up=pull_up, active_state=active_state, bounce_time=bounce_time)\r\n        self.hold_time = hold_time\r\n        self.hold_repeat = hold_repeat\r\n        self.when_held = None\r\n        self._held = False\r\n\r\n    def _activated(self):\r\n        self._held = False\r\n        self._hold = _rt.call_later(self.hold_time, self._held_now, self.hold_time if self.hold_repeat else None)\r\n\r\n    def _deactivated(self):\r\n        self._held = False\r\n        if self._hold is not None:\r\n            self._hold.cancel()\r\n            self._hold = None\r\n\r\n    def _held_now(self):\r\n        if not self.is_active:\r\n            return\r\n        self._held = True\r\n        if self.when_held:\r\n            _call(self.when_held, self)\r\n\r\n    @property\r\n    def is_held(self):\r\n        return self._held\r\n\r\n    @property\r\n    def held_time(self):\r\n        return self.active_time if self._held else None\r\n\r\n    is_pressed = Device.is_active\r\n    when_pressed = property(lambda self: self.when_activated, lambda self, fn: setattr(self, 'when_activated', fn))\r\n    when_released = property(lambda self: self.when_deactivated, lambda self, fn: setattr(self, 'when_deactivated', fn))\r\n    wait_for_press = DigitalInputDevice.wait_for_active\r\n    wait_for_release = DigitalInputDevice.wait_for_inactive\r\n\r\n\r\nclass LineSensor(DigitalInputDevice):\r\n    \"\"\"As gpiozero 2.0: the line is detected while the input is inactive.\"\"\"\r\n\r\n    @property\r\n    def line_detected(self):\r\n        return not self.is_active\r\n\r\n    when_line = property(lambda self: self.when_deactivated, lambda self, fn: setattr(self, 'when_deactivated', fn))\r\n    when_no_line = property(lambda self: self.when_activated, lambda self, fn: setattr(self, 'when_activated', fn))\r\n    wait_for_line = DigitalInputDevice.wait_for_inactive\r\n    wait_for_no_line = DigitalInputDevice.wait_for_active\r\n\r\n\r\nclass MotionSensor(DigitalInputDevice):\r\n    @property\r\n    def motion_detected(self):\r\n        return self.is_active\r\n\r\n    when_motion = property(lambda self: self.when_activated, lambda self, fn: setattr(self, 'when_activated', fn))\r\n    when_no_motion = property(lambda self: self.when_deactivated, lambda self, fn: setattr(self, 'when_deactivated', fn))\r\n    wait_for_motion = DigitalInputDevice.wait_for_active\r\n    wait_for_no_motion = DigitalInputDevice.wait_for_inactive\r\n\r\n\r\nclass PWMOutputDevice(OutputDevice):\r\n    \"\"\"Declares duty and frequency (spec 2.2); value is the duty, 0 to 1.\"\"\"\r\n\r\n    def __init__(self, pin=None, *, active_high=True, initial_value=0, frequency=100, pin_factory=None):\r\n        if not 0 <= float(initial_value) <= 1:\r\n            raise OutputDeviceBadValue('PWM value must be between 0 and 1')\r\n        self._duty = 0.0\r\n        self._freq = float(frequency)\r\n        super().__init__(pin, active_high=active_high, initial_value=None)\r\n        self._write(initial_value)\r\n\r\n    def _write(self, value):\r\n        self._check()\r\n        v = float(value)\r\n        if not 0 <= v <= 1:\r\n            raise OutputDeviceBadValue('PWM value must be between 0 and 1')\r\n        self._duty = v\r\n        _hw.pwm(self._bcm, True, v if self.active_high else 1 - v, self._freq)\r\n\r\n    @property\r\n    def value(self):\r\n        self._check()\r\n        return self._duty\r\n\r\n    @value.setter\r\n    def value(self, v):\r\n        self._stop_seq()\r\n        self._write(v)\r\n\r\n    def toggle(self):\r\n        self._stop_seq()\r\n        self._write(1 - self._duty)\r\n\r\n    @property\r\n    def frequency(self):\r\n        return self._freq\r\n\r\n    @frequency.setter\r\n    def frequency(self, f):\r\n        self._freq = float(f)\r\n        self._write(self._duty)\r\n\r\n    def blink(self, on_time=1, off_time=1, fade_in_time=0, fade_out_time=0, n=None, background=True):\r\n        self._run_seq(_fade_steps(on_time, off_time, fade_in_time, fade_out_time, 0, 1), n, background, 0)\r\n\r\n    def pulse(self, fade_in_time=1, fade_out_time=1, n=None, background=True):\r\n        self.blink(0, 0, fade_in_time, fade_out_time, n, background)\r\n\r\n\r\nclass PWMLED(PWMOutputDevice):\r\n    is_lit = Device.is_active\r\n\r\n\r\nclass RGBLED(Device):\r\n    def __init__(self, red=None, green=None, blue=None, *, active_high=True, initial_value=(0, 0, 0), pwm=True, pin_factory=None):\r\n        cls = PWMLED if pwm else LED\r\n        super().__init__()\r\n        self._pwm = pwm\r\n        self._seq = None\r\n        self._leds = []\r\n        try:\r\n            for p in (red, green, blue):\r\n                self._leds.append(cls(p, active_high=active_high))\r\n            self._write(initial_value)\r\n        except BaseException:\r\n            for led in self._leds:\r\n                led.close()\r\n            raise\r\n\r\n    def _write(self, color):\r\n        self._check()\r\n        if len(color) != 3:\r\n            raise OutputDeviceBadValue('RGBLED color must be a 3-tuple')\r\n        for led, v in zip(self._leds, color):\r\n            if not self._pwm and v not in (0, 1):\r\n                raise OutputDeviceBadValue('RGBLED with pwm=False takes only 0 or 1 per channel')\r\n            led._write(v)\r\n\r\n    def _stop_seq(self):\r\n        if self._seq is not None:\r\n            self._seq.cancel()\r\n            self._seq = None\r\n\r\n    def _release(self):\r\n        self._stop_seq()\r\n        for led in self._leds:\r\n            led.close()\r\n\r\n    @property\r\n    def value(self):\r\n        self._check()\r\n        return tuple(float(led._duty) if self._pwm else float(led.value) for led in self._leds)\r\n\r\n    @value.setter\r\n    def value(self, color):\r\n        self._stop_seq()\r\n        self._write(color)\r\n\r\n    color = value\r\n\r\n    red = property(lambda self: self.value[0], lambda self, v: setattr(self, 'value', (v,) + self.value[1:]))\r\n    green = property(lambda self: self.value[1], lambda self, v: setattr(self, 'value', self.value[:1] + (v,) + self.value[2:]))\r\n    blue = property(lambda self: self.value[2], lambda self, v: setattr(self, 'value', self.value[:2] + (v,)))\r\n\r\n    @property\r\n    def is_active(self):\r\n        return self.value != (0, 0, 0)\r\n\r\n    is_lit = is_active\r\n\r\n    def on(self):\r\n        self.value = (1, 1, 1)\r\n\r\n    def off(self):\r\n        self.value = (0, 0, 0)\r\n\r\n    def toggle(self):\r\n        self.value = tuple(1 - v for v in self.value)\r\n\r\n    def blink(self, on_time=1, off_time=1, fade_in_time=0, fade_out_time=0, on_color=(1, 1, 1), off_color=(0, 0, 0), n=None, background=True):\r\n        self._stop_seq()\r\n        seq = self._seq = _Sequence(self, _fade_steps(on_time, off_time, fade_in_time, fade_out_time, tuple(off_color), tuple(on_color)), n, tuple(off_color))\r\n        if not background:\r\n            _rt.wait(until=lambda: seq.done)\r\n\r\n    def pulse(self, fade_in_time=1, fade_out_time=1, on_color=(1, 1, 1), off_color=(0, 0, 0), n=None, background=True):\r\n        self.blink(0, 0, fade_in_time, fade_out_time, on_color, off_color, n, background)\r\n\r\n\r\nclass Servo(Device):\r\n    \"\"\"value -1 to 1 maps to min_pulse_width to max_pulse_width in a frame (spec 5.1); None detaches.\"\"\"\r\n\r\n    def __init__(self, pin=None, *, initial_value=0.0, min_pulse_width=1 / 1000, max_pulse_width=2 / 1000, frame_width=20 / 1000, pin_factory=None):\r\n        if min_pulse_width >= max_pulse_width:\r\n            raise ValueError('min_pulse_width must be less than max_pulse_width')\r\n        if max_pulse_width >= frame_width:\r\n            raise ValueError('max_pulse_width must be less than frame_width')\r\n        if initial_value is not None and not -1 <= float(initial_value) <= 1:\r\n            raise OutputDeviceBadValue('Servo value must be between -1 and 1, or None')\r\n        super().__init__(pin)\r\n        self._bcm = self._pins[0]\r\n        self._min_pw, self._max_pw, self._frame = min_pulse_width, max_pulse_width, frame_width\r\n        self._value = None\r\n        _hw.setup(self._bcm, 4)\r\n        self.value = initial_value\r\n\r\n    @property\r\n    def frame_width(self):\r\n        return self._frame\r\n\r\n    @property\r\n    def min_pulse_width(self):\r\n        return self._min_pw\r\n\r\n    @property\r\n    def max_pulse_width(self):\r\n        return self._max_pw\r\n\r\n    @property\r\n    def pulse_width(self):\r\n        return None if self._value is None else self._min_pw + (self._value + 1) / 2 * (self._max_pw - self._min_pw)\r\n\r\n    @property\r\n    def value(self):\r\n        return self._value\r\n\r\n    @value.setter\r\n    def value(self, v):\r\n        self._check()\r\n        if v is None:\r\n            self._value = None\r\n            _hw.pwm(self._bcm, False, 0, 1 / self._frame)\r\n            return\r\n        v = float(v)\r\n        if not -1 <= v <= 1:\r\n            raise OutputDeviceBadValue('Servo value must be between -1 and 1, or None')\r\n        self._value = v\r\n        _hw.pwm(self._bcm, True, self.pulse_width / self._frame, 1 / self._frame)\r\n\r\n    @property\r\n    def is_active(self):\r\n        return self._value is not None\r\n\r\n    def min(self):\r\n        self.value = -1\r\n\r\n    def mid(self):\r\n        self.value = 0\r\n\r\n    def max(self):\r\n        self.value = 1\r\n\r\n    def detach(self):\r\n        self.value = None\r\n\r\n\r\nclass AngularServo(Servo):\r\n    def __init__(self, pin=None, *, initial_angle=0.0, min_angle=-90, max_angle=90, min_pulse_width=1 / 1000, max_pulse_width=2 / 1000, frame_width=20 / 1000, pin_factory=None):\r\n        self._min_angle, self._max_angle = min_angle, max_angle\r\n        super().__init__(pin, initial_value=None if initial_angle is None else self._to_value(initial_angle), min_pulse_width=min_pulse_width, max_pulse_width=max_pulse_width, frame_width=frame_width)\r\n\r\n    def _to_value(self, angle):\r\n        return (angle - self._min_angle) / (self._max_angle - self._min_angle) * 2 - 1\r\n\r\n    @property\r\n    def min_angle(self):\r\n        return self._min_angle\r\n\r\n    @property\r\n    def max_angle(self):\r\n        return self._max_angle\r\n\r\n    @property\r\n    def angle(self):\r\n        v = self.value\r\n        return None if v is None else self._min_angle + (v + 1) / 2 * (self._max_angle - self._min_angle)\r\n\r\n    @angle.setter\r\n    def angle(self, a):\r\n        self.value = None if a is None else self._to_value(a)\r\n\r\n\r\nclass Motor(Device):\r\n    \"\"\"A motor on two pins (spec 5.1): forward on one, backward on the other.\"\"\"\r\n\r\n    def __init__(self, forward=None, backward=None, *, enable=None, pwm=True, pin_factory=None):\r\n        if enable is not None:\r\n            raise NotImplementedError(\"Motor's enable pin is not simulated yet; wire it high and leave enable out\")\r\n        cls = PWMOutputDevice if pwm else DigitalOutputDevice\r\n        self._fwd = cls(forward)\r\n        try:\r\n            self._bwd = cls(backward)\r\n        except BaseException:\r\n            self._fwd.close()\r\n            raise\r\n        super().__init__()\r\n        self._pwm = pwm\r\n\r\n    def _set(self, dev, speed):\r\n        if not 0 <= speed <= 1:\r\n            raise ValueError('speed must be between 0 and 1')\r\n        if self._pwm:\r\n            dev.value = speed\r\n        elif speed in (0, 1):\r\n            dev.value = speed\r\n        else:\r\n            raise ValueError('a Motor with pwm=False runs only at speed 0 or 1')\r\n\r\n    def forward(self, speed=1):\r\n        self._set(self._bwd, 0)\r\n        self._set(self._fwd, speed)\r\n\r\n    def backward(self, speed=1):\r\n        self._set(self._fwd, 0)\r\n        self._set(self._bwd, speed)\r\n\r\n    def stop(self):\r\n        self._set(self._fwd, 0)\r\n        self._set(self._bwd, 0)\r\n\r\n    def reverse(self):\r\n        self.value = -self.value\r\n\r\n    @property\r\n    def value(self):\r\n        return float(self._fwd.value) - float(self._bwd.value)\r\n\r\n    @value.setter\r\n    def value(self, v):\r\n        if v > 0:\r\n            self.forward(v)\r\n        elif v < 0:\r\n            self.backward(-v)\r\n        else:\r\n            self.stop()\r\n\r\n    @property\r\n    def is_active(self):\r\n        return self.value != 0\r\n\r\n    def _release(self):\r\n        self._fwd.close()\r\n        self._bwd.close()\r\n\r\n\r\ndef pause():\r\n    \"\"\"Waits forever, running callbacks (spec 5.2).\"\"\"\r\n    _rt.wait()\r\n"
+})).map(([k, v]) => [k.slice(5), v]));
+//#endregion
+//#region src/run/unsupported.ts
+function dict(text, name) {
+	const body = new RegExp(`${name} = \\{([\\s\\S]*?)\\n\\}`).exec(text)?.[1] ?? "";
+	return Object.fromEntries([...body.matchAll(/'([^']+)': '([^']+)'/g)].map((m) => [m[1], m[2]]));
+}
+var UNSUPPORTED_MODULES = dict(PY_FILES["_circuitoon.py"], "UNSUPPORTED");
+var UNSUPPORTED_GPIOZERO = dict(PY_FILES["gpiozero/__init__.py"], "UNSUPPORTED_NAMES");
+/** What a script uses that the simulator does not have, in the order found, each once. Comments are skipped. */
+function unsupportedImports(source) {
+	const found = /* @__PURE__ */ new Map();
+	const gz = (name) => name in UNSUPPORTED_GPIOZERO && found.set(`gpiozero.${name}`, `gpiozero.${name} ${UNSUPPORTED_GPIOZERO[name]}`);
+	const code = source.replace(/#[^\n]*/g, "");
+	for (const m of code.matchAll(/^[ \t]*(?:import[ \t]+([\w., \t]+)|from[ \t]+([\w.]+)[ \t]+import[ \t]+(?:\(([\w., \t\n]+)\)|([\w., \t]+)))/gm)) {
+		const mods = m[1] ? m[1].split(",").map((s) => s.trim().split(/\s+as\s+/)[0]) : [m[2]];
+		for (const mod of mods) {
+			const root = mod.split(".")[0];
+			if (root in UNSUPPORTED_MODULES) found.set(root, UNSUPPORTED_MODULES[root]);
+		}
+		if (m[2] === "gpiozero") for (const n of (m[3] ?? m[4]).split(",")) gz(n.trim().split(/\s+as\s+/)[0]);
+	}
+	for (const m of code.matchAll(/\bgpiozero\.(\w+)/g)) gz(m[1]);
+	return [...found].map(([name, why]) => ({
+		name,
+		why
+	}));
+}
+//#endregion
+//#region src/cli/codeFindings.ts
+function codeFindings(d, library) {
+	const out = [];
+	for (const p of d.parts) {
+		if (!p.code) continue;
+		const stored = d.modules[p.module];
+		const m = stored && withLibraryData(stored, library);
+		const lang = p.code.language;
+		const mismatch = m ? languageMismatch(p.designator, m, lang) : null;
+		if (mismatch) out.push({
+			id: `code-language|${p.uid}`,
+			rule: "code-language",
+			severity: "error",
+			parts: [p.uid],
+			pins: [],
+			wires: [],
+			message: `${mismatch}.`
+		});
+		if (lang === "python-rpi") for (const u of unsupportedImports(p.code.source)) out.push({
+			id: `code-unsupported-import|${p.uid}|${u.name}`,
+			rule: "code-unsupported-import",
+			severity: "warning",
+			parts: [p.uid],
+			pins: [],
+			wires: [],
+			message: `${p.designator}'s code: ${u.why}.`
+		});
+	}
+	return out;
+}
 //#endregion
 //#region src/agent/notChecked.ts
 var NOT_CHECKED = [
@@ -89757,7 +90006,8 @@ function placeParts(intent, opts) {
 		y: 0,
 		rotation: 0,
 		...p.values ? { values: p.values } : {},
-		...p.settings ? { settings: { ...p.settings } } : {}
+		...p.settings ? { settings: { ...p.settings } } : {},
+		...p.code && "source" in p.code ? { code: p.code } : {}
 	});
 	const modOf = (ref) => mods[inst.get(ref).module];
 	const fp = (ref) => footprint(inst.get(ref), modOf(ref));
@@ -91022,7 +91272,8 @@ function extractNetlist(d, warn) {
 				module: p.module,
 				...p.values && Object.keys(p.values).length ? { values: p.values } : {},
 				...settings ? { settings } : {},
-				...on ? { on } : {}
+				...on ? { on } : {},
+				...p.code ? { code: p.code } : {}
 			};
 		}),
 		nets: order.map((i) => ({
@@ -91048,27 +91299,28 @@ var netNode = (name) => `net:${name}`;
 * the IO domain (high) or to its return (low), a pull, else the input leakage to the return.
 * `leak` marks the leakage, which is never a DC path (spec 2).
 */
-function gpioBranch(d) {
+function gpioBranch(d, pins) {
 	const p = d.params;
-	if (d.state === "high") return {
+	const state = d.state === "pwm" ? pins?.[d.id] ?? "high" : d.state;
+	if (state === "high") return {
 		a: d.vdd,
 		b: d.node,
 		ohms: p.outputResistance,
 		leak: false
 	};
-	if (d.state === "low") return {
+	if (state === "low") return {
 		a: d.node,
 		b: d.ret,
 		ohms: p.outputResistance,
 		leak: false
 	};
-	if (d.state === "input-pullup" && p.pullup) return {
+	if (state === "input-pullup" && p.pullup) return {
 		a: d.vdd,
 		b: d.node,
 		ohms: p.pullup,
 		leak: false
 	};
-	if (d.state === "input-pulldown" && p.pulldown) return {
+	if (state === "input-pulldown" && p.pulldown) return {
 		a: d.node,
 		b: d.ret,
 		ohms: p.pulldown,
@@ -91140,6 +91392,7 @@ function deviceNodes(d) {
 /** The resistive pairs, conducting both ways: resistors, closed contacts and a GPIO's state resistor (never its leakage). */
 function resistive(d) {
 	if (d.kind === "resistor" || d.kind === "switch" && d.closed) return [[d.a, d.b]];
+	if (d.kind === "gpio" && d.state === "pwm") return [[d.vdd, d.node], [d.node, d.ret]];
 	const g = d.kind === "gpio" ? gpioBranch(d) : null;
 	return g && !g.leak ? [[g.a, g.b]] : [];
 }
@@ -91321,6 +91574,11 @@ function classifyCached(c, analysis = OP) {
 	let hit = byKind.get(analysis.kind);
 	if (!hit) byKind.set(analysis.kind, hit = classify(c, analysis));
 	return hit;
+}
+/** Records `cls` as the `op` classification of `c` (session.ts: a circuit patched from one with the same pin states). */
+function rememberClassification(c, cls) {
+	if (!memo.has(c)) memo.set(c, /* @__PURE__ */ new Map());
+	memo.get(c).set("op", cls);
 }
 /** A node's state: driven (powered), defined (held by a return through resistance) or floating. */
 function nodeState(cls, node) {
@@ -91531,7 +91789,7 @@ function compile(c, cls, a) {
 			case "resistor": return [resistor(d.id, d.a, d.b, d.ohms)];
 			case "switch": return d.closed ? [resistor(d.id, d.a, d.b, d.ron)] : [];
 			case "gpio": {
-				const g = gpioBranch(d);
+				const g = gpioBranch(d, a.pins);
 				return g ? [resistor(d.id, g.a, g.b, g.ohms)] : [];
 			}
 			case "capacitor": {
@@ -91985,7 +92243,7 @@ async function createCore(factory, wasmBinary) {
 }
 //#endregion
 //#region src/sim/engine/workerLoop.ts
-var why = (e) => e instanceof Error ? e.message : String(e);
+var why$1 = (e) => e instanceof Error ? e.message : String(e);
 function serve(post, listen, load) {
 	const loading = load((loaded, total) => post({
 		type: "progress",
@@ -92027,7 +92285,7 @@ function serve(post, listen, load) {
 						heap = 0;
 						runs.push({
 							ok: false,
-							error: `the simulation engine stopped: ${why(e)}`,
+							error: `the simulation engine stopped: ${why$1(e)}`,
 							dead: true,
 							ms: performance.now() - t0
 						});
@@ -92044,7 +92302,7 @@ function serve(post, listen, load) {
 		} catch (e) {
 			post({
 				type: "fatal",
-				error: why(e)
+				error: why$1(e)
 			});
 		}
 	});
@@ -92324,7 +92582,7 @@ function powerPart(b, p, m) {
 		if (!dn) continue;
 		const tOver = simOverride(p, `sim.draw.${dr.domain}.typical`);
 		const pOver = simOverride(p, `sim.draw.${dr.domain}.peak`);
-		const typical = tOver !== null ? b.user(tOver, L(`draw.${dr.domain}.typical`)) : P(dr.typical, `draw.${dr.domain}.typical`);
+		const typical = (sim.servo && b.isMoving(p.uid) ? P(sim.servo.moving, "servo.moving") : null) ?? (tOver !== null ? b.user(tOver, L(`draw.${dr.domain}.typical`)) : P(dr.typical, `draw.${dr.domain}.typical`));
 		const peak = pOver !== null ? b.user(pOver, L(`draw.${dr.domain}.peak`)) : dr.peak ? P(dr.peak, `draw.${dr.domain}.peak`) : typical;
 		const minVolts = "minVolts" in dr && dr.minVolts ? P(dr.minVolts, `draw.${dr.domain}.minVolts`) : {
 			value: MIN_VOLTS_FRACTION * dn.nominal,
@@ -92486,7 +92744,9 @@ function powerPart(b, p, m) {
 	const g = sim.gpio;
 	const io = g && domains.get(g.domain);
 	if (g && io) for (const pin of g.pins) {
-		const state = gpioState(p, m, pin);
+		const run = b.runPin(p.uid, pin);
+		const state = run === void 0 ? gpioState(p, m, pin) : typeof run === "string" ? run : "pwm";
+		const duty = run !== void 0 && typeof run !== "string" ? run.pwm : void 0;
 		b.gpio({
 			part: p.uid,
 			pin,
@@ -92510,6 +92770,7 @@ function powerPart(b, p, m) {
 			ret: io.ret,
 			domain: g.domain,
 			state,
+			...duty !== void 0 ? { duty } : {},
 			params: {
 				outputResistance: R(g.outputResistance, "outputResistance"),
 				...g.pullup ? { pullup: R(g.pullup, "pullup") } : {},
@@ -92520,6 +92781,18 @@ function powerPart(b, p, m) {
 					note: "derived: domain nominal / inputLeakage"
 				} } : {}
 			}
+		});
+	}
+	if (g && io) for (const fp of g.fixedPullups ?? []) {
+		const node = b.tap(p.uid, fp.pin);
+		if (node) b.add({
+			kind: "resistor",
+			id: `${p.uid}.pullup.${fp.pin}`,
+			part: p.uid,
+			a: io.pin,
+			b: node,
+			ohms: P(fp.ohms, `gpio.fixedPullups.${fp.pin}`),
+			role: "internal"
 		});
 	}
 	if (imaxOver === null) return b.partLimits(p, m);
@@ -92548,6 +92821,10 @@ function usbLinks(b, d) {
 		}
 		if (!simOf(hm)?.power) {
 			b.unsimulated(dev.part.uid, `powered from ${b.ref(host.part.uid)} over USB, which has no power data`);
+			continue;
+		}
+		if (!simOf(hm).power.domains.some((x) => x.pin === `${host.name}#vbus`)) {
+			b.unsimulated(dev.part.uid, `powered from ${b.ref(host.part.uid)} ${host.name}, whose USB power is not simulated`);
 			continue;
 		}
 		if (!b.simulated(host.part.uid)) {
@@ -92626,7 +92903,7 @@ var hasPowerPin = (m) => [...m.pins, ...m.holes ?? []].some((p) => !("spacer" in
 var Builder = class {
 	d;
 	opts;
-	/** The sheet's modules, each with the sim it is simulated with (withLibrarySim). */
+	/** The sheet's modules, each with the sim it is simulated with (withLibraryData). */
 	modules;
 	mainsKeys;
 	netOfKey = /* @__PURE__ */ new Map();
@@ -92649,7 +92926,7 @@ var Builder = class {
 		this.d = d;
 		this.opts = opts;
 		const library = opts.library ?? libraryLookup;
-		this.modules = Object.fromEntries(Object.entries(d.modules).map(([id, m]) => [id, withLibrarySim(m, library)]));
+		this.modules = Object.fromEntries(Object.entries(d.modules).map(([id, m]) => [id, withLibraryData(m, library)]));
 		this.mainsKeys = analyseMainsCached(d)?.mainsKeys ?? /* @__PURE__ */ new Set();
 		const sn = sheetNets(d);
 		this.refOf = sn.refOf;
@@ -92844,6 +93121,12 @@ var Builder = class {
 			...info.plug?.profiles.flatMap((pr) => pr.contacts.map((c) => c.pin)) ?? []
 		]);
 		return this.d.connections.some((c) => [c.from, c.to].some((e) => e.part === p.uid && ac.has(e.pin)));
+	}
+	runPin(uid, pin) {
+		return this.opts.runPins?.[uid]?.[pin];
+	}
+	isMoving(uid) {
+		return this.opts.moving?.includes(uid) ?? false;
 	}
 	isHeld(uid, group) {
 		return this.opts.held?.part === uid && this.opts.held.group === group;
@@ -93073,6 +93356,25 @@ var Builder = class {
 				}
 				if (simOf(m)?.power) return powerPart(this, p, m);
 				return this.partLimits(p, m);
+			case "servo": {
+				const sim = simOf(m);
+				if (!sim?.power) return this.skip(p.uid, NO_POWER_DATA);
+				powerPart(this, p, m);
+				const s = sim.servo;
+				const ret = sim.power.domains[0]?.ret;
+				const a = s && this.simulated(p.uid) ? this.tap(p.uid, s.signal) : null;
+				const g = a && ret ? this.tap(p.uid, ret) : null;
+				if (s && a && g) this.add({
+					kind: "resistor",
+					id: `${p.uid}.signal`,
+					part: p.uid,
+					a,
+					b: g,
+					ohms: this.param(s.signalLoad, label("servo.signalLoad")),
+					role: "internal"
+				});
+				return;
+			}
 		}
 		if (simOf(m)?.power) return powerPart(this, p, m);
 		if (mainsOf(m).any) return this.skip(p.uid, "mains wiring is not simulated");
@@ -93135,6 +93437,43 @@ function buildCircuit(d, opts = {}) {
 	for (const p of [...d.parts].sort((x, y) => naturalCompare(x.uid, y.uid))) b.part(p);
 	usbLinks(b, d);
 	return b.done();
+}
+/**
+* Perf ruling (firmware slice 1): `base`, built with no run pins, with `runPins` applied exactly as
+* buildCircuit applies them (the GPIO list's states and the GPIO devices' state and duty). Null when
+* a run pin sets a pin that has no saved state: that adds a device and a tap, so build in full then.
+*/
+function withRunPins(base, runPins) {
+	const run = /* @__PURE__ */ new Map();
+	for (const g of base.gpio) {
+		const r = runPins?.[g.part]?.[g.pin];
+		if (r === void 0) continue;
+		if (g.state === null) return null;
+		run.set(nodeKey(g.part, g.pin), r);
+	}
+	if (!run.size) return base;
+	const stateOf = (r) => typeof r === "string" ? r : "pwm";
+	return {
+		...base,
+		gpio: base.gpio.map((g) => {
+			const r = run.get(g.key);
+			return r === void 0 ? g : {
+				...g,
+				state: stateOf(r)
+			};
+		}),
+		devices: base.devices.map((d) => {
+			const r = d.kind === "gpio" ? run.get(nodeKey(d.part, d.pin)) : void 0;
+			if (d.kind !== "gpio" || r === void 0) return d;
+			const { params, ...rest } = d;
+			return {
+				...rest,
+				state: stateOf(r),
+				...typeof r === "string" ? {} : { duty: r.pwm },
+				params
+			};
+		})
+	};
 }
 //#endregion
 //#region src/sim/results.ts
@@ -93764,7 +94103,7 @@ function runDrafts(c, cls, raw, corner) {
 				};
 			}
 			if (l.kind === "ioTotalCurrent") {
-				const outs = c.gpio.filter((g) => g.part === l.part && g.domain === name && (g.state === "high" || g.state === "low"));
+				const outs = c.gpio.filter((g) => g.part === l.part && g.domain === name && (g.state === "high" || g.state === "low" || g.state === "pwm"));
 				const sum = outs.reduce((s, g) => s + Math.abs(pinI(g.part, g.pin) ?? 0), 0);
 				const pins = outs.filter((g) => Math.abs(pinI(g.part, g.pin) ?? 0) > 0).map((g) => ({
 					part: g.part,
@@ -93854,6 +94193,7 @@ function runDrafts(c, cls, raw, corner) {
 			parts: [l.part],
 			inputs: [l.value],
 			key: `limit|${subject(l)}|${l.kind}`,
+			worse: under ? l.value.value / m.value : m.value / l.value.value,
 			...m.pins ? { pins: m.pins } : {},
 			message: `${m.what(past(m.value, l.value.value, m.unit))}, ${under ? "below" : "above"} its ${fmt(l.value.value, m.unit)} ${under ? "minimum" : "rating"}${cond(l)}.${advice}`
 		});
@@ -93864,6 +94204,7 @@ function runDrafts(c, cls, raw, corner) {
 		parts: [d.part],
 		inputs: [d.imax],
 		key: `imax|${d.id}`,
+		worse: raw.dev[d.id] / d.imax.value,
 		message: `${ref(d.part)} delivers ${past(raw.dev[d.id], d.imax.value, "A")}, above the ${A(d.imax.value)} it can supply.`
 	});
 	for (const u of c.usb) {
@@ -93876,6 +94217,7 @@ function runDrafts(c, cls, raw, corner) {
 			parts: [u.host, u.device],
 			inputs: [u.limit],
 			key: `usb|${u.vbus}`,
+			worse: i / u.limit.value,
 			message: `${ref(u.host)} ${u.hostPort} supplies ${past(i, u.limit.value, "A")} over USB to ${ref(u.device)}, above the ${A(u.limit.value)} the port gives.`
 		});
 	}
@@ -93897,6 +94239,7 @@ function runDrafts(c, cls, raw, corner) {
 				parts: [d.part],
 				inputs: [r.ioutMax],
 				key: `outside|${d.id}`,
+				worse: iout / r.ioutMax.value,
 				message: `${name} supplies ${past(iout, r.ioutMax.value, "A")}, beyond the ${A(r.ioutMax.value)} its model covers: its voltages, and the readings upstream of it, cannot be trusted.`
 			});
 			add({
@@ -93905,6 +94248,7 @@ function runDrafts(c, cls, raw, corner) {
 				parts: [d.part],
 				inputs: [r.ioutMax],
 				key: `iout|${d.id}`,
+				worse: iout / r.ioutMax.value,
 				message: `${name} supplies ${past(iout, r.ioutMax.value, "A")}, above its ${A(r.ioutMax.value)} rating.`
 			});
 		}
@@ -93921,6 +94265,7 @@ function runDrafts(c, cls, raw, corner) {
 					...loads.map((l) => corner === "peak" ? l.peak : l.typical)
 				],
 				key: `dropout|${d.id}`,
+				worse: r.vout.value / Math.max(vctl, 1e-9),
 				message: `${name} cannot hold ${V(r.vout.value)}: its input is too low (${V(vin)}), so its output follows it down to about ${V(vctl)}.`
 			});
 		}
@@ -93982,6 +94327,7 @@ function runDrafts(c, cls, raw, corner) {
 			parts: [l.part],
 			inputs: [corner === "peak" ? l.peak : l.typical, l.minVolts],
 			key: `brownout|${l.id}`,
+			worse: l.minVolts.value / Math.max(x, 1e-9),
 			message: `${ref(l.part)} ${l.domain} is at ${past(x, l.minVolts.value, "V")}, below the ${V(l.minVolts.value)} it needs: it browns out.`
 		});
 	}
@@ -94040,40 +94386,237 @@ function propagate(c, rails) {
 		rails: marked
 	};
 }
-/** Every finding of a solve, and what is outside the model (spec 4.1, 4.2, 4.5, 5.2). */
-function analyseFindings(c, cls, raws, topo = topologyFindings(c, cls)) {
-	const typical = runDrafts(c, cls, raws.typical, "typical");
-	const peak = runDrafts(c, cls, raws.peak, "peak");
-	const outside = propagate(c, /* @__PURE__ */ new Set([
-		...topo.shortedRails,
-		...typical.outside,
-		...peak.outside
-	]));
+/** pwm-approximate (firmware spec 4.2, ruling R6): one note per group of two or more PWM pins. */
+function approximateDrafts(c, plan) {
+	return (plan?.approximate ?? []).map((g) => {
+		const parts = [...new Set(g.map((p) => p.part))];
+		const who = parts.map((part) => `${refOf(c, part)} ${andList(g.filter((p) => p.part === part).map((p) => p.pin))}`);
+		return {
+			code: "pwm-approximate",
+			severity: "note",
+			parts,
+			pins: g.map((p) => ({
+				part: p.part,
+				pin: p.pin
+			})),
+			inputs: [],
+			key: `pwm-approximate|${g.map((p) => p.id).join("|")}`,
+			message: `${andList(who)} share part of the circuit, so their averaged readings assume their PWM cycles overlap at random; the real overlap depends on timing and may differ.`
+		};
+	});
+}
+/**
+* Every finding of a solve made of several runs (firmware spec 4.2): the union over each corner's
+* runs, one finding per key keeping the worst reading, plus pwm-approximate; and what is outside the
+* model in any run.
+*/
+function analyseRuns(c, cls, runs, topo = topologyFindings(c, cls), plan = null) {
+	const typical = runs.typical.map((raw) => runDrafts(c, cls, raw, "typical"));
+	const peak = runs.peak.map((raw) => runDrafts(c, cls, raw, "peak"));
+	const outside = propagate(c, /* @__PURE__ */ new Set([...topo.shortedRails, ...[...typical, ...peak].flatMap((r) => [...r.outside])]));
 	const peakLabel = [...new Set(c.devices.flatMap((d) => d.kind === "load" && d.peakLabel ? [d.peakLabel] : []))].join(", ");
 	const shorted = new Set(topo.drafts.filter((d) => d.code === "sim-short").map((d) => d.parts[0]));
-	const value = [...typical.drafts, ...peak.drafts].filter((d) => !(d.code === "sim-over-limit" && shorted.has(d.parts[0]) && !d.pins));
+	const value = [...typical, ...peak].flatMap((r) => r.drafts).filter((d) => !(d.code === "sim-over-limit" && shorted.has(d.parts[0]) && !d.pins)).sort((a, b) => (b.worse ?? b.overBy ?? 0) - (a.worse ?? a.overBy ?? 0));
 	return {
-		findings: finalize([...topo.drafts, ...value], peakLabel),
+		findings: finalize([
+			...topo.drafts,
+			...approximateDrafts(c, plan),
+			...value
+		], peakLabel),
 		outside
 	};
 }
+var pwmPins = (c) => c.devices.filter((d) => d.kind === "gpio" && d.state === "pwm").map((d) => ({
+	id: d.id,
+	part: d.part,
+	pin: d.pin,
+	duty: d.duty ?? .5
+}));
+function pwmGroups(c) {
+	const pins = pwmPins(c);
+	if (!pins.length) return [];
+	const tapNet = new Map(c.taps.map((t) => [t.node, netNode(t.net)]));
+	const cut = /* @__PURE__ */ new Set();
+	const supply = (node) => {
+		cut.add(node);
+		const net = tapNet.get(node);
+		if (net) cut.add(net);
+	};
+	for (const dom of c.domains) supply(dom.pin), supply(dom.ret);
+	for (const d of c.devices) if (d.kind === "cell") supply(d.p), supply(d.n);
+	const parent = /* @__PURE__ */ new Map();
+	const find = (x) => {
+		let r = x;
+		while (parent.has(r) && parent.get(r) !== r) r = parent.get(r);
+		return r;
+	};
+	const join = (a, b) => {
+		if (cut.has(a) || cut.has(b)) return;
+		const [ra, rb] = [find(a), find(b)];
+		if (ra !== rb) parent.set(ra, rb);
+	};
+	for (const t of c.taps) join(t.node, netNode(t.net));
+	for (const d of c.devices) if (d.kind !== "gpio" && d.kind !== "load" && d.kind !== "rail" && d.kind !== "cell") for (const [a, b] of dcEdges(d)) join(a, b);
+	const byRoot = /* @__PURE__ */ new Map();
+	for (const p of pins) {
+		const root = find(c.devices.find((d) => d.id === p.id).node);
+		byRoot.set(root, [...byRoot.get(root) ?? [], p]);
+	}
+	return [...byRoot.values()];
+}
+function pwmPlan(c) {
+	const pins = pwmPins(c);
+	if (!pins.length) return null;
+	const groups = pwmGroups(c);
+	const base = {};
+	for (const g of groups) for (const p of g) base[p.id] = g.length > 3 && p.duty >= .5 ? "high" : "low";
+	const runs = [base];
+	const weights = [1];
+	for (const g of groups) if (g.length <= 3) for (let k = 1; k < 1 << g.length; k++) {
+		const run = { ...base };
+		let w = 1;
+		g.forEach((p, i) => {
+			const hi = k >> i & 1;
+			run[p.id] = hi ? "high" : "low";
+			w *= hi ? p.duty : 1 - p.duty;
+		});
+		runs.push(run);
+		weights.push(w);
+	}
+	else for (const p of g) {
+		runs.push({
+			...base,
+			[p.id]: base[p.id] === "high" ? "low" : "high"
+		});
+		weights.push(Math.abs(p.duty - (base[p.id] === "high" ? 1 : 0)));
+	}
+	weights[0] = 1 - weights.slice(1).reduce((s, w) => s + w, 0);
+	const all = (level) => Object.fromEntries(pins.map((p) => [p.id, level]));
+	return {
+		pins,
+		groups,
+		runs,
+		weights,
+		approximate: groups.filter((g) => g.length > 1),
+		peak: [all("high"), all("low")]
+	};
+}
+/** The weighted sum of raw runs (the duty-weighted average). A value missing or not finite in any run is NaN. */
+function mixRaws(raws, weights) {
+	const mix = (get) => {
+		let s = 0;
+		for (const [i, r] of raws.entries()) {
+			const x = get(r);
+			if (x === void 0 || !Number.isFinite(x)) return NaN;
+			s += weights[i] * x;
+		}
+		return s;
+	};
+	const keys = (pick) => [...new Set(raws.flatMap((r) => Object.keys(pick(r))))];
+	const out = {
+		v: {},
+		pins: {},
+		dev: {}
+	};
+	for (const k of keys((r) => r.v)) out.v[k] = mix((r) => r.v[k]);
+	for (const k of keys((r) => r.dev)) out.dev[k] = mix((r) => r.dev[k]);
+	for (const part of keys((r) => r.pins)) {
+		out.pins[part] = {};
+		for (const pin of [...new Set(raws.flatMap((r) => Object.keys(r.pins[part] ?? {})))]) out.pins[part][pin] = mix((r) => r.pins[part]?.[pin]);
+	}
+	return out;
+}
 //#endregion
 //#region src/sim/session.ts
+/**
+* The last sheet solved only (one slot, replaced by a new sheet): its circuit built with no run pins,
+* and the classification and topology findings per set of GPIO states. One slot is all a run-state
+* change needs; keeping every parts array solved would hold a circuit per undo entry.
+*/
+var slot = null;
+/**
+* The circuit, its classification and its topology findings (decided before the engine runs, so a
+* failed or unavailable outcome still names a real short). Perf ruling (firmware slice 1): a
+* run-state change on an unchanged sheet (the same parts, connections, modules and intent, held
+* group, library, net names and moving servos) patches the GPIO states of the circuit built with no
+* run pins (withRunPins) instead of rebuilding it, and reuses the classification and topology
+* findings of the same GPIO states (a PWM pin conducts both ways whatever its duty, so the duty is
+* not part of the key). A pin moving between driven, pulled and undriven is a new key: classified afresh.
+*/
+function prepare(d, opts) {
+	const key = [
+		d.connections,
+		d.modules,
+		d.intent,
+		opts.held?.part,
+		opts.held?.group,
+		opts.library,
+		opts.netNames,
+		JSON.stringify(opts.moving ?? [])
+	];
+	if (slot?.parts !== d.parts || slot.key.some((x, i) => x !== key[i])) slot = {
+		parts: d.parts,
+		key,
+		base: buildCircuit(d, {
+			...opts,
+			runPins: void 0
+		}),
+		byStates: /* @__PURE__ */ new Map()
+	};
+	const hit = slot;
+	const c = withRunPins(hit.base, opts.runPins);
+	if (!c) {
+		const full = buildCircuit(d, opts);
+		const cls = classifyCached(full, { kind: "op" });
+		return {
+			c: full,
+			cls,
+			topo: topologyFindings(full, cls)
+		};
+	}
+	const states = JSON.stringify(c.gpio.map((g) => g.state));
+	let known = hit.byStates.get(states);
+	if (!known) {
+		if (hit.byStates.size >= 64) hit.byStates.clear();
+		const cls = classify(c, { kind: "op" });
+		hit.byStates.set(states, known = {
+			cls,
+			topo: topologyFindings(c, cls)
+		});
+	}
+	rememberClassification(c, known.cls);
+	return {
+		c,
+		...known
+	};
+}
 async function solve(d, engine, revision, opts = {}) {
-	const c = buildCircuit(d, opts);
-	const cls = classifyCached(c, { kind: "op" });
-	const topo = topologyFindings(c, cls);
-	const raws = {};
+	const { c, cls, topo } = prepare(d, opts);
+	const plan = pwmPlan(c);
+	const typical = plan ? plan.runs.map((pins) => ({
+		kind: "op",
+		corner: "typical",
+		pins
+	})) : [{
+		kind: "op",
+		corner: "typical"
+	}];
+	const peak = plan ? plan.peak.map((pins) => ({
+		kind: "op",
+		corner: "peak",
+		pins
+	})) : [{
+		kind: "op",
+		corner: "peak"
+	}];
+	const analyses = [...typical, ...peak];
 	const before = engine.host.runs;
 	let ms = 0;
-	const corners = ["typical", "peak"];
-	const runs = await engine.runAll(c, corners.map((corner) => ({
-		kind: "op",
-		corner
-	})), revision);
-	for (const [i, corner] of corners.entries()) {
+	const runs = await engine.runAll(c, analyses, revision);
+	const got = [];
+	for (const [i, a] of analyses.entries()) {
 		const r = runs[i];
-		if (!r) throw new Error(`the engine gave no answer for the ${corner} corner`);
+		if (!r) throw new Error(`the engine gave no answer for the ${a.corner} corner`);
 		if (r.status === "unavailable") return {
 			circuit: c,
 			outcome: {
@@ -94091,10 +94634,19 @@ async function solve(d, engine, revision, opts = {}) {
 				findings: finalize(topo.drafts, "")
 			}
 		};
-		raws[corner] = r.raw;
+		got.push(r.raw);
 		ms += r.ms;
 	}
-	const { findings, outside } = analyseFindings(c, cls, raws, topo);
+	const typRaws = got.slice(0, typical.length);
+	const peakRaws = got.slice(typical.length);
+	const raws = {
+		typical: plan ? mixRaws(typRaws, plan.weights) : typRaws[0],
+		peak: peakRaws[0]
+	};
+	const { findings, outside } = analyseRuns(c, cls, {
+		typical: typRaws,
+		peak: peakRaws
+	}, topo, plan);
 	const read = {
 		typical: readRun(c, cls, raws.typical, outside),
 		peak: readRun(c, cls, raws.peak, outside)
@@ -94120,14 +94672,23 @@ async function solve(d, engine, revision, opts = {}) {
 					build: info?.build ?? "",
 					runs: engine.host.runs - before,
 					ms
-				}
+				},
+				...plan ? { pwm: {
+					pins: plan.pins.map((p) => ({
+						part: p.part,
+						pin: p.pin,
+						duty: p.duty
+					})),
+					runs: analyses.length,
+					approximate: plan.approximate.length > 0
+				} } : {}
 			}
 		}
 	};
 }
 //#endregion
 //#region src/cli/simCmd.ts
-var USAGE$1 = "sim: usage: circuitoon sim <sheet.json|netlist.json> [--probe <ref[.pin]|net:NAME>]...";
+var USAGE$2 = "sim: usage: circuitoon sim <sheet.json|netlist.json> [--probe <ref[.pin]|net:NAME>]...";
 var plural$1 = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
 /**
 * One --probe: "REF.PIN", "REF" or "net:NAME" on the sheet (refs as the netlist names them). A net
@@ -94221,7 +94782,8 @@ function connectionSheet(intent, raw) {
 			x: i % 8 * 400,
 			y: Math.floor(i / 8) * 400,
 			...p.values ? { values: p.values } : {},
-			...p.settings ? { settings: p.settings } : {}
+			...p.settings ? { settings: p.settings } : {},
+			...p.code && "source" in p.code ? { code: p.code } : {}
 		})),
 		connections: connections.map((c, i) => ({
 			...c,
@@ -94266,7 +94828,7 @@ function summary(o, refOf = /* @__PURE__ */ new Map()) {
 }
 async function simCommand(args, io, opts = {}) {
 	const [input, ...rest] = args.positionals;
-	if (!input) throw new CliError(USAGE$1, EXIT.input);
+	if (!input) throw new CliError(USAGE$2, EXIT.input);
 	if (rest.length) throw new CliError(`sim: give one sheet or netlist file, not ${args.positionals.length}`, EXIT.input);
 	const raw = readJson(io, input);
 	let d;
@@ -94464,11 +95026,12 @@ async function runGate(bytes, opts) {
 		return finish();
 	}
 	const d = v.diagram;
-	v.warnings.forEach((w, i) => note("load", String(i), w.includes("it was dropped and the module default is shown") || w.includes(MISSING_MODULE) ? "error" : "warning", w));
+	v.warnings.forEach((w, i) => w.endsWith("won't run") || note("load", String(i), w.includes("it was dropped and the module default is shown") || w.includes(MISSING_MODULE) ? "error" : "warning", w));
 	const verified = verifyDiagram(d, libraryLookup);
 	const checked = withoutStale(checkDiagram(d), verified);
 	found.push(...verified.filter((f) => !alsoChecked(f, checked)).map(cliFinding));
 	found.push(...checked.map(cliFinding));
+	found.push(...codeFindings(d, libraryLookup));
 	const routes = computeRoutes(d);
 	for (const { conn: c, blocked } of wirePaths(d, routes)) if (blocked) note("blocked-route", c.uid, "error", `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} has no clear route: it runs through a part.`, {
 		parts: [c.from.part, c.to.part],
@@ -94719,6 +95282,60 @@ function loadPartial(raw) {
 	};
 }
 //#endregion
+//#region src/cli/codeFiles.ts
+/** The netlist with every `code.path` replaced by the file's source. `file` names the netlist in messages. */
+function embedCode(raw, dir, file) {
+	if (!isObj(raw) || !Array.isArray(raw.parts)) return raw;
+	const root = realpathSync(dir);
+	return {
+		...raw,
+		parts: raw.parts.map((p) => {
+			if (!isObj(p) || !isObj(p.code) || typeof p.code.path !== "string") return p;
+			const path = p.code.path;
+			const who = `${file}: ${String(p.ref)}'s code ${path}`;
+			if (pathProblem(path)) throw new CliError(`${who} leads outside the netlist's folder`, EXIT.input);
+			let real;
+			try {
+				real = realpathSync(resolve(dir, path));
+			} catch {
+				throw new CliError(`${who} cannot be read`, EXIT.input);
+			}
+			if (real !== root && !real.startsWith(root + sep)) throw new CliError(`${who} leads outside the netlist's folder`, EXIT.input);
+			const st = statSync(real);
+			if (!st.isFile()) throw new CliError(`${who} cannot be read`, EXIT.input);
+			if (st.size > 262144) throw new CliError(`${who} is over 256 KB`, EXIT.input);
+			const bytes = readFileSync(real);
+			let source;
+			try {
+				source = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+			} catch {
+				throw new CliError(`${who} is not UTF-8 text`, EXIT.input);
+			}
+			return {
+				...p,
+				code: {
+					language: p.code.language,
+					source,
+					file: basename(path)
+				}
+			};
+		})
+	};
+}
+/** Writes each part's inline code beside the netlist as <ref><ext> and references it by path. */
+function writeCode(netlist, outFile, io) {
+	for (const p of netlist.parts) {
+		const c = p.code;
+		if (!isObj(c) || typeof c.source !== "string" || typeof c.language !== "string") continue;
+		const name = `${String(p.ref)}${(LANGUAGE_EXT[c.language] ?? [".txt"])[0]}`;
+		writeFile(io, join(dirname(outFile), name), c.source);
+		p.code = {
+			language: c.language,
+			path: name
+		};
+	}
+}
+//#endregion
 //#region src/cli/layoutCmd.ts
 /** Designators the partial keeps that are not parts of its intent (after repeat expansion). */
 function unknownKept(path, intent, keep) {
@@ -94745,7 +95362,7 @@ function layoutCommand(args, io) {
 		raw = p.intent;
 		keep = p.keep;
 		warnings = unknownKept(keepPath, raw, keep);
-	} else raw = readJson(io, input);
+	} else raw = embedCode(readJson(io, input), dirname(pathIn(io, input)), input);
 	if (!json) for (const w of warnings) io.stderr(`warning: ${w}\n`);
 	const r = layoutNetlist(raw, {
 		keep,
@@ -95026,6 +95643,7 @@ function netlistCommand(args, io) {
 	for (const w of warnings) io.stderr(`warning: ${w}\n`);
 	const netlist = extractNetlist(diagram, (w) => io.stderr(`warning: ${w}\n`));
 	const out = flag(args, "--out") ?? null;
+	if (out) writeCode(netlist, out, io);
 	const text = `${JSON.stringify(netlist, null, 2)}\n`;
 	if (out) writeFile(io, out, text);
 	if (args.flags.has("--json")) printJson(io, {
@@ -96087,6 +96705,10 @@ function lintModule(raw) {
 		code: "long-name",
 		message: `The name is over ${NAME_MAX} characters.`
 	});
+	if (m.firmware) warnings.push({
+		code: "firmware-custom",
+		message: "Code on custom parts is not supported yet, so this part's \"firmware\" is ignored."
+	});
 	lintArt(m, errors, warnings);
 	return {
 		ok: errors.length === 0,
@@ -96284,6 +96906,1742 @@ function moduleCommand(args, io) {
 	throw new CliError(sub ? `module: unknown subcommand "${sub}"; ${MODULE_USAGE.slice(8)}` : MODULE_USAGE, EXIT.input);
 }
 //#endregion
+//#region src/run/boards.ts
+var BOARD_KINDS = {
+	"rpi-4-model-b": "pi4",
+	"rpi-5": "pi5",
+	"rpi-zero-2-w": "zero2w"
+};
+var boardKindOf = (m) => m && Object.hasOwn(BOARD_KINDS, m.id) ? BOARD_KINDS[m.id] : null;
+var gpioPin = (bcm) => `GPIO${bcm}`;
+var pyManifest_default = {
+	version: "314.0.7",
+	python: "3.14.2",
+	source: "https://github.com/pyodide/pyodide/releases/tag/314.0.7",
+	files: [
+		{
+			"name": "pyodide.mjs",
+			"sha256": "6f1d60f7bf529beb300f0f47983c921d3982363640ba20af0e38efdddbc66109",
+			"bytes": 17931
+		},
+		{
+			"name": "pyodide.asm.mjs",
+			"sha256": "f7cdc8ece80678ceb712f8e65ebe6d3a83203a180c399865f49612a051693635",
+			"bytes": 1250344
+		},
+		{
+			"name": "pyodide.asm.wasm",
+			"sha256": "cc36e3cab04fdfc9a63ff13eb52eae2b911bf46c025cc7b281f394bd3de1d5e6",
+			"bytes": 9598218
+		},
+		{
+			"name": "python_stdlib.zip",
+			"sha256": "fa1957e5777068fc4f7437f96d860ae2fbe9c19732ba06c84e004ec16dd7dd7a",
+			"bytes": 2545637
+		},
+		{
+			"name": "pyodide-lock.json",
+			"sha256": "5dc2fc119108bc148c7457dc86e7675b5c87e1cafd420b9c34c1eaef7b36c010",
+			"bytes": 119077
+		}
+	]
+};
+var NO_LONGER_PUBLISHED = "This plugin's Python runtime is no longer published; update the plugin";
+/** The user's cache directory for Circuitoon (CIRCUITOON_CACHE overrides). */
+function cacheRoot(env = process.env) {
+	if (env.CIRCUITOON_CACHE) return env.CIRCUITOON_CACHE;
+	if (process.platform === "win32") return join(env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"), "circuitoon", "cache");
+	if (process.platform === "darwin") return join(homedir(), "Library", "Caches", "circuitoon");
+	return join(env.XDG_CACHE_HOME ?? join(homedir(), ".cache"), "circuitoon");
+}
+var sha = (b) => createHash("sha256").update(b).digest("hex");
+var good = (dir, f) => existsSync(join(dir, f.name)) && sha(readFileSync(join(dir, f.name))) === f.sha256;
+var ready = (dir) => ({
+	dir,
+	indexURL: dir.endsWith(sep) || dir.endsWith("/") ? dir : `${dir}${sep}`,
+	lock: readFileSync(join(dir, "pyodide-lock.json"), "utf8")
+});
+async function ensurePy(o = {}) {
+	if (o.pyDir) {
+		const bad = pyManifest_default.files.filter((f) => !good(o.pyDir, f)).map((f) => f.name);
+		if (bad.length) throw new Error(`--py-dir ${o.pyDir} is not Pyodide ${pyManifest_default.version}: ${bad.join(", ")} missing or different`);
+		return ready(o.pyDir);
+	}
+	const dir = join(o.cacheDir ?? cacheRoot(), "py", pyManifest_default.version);
+	mkdirSync(dir, { recursive: true });
+	const get = o.fetch ?? fetch;
+	for (const f of pyManifest_default.files) {
+		if (good(dir, f)) continue;
+		const url = `${o.base ?? "https://mbarc.github.io/circuitoon/py/"}${pyManifest_default.version}/${f.name}`;
+		let res;
+		try {
+			res = await get(url);
+		} catch (e) {
+			throw new Error(`could not download ${url} (${e instanceof Error ? e.message : String(e)}); the first run needs the network, or pass --py-dir`);
+		}
+		if (res.status === 404) throw new Error(NO_LONGER_PUBLISHED);
+		if (!res.ok) throw new Error(`could not download ${url} (HTTP ${res.status}); the first run needs the network, or pass --py-dir`);
+		const bytes = new Uint8Array(await res.arrayBuffer());
+		if (sha(bytes) !== f.sha256) throw new Error(`${f.name} does not match this plugin's Pyodide ${pyManifest_default.version} (its sha256 differs); try again later`);
+		const tmp = join(dir, `${f.name}.${process.pid}.${randomUUID()}.part`);
+		try {
+			writeFileSync(tmp, bytes);
+			try {
+				renameSync(tmp, join(dir, f.name));
+			} catch (e) {
+				if (!good(dir, f)) throw e;
+			}
+		} finally {
+			rmSync(tmp, { force: true });
+		}
+	}
+	const bad = pyManifest_default.files.find((f) => !good(dir, f));
+	if (bad) throw new Error(`${bad.name} does not match this plugin's Pyodide ${pyManifest_default.version} (its sha256 differs); try again later`);
+	return ready(dir);
+}
+/** inputLow and inputHigh from the board's data; without them, 30 and 70 percent of its GPIO domain (a generic CMOS estimate). */
+function thresholdsOf(m) {
+	const sim = simOf(m);
+	const g = sim?.gpio;
+	const nominal = sim?.power?.domains.find((d) => d.name === g?.domain)?.nominal ?? 3.3;
+	return {
+		low: g?.inputLow?.value ?? .3 * nominal,
+		high: g?.inputHigh?.value ?? .7 * nominal
+	};
+}
+/** A small, seeded PRNG (mulberry32): the same run reads the same floating levels. */
+function mulberry32(seed) {
+	let a = seed >>> 0;
+	return () => {
+		a = a + 1831565813 >>> 0;
+		let t = a;
+		t = Math.imul(t ^ t >>> 15, t | 1);
+		t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+		return ((t ^ t >>> 14) >>> 0) / 4294967296;
+	};
+}
+function seedOf(text) {
+	let h = 2166136261;
+	for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+	return h >>> 0;
+}
+var LevelTracker = class {
+	rows = /* @__PURE__ */ new Map();
+	since = /* @__PURE__ */ new Map();
+	warned = /* @__PURE__ */ new Set();
+	rand;
+	seed;
+	constructor(seed) {
+		this.seed = seed;
+		this.rand = mulberry32(seedOf(seed));
+	}
+	/** One solved reading of one input pin at run time `nowMs`. */
+	update(pin, r, th, nowMs) {
+		const prev = this.rows.get(pin);
+		let level = prev?.level ?? 0;
+		let status = "value";
+		let volts = NaN;
+		let finding = null;
+		if (!r || r.kind === "floating") {
+			status = "floating";
+			level = this.rand() < .5 ? 0 : 1;
+			this.since.delete(pin);
+			if (!this.warned.has(`f|${pin}`)) {
+				this.warned.add(`f|${pin}`);
+				finding = "floating-read";
+			}
+		} else if (r.kind === "undefined") {
+			status = "undefined";
+			this.since.delete(pin);
+		} else {
+			volts = r.value;
+			if (volts >= th.high) level = 1;
+			else if (volts <= th.low) level = 0;
+			if (volts > th.low && volts < th.high) {
+				if (!this.since.has(pin)) this.since.set(pin, nowMs);
+			} else this.since.delete(pin);
+		}
+		const row = {
+			level,
+			status,
+			volts,
+			rising: (prev?.rising ?? 0) + (prev && level === 1 && prev.level === 0 ? 1 : 0),
+			falling: (prev?.falling ?? 0) + (prev && level === 0 && prev.level === 1 ? 1 : 0)
+		};
+		this.rows.set(pin, row);
+		return {
+			row,
+			finding
+		};
+	}
+	/** Pins that have now dwelt between the thresholds for more than 100 ms: each named once per run. */
+	check(nowMs) {
+		const out = [];
+		for (const [pin, t] of this.since) if (nowMs - t > 100 && !this.warned.has(`u|${pin}`)) {
+			this.warned.add(`u|${pin}`);
+			out.push(pin);
+		}
+		return out;
+	}
+	/** A pin's last row (its voltage names the undefined-level warning). */
+	get(pin) {
+		return this.rows.get(pin);
+	}
+	/** A new run: levels, edges and warnings start over, and the PRNG restarts. */
+	reset() {
+		this.rows.clear();
+		this.since.clear();
+		this.warned.clear();
+		this.rand = mulberry32(seedOf(this.seed));
+	}
+};
+var MODE = {
+	unused: 0,
+	input: 1,
+	pullup: 2,
+	pulldown: 3,
+	output: 4
+};
+var IN_STATUS = {
+	none: 0,
+	value: 1,
+	floating: 2,
+	undefined: 3
+};
+var INPUT = {
+	idle: 0,
+	waiting: 1,
+	ready: 2
+};
+/**
+* Header Int32 slots. `interrupt` is Pyodide's interrupt buffer (2 = SIGINT). `grant` counts the
+* virtual-time driver's grants (ruling R16): a virtual wait moves on only when it changes, never on
+* another wake.
+*/
+var H = {
+	wake: 0,
+	interrupt: 1,
+	outSeq: 2,
+	inSeq: 3,
+	solvedThrough: 4,
+	codeSeq: 5,
+	inputState: 6,
+	inputLen: 7,
+	pending: 8,
+	grant: 9
+};
+/** Header Float64 slots: the virtual clock and the driver's horizon (ms of run time), the last yield (epoch ms, real time) and the run's start (epoch ms). */
+var F = {
+	clockMs: 8,
+	horizonMs: 9,
+	lastYieldMs: 10,
+	startMs: 11
+};
+var OUT_I = 32;
+var OUT_W = 8;
+var OUT_F = 128;
+var IN_I = 512;
+var IN_W = 4;
+var IN_F = 320;
+var LINE_AT = 4096;
+var LINE_MAX = 4096;
+var SAB_BYTES = 8192;
+var STATUS_OF = Object.keys(IN_STATUS);
+function boardMemory(sab = new SharedArrayBuffer(SAB_BYTES)) {
+	return {
+		sab,
+		i32: new Int32Array(sab),
+		f64: new Float64Array(sab),
+		line: new Uint8Array(sab, LINE_AT, LINE_MAX)
+	};
+}
+/** The writer's half of a seqlock: odd while `fn` runs, even after. One writer per table. */
+function writeLocked(m, seq, fn) {
+	Atomics.add(m.i32, seq, 1);
+	try {
+		fn();
+	} finally {
+		Atomics.add(m.i32, seq, 1);
+	}
+}
+/** The reader's half: retries until the sequence is the same even value before and after `fn`. */
+function readLocked(m, seq, fn) {
+	for (;;) {
+		const a = Atomics.load(m.i32, seq);
+		if (a & 1) continue;
+		const v = fn();
+		if (Atomics.compareExchange(m.i32, seq, a, a) === a) return v;
+	}
+}
+function readOut(m, bcm) {
+	const i = OUT_I + bcm * OUT_W;
+	const f = OUT_F + bcm * 2;
+	const v = m.i32;
+	return {
+		mode: Atomics.load(v, i),
+		latch: Atomics.load(v, i + 1) ? 1 : 0,
+		pwmActive: Atomics.load(v, i + 2) !== 0,
+		duty: m.f64[f],
+		freq: m.f64[f + 1],
+		rising: Atomics.load(v, i + 3) >>> 0,
+		falling: Atomics.load(v, i + 4) >>> 0,
+		highUs: Atomics.load(v, i + 5) >>> 0,
+		changedUs: Atomics.load(v, i + 6) >>> 0
+	};
+}
+function setOut(m, bcm, p) {
+	const i = OUT_I + bcm * OUT_W;
+	const f = OUT_F + bcm * 2;
+	const v = m.i32;
+	if (p.mode !== void 0) Atomics.store(v, i, p.mode);
+	if (p.latch !== void 0) Atomics.store(v, i + 1, p.latch);
+	if (p.pwmActive !== void 0) Atomics.store(v, i + 2, p.pwmActive ? 1 : 0);
+	if (p.rising !== void 0) Atomics.store(v, i + 3, p.rising | 0);
+	if (p.falling !== void 0) Atomics.store(v, i + 4, p.falling | 0);
+	if (p.highUs !== void 0) Atomics.store(v, i + 5, p.highUs | 0);
+	if (p.changedUs !== void 0) Atomics.store(v, i + 6, p.changedUs | 0);
+	if (p.duty !== void 0) m.f64[f] = p.duty;
+	if (p.freq !== void 0) m.f64[f + 1] = p.freq;
+}
+function readIn(m, bcm) {
+	const i = IN_I + bcm * IN_W;
+	const v = m.i32;
+	return {
+		level: Atomics.load(v, i) ? 1 : 0,
+		rising: Atomics.load(v, i + 1) >>> 0,
+		falling: Atomics.load(v, i + 2) >>> 0,
+		status: STATUS_OF[Atomics.load(v, i + 3)] ?? "none",
+		volts: m.f64[IN_F + bcm]
+	};
+}
+function setIn(m, bcm, p) {
+	const i = IN_I + bcm * IN_W;
+	const v = m.i32;
+	Atomics.store(v, i, p.level);
+	Atomics.store(v, i + 1, p.rising | 0);
+	Atomics.store(v, i + 2, p.falling | 0);
+	Atomics.store(v, i + 3, IN_STATUS[p.status]);
+	m.f64[IN_F + bcm] = p.volts;
+}
+/** Every pin's row and the code sequence that numbers them, from one read under the seqlock (setup bumps it inside the same write). */
+function readAllOut(m) {
+	return readLocked(m, H.outSeq, () => ({
+		rows: Array.from({ length: 28 }, (_, b) => readOut(m, b)),
+		codeSeq: Atomics.load(m.i32, H.codeSeq)
+	}));
+}
+/** The editor's write (spec 4.4): the rows it has, "solved through code sequence N", then a wake. */
+function writeIn(m, rows, solvedThrough) {
+	writeLocked(m, H.inSeq, () => rows.forEach((r, bcm) => r && setIn(m, bcm, r)));
+	Atomics.store(m.i32, H.solvedThrough, solvedThrough);
+	wake(m);
+}
+/** Wakes every wait (spec 5.2): a new result, a line of input, Stop. */
+function wake(m) {
+	Atomics.add(m.i32, H.wake, 1);
+	Atomics.notify(m.i32, H.wake);
+}
+/** The virtual-time driver lets a waiting board go (ruling R16): to run time `clockMs`, syncing again at a pin read past `horizonMs`. */
+function grant(m, clockMs, horizonMs) {
+	m.f64[F.clockMs] = clockMs;
+	m.f64[F.horizonMs] = horizonMs;
+	Atomics.add(m.i32, H.grant, 1);
+	wake(m);
+}
+/** Stop (spec 5.4): KeyboardInterrupt at the next check, and a wake so a wait checks now. */
+function interrupt(m) {
+	Atomics.store(m.i32, H.interrupt, 2);
+	wake(m);
+}
+/** A line for input() (spec 5.3), cut to the buffer. */
+function writeLine(m, text) {
+	const bytes = new TextEncoder().encode(text).slice(0, LINE_MAX);
+	m.line.set(bytes);
+	Atomics.store(m.i32, H.inputLen, bytes.length);
+	Atomics.store(m.i32, H.inputState, INPUT.ready);
+	wake(m);
+}
+function takeLine(m) {
+	const text = new TextDecoder().decode(m.line.slice(0, Atomics.load(m.i32, H.inputLen)));
+	Atomics.store(m.i32, H.inputState, INPUT.idle);
+	return text;
+}
+//#endregion
+//#region src/run/power.ts
+/** Raspberry Pi's under-voltage warning threshold, volts (ruling R8). Source: https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc */
+var PI_UNDER_VOLTAGE = 4.63;
+var NO_POWER = (ref) => `${ref} has no power: connect 5V and GND`;
+var LOST_POWER = (ref) => `${ref} lost power`;
+var underVoltageNote = (ref, volts) => `${ref}'s 5V input is at ${Number(volts.toFixed(2))} V, below the ${PI_UNDER_VOLTAGE} V where a real Raspberry Pi warns of under-voltage.`;
+function boardPower(c, r, uid) {
+	const rows = r.budget.filter((b) => b.kind === "domain" && b.part === uid);
+	const volts = (domain) => {
+		const v = rows.find((b) => b.id === `${uid}.domain.${domain}`)?.volts.typical;
+		return v?.kind === "value" ? v.value : null;
+	};
+	const loads = c.devices.filter((d) => d.kind === "load" && d.part === uid);
+	let lowest = null;
+	let powered = loads.length > 0;
+	for (const l of loads) {
+		const v = volts(l.domain);
+		if (!(v !== null && v >= l.minVolts.value)) powered = false;
+		if ((v === null ? -Infinity : v - l.minVolts.value) < (lowest ? lowest.volts === null ? -Infinity : lowest.volts - lowest.minVolts : Infinity)) lowest = {
+			domain: l.domain,
+			volts: v,
+			minVolts: l.minVolts.value
+		};
+	}
+	return {
+		powered,
+		inputVolts: volts("5V"),
+		lowest
+	};
+}
+var underVoltage = (p) => p.inputVolts !== null && p.inputVolts < 4.63;
+var DUTY_STEP = 1 / 64;
+var INPUT_STATE = {
+	[MODE.input]: "input",
+	[MODE.pullup]: "input-pullup",
+	[MODE.pulldown]: "input-pulldown"
+};
+function quantize(prev, duty) {
+	const q = Math.round(duty / DUTY_STEP) * DUTY_STEP;
+	return prev === null || Math.abs(duty - prev) >= .015625 ? q : prev;
+}
+var asState = (d) => d <= 0 ? "low" : d >= 1 ? "high" : { pwm: d };
+var BoardSampler = class {
+	history = /* @__PURE__ */ new Map();
+	duty = /* @__PURE__ */ new Map();
+	/** The board's pins at run time `nowMs` (its own clock). Unused pins are left out: their saved states apply. */
+	sample(m, nowMs) {
+		const { rows, codeSeq: seq } = readAllOut(m);
+		const nowUs = Math.round(nowMs * 1e3) >>> 0;
+		const pins = {};
+		const detail = {};
+		for (let bcm = 0; bcm < 28; bcm++) {
+			const r = rows[bcm];
+			const name = gpioPin(bcm);
+			if (r.mode !== MODE.output) {
+				this.history.delete(bcm);
+				this.duty.delete(bcm);
+				if (r.mode !== MODE.unused) detail[name] = {
+					state: pins[name] = INPUT_STATE[r.mode],
+					duty: null,
+					freqHz: null
+				};
+				continue;
+			}
+			if (r.pwmActive) {
+				this.history.delete(bcm);
+				const d = quantize(this.duty.get(bcm) ?? null, r.duty);
+				this.duty.set(bcm, d);
+				detail[name] = {
+					state: pins[name] = asState(d),
+					duty: r.duty,
+					freqHz: r.freq
+				};
+				continue;
+			}
+			const high = r.highUs + (r.latch ? Math.max(0, nowUs - r.changedUs | 0) : 0) >>> 0;
+			const hist = this.history.get(bcm) ?? [];
+			hist.push({
+				tMs: nowMs,
+				rising: r.rising,
+				falling: r.falling,
+				highUs: high
+			});
+			while (hist.length > 2 && hist[1].tMs <= nowMs - 100) hist.shift();
+			this.history.set(bcm, hist);
+			const base = hist[0].tMs <= nowMs - 100 ? hist[0] : null;
+			const latch = r.latch ? "high" : "low";
+			if (!base) {
+				detail[name] = {
+					state: pins[name] = latch,
+					duty: null,
+					freqHz: null
+				};
+				continue;
+			}
+			const span = nowMs - base.tMs;
+			const edges = (r.rising - base.rising >>> 0) + (r.falling - base.falling >>> 0);
+			if (edges < 100 * span / 1e3 - 1e-9) {
+				this.duty.delete(bcm);
+				detail[name] = {
+					state: pins[name] = latch,
+					duty: null,
+					freqHz: null
+				};
+				continue;
+			}
+			const raw = Math.min(1, Math.max(0, (high - base.highUs | 0) / 1e3 / span));
+			const d = quantize(this.duty.get(bcm) ?? null, raw);
+			this.duty.set(bcm, d);
+			detail[name] = {
+				state: pins[name] = asState(d),
+				duty: raw,
+				freqHz: edges / 2 / (span / 1e3)
+			};
+		}
+		return {
+			pins,
+			detail,
+			seq
+		};
+	}
+	/** A new run. */
+	reset() {
+		this.history.clear();
+		this.duty.clear();
+	}
+};
+//#endregion
+//#region src/run/servo.ts
+var SIGNAL_PULSE_S = [4e-4, .0026];
+var SIGNAL_HZ = [40, 330];
+function servoLimitsOf(m) {
+	const s = simOf(m)?.servo;
+	return s ? {
+		pulseMin: s.pulseMin.value,
+		pulseMax: s.pulseMax.value,
+		slewSecPer60: s.slew.value
+	} : null;
+}
+var round = (x, digits) => Number(x.toFixed(digits));
+function servoTarget(duty, freqHz, s) {
+	const pulse = duty / freqHz;
+	if (freqHz < SIGNAL_HZ[0] || freqHz > SIGNAL_HZ[1] || pulse < SIGNAL_PULSE_S[0] || pulse > SIGNAL_PULSE_S[1]) return { why: `a ${round(pulse * 1e3, 2)} ms pulse at ${round(freqHz, 1)} Hz` };
+	const a = (pulse - s.pulseMin) / (s.pulseMax - s.pulseMin) * 180;
+	return { angle: Math.min(180, Math.max(0, a)) };
+}
+function slewToward(angle, target, dtMs, s) {
+	const step = 60 / s.slewSecPer60 * Math.max(0, dtMs) / 1e3;
+	return Math.abs(target - angle) <= step ? target : angle + Math.sign(target - angle) * step;
+}
+//#endregion
+//#region src/run/core.ts
+/** Spec 5.2's words, shown once when a board has not yielded for 2 s (editor) or 5 s (CLI) while something waits. */
+var NEVER_PAUSES = (ref) => `${ref}'s code never pauses, so blink() and button callbacks can't run. Add time.sleep() in your loop.`;
+var RunCore = class {
+	entries = /* @__PURE__ */ new Map();
+	last = "";
+	servoState = /* @__PURE__ */ new Map();
+	warnedServos = /* @__PURE__ */ new Set();
+	moving = [];
+	add(b) {
+		this.entries.set(b.uid, {
+			b,
+			sampler: new BoardSampler(),
+			levels: new LevelTracker(b.uid),
+			th: thresholdsOf(b.module),
+			detail: {},
+			sampled: /* @__PURE__ */ new Map()
+		});
+		this.last = "";
+	}
+	remove(uid) {
+		this.entries.delete(uid);
+		this.last = "";
+	}
+	/** A fresh run with no board running: a servo's unfollowed signal is warned about again. */
+	forgetServoWarnings() {
+		this.warnedServos.clear();
+	}
+	get boards() {
+		return [...this.entries.values()].map((e) => e.b);
+	}
+	/**
+	* Samples every board (spec 2.3). `changed` only when a quantised state or a servo's moving flag
+	* moved since the last sample, so store.run is written only then; `seq` is each board's code
+	* sequence for the solve's "solved through".
+	*/
+	sample(at) {
+		const pins = {};
+		const seq = {};
+		const findings = [];
+		for (const e of this.entries.values()) {
+			const now = at(e.b);
+			const s = e.sampler.sample(e.b.memory, now);
+			pins[e.b.uid] = s.pins;
+			seq[e.b.uid] = s.seq;
+			e.detail = s.detail;
+			e.sampled.set(s.seq, s.pins);
+			for (const pin of e.levels.check(now)) findings.push({
+				code: "undefined-level",
+				severity: "warning",
+				parts: [e.b.uid],
+				pins: [{
+					part: e.b.uid,
+					pin
+				}],
+				key: `undefined-level|${e.b.uid}|${pin}`,
+				message: `${e.b.ref} ${pin} reads ${e.levels.get(pin).volts.toFixed(1)} V, between the low and high thresholds`
+			});
+		}
+		const key = JSON.stringify([pins, this.moving]);
+		const changed = key !== this.last;
+		this.last = key;
+		return {
+			pins,
+			seq,
+			changed,
+			findings
+		};
+	}
+	/**
+	* A solve back into the boards (spec 4.4): input pins' levels and edges, solved through `seq`; and
+	* each board's power (spec 4.5). Only pins whose mode is still the one sampled for this solve are
+	* written; a pin set up while it was in flight waits for the next. A failed solve still marks the
+	* boards solved through `seq`, so no read waits on it.
+	*/
+	apply(o, c, seq, at) {
+		const findings = [];
+		const power = {};
+		const ok = o.status === "ok" && c !== null;
+		for (const e of this.entries.values()) {
+			const sq = seq[e.b.uid];
+			const sampled = sq === void 0 ? void 0 : e.sampled.get(sq);
+			if (sq !== void 0) {
+				for (const k of e.sampled.keys()) if (k < sq) e.sampled.delete(k);
+			}
+			if (!ok) {
+				if (sq !== void 0) writeIn(e.b.memory, [], sq);
+				continue;
+			}
+			power[e.b.uid] = boardPower(c, o.result, e.b.uid);
+			if (sq === void 0 || !sampled) continue;
+			const now = at(e.b);
+			const nets = o.result.corners.typical.nets;
+			const rows = Array.from({ length: 28 }, () => null);
+			readAllOut(e.b.memory).rows.forEach((r, bcm) => {
+				const pin = gpioPin(bcm);
+				const state = INPUT_STATE[r.mode];
+				if (state === void 0 || sampled[pin] !== state) return;
+				const net = c.pinNet[nodeKey(e.b.uid, pin)];
+				const u = e.levels.update(pin, net === void 0 ? void 0 : nets[net], e.th, now);
+				rows[bcm] = u.row;
+				if (u.finding === "floating-read") findings.push({
+					code: "floating-read",
+					severity: "warning",
+					parts: [e.b.uid],
+					pins: [{
+						part: e.b.uid,
+						pin
+					}],
+					key: `floating-read|${e.b.uid}|${pin}`,
+					message: `${e.b.ref} ${pin} is read by the code but nothing drives it: it floats, so each read is random. Turn on a pull-up or pull-down in the code, or wire it to a signal.`
+				});
+			});
+			writeIn(e.b.memory, rows, sq);
+		}
+		return {
+			findings,
+			power
+		};
+	}
+	/** The output on a net that a servo could follow: its declared or bit-banged duty and frequency (ruling R23). */
+	driverOn(c, net) {
+		for (const e of this.entries.values()) for (const [pin, s] of Object.entries(e.detail)) if (s.duty !== null && s.freqHz && c.pinNet[nodeKey(e.b.uid, pin)] === net) return s;
+		return null;
+	}
+	/**
+	* Every servo's angle at `nowMs` (spec 3.4): toward the target its signal commands, at its slew
+	* rate. `moving` (the servos still slewing) is part of the run state: the next sample reports a
+	* change when it changes, so the moving draw is keyed (spec 2.3).
+	*/
+	servos(d, c, nowMs, library) {
+		const views = {};
+		const moving = [];
+		const findings = [];
+		if (!c) return {
+			views,
+			moving,
+			findings
+		};
+		for (const p of d.parts) {
+			const stored = d.modules[p.module];
+			const m = stored && withLibraryData(stored, library);
+			const lim = servoLimitsOf(m);
+			if (!lim) continue;
+			const net = c.pinNet[nodeKey(p.uid, simOf(m).servo.signal)];
+			const drive = net === void 0 ? null : this.driverOn(c, net);
+			const st = this.servoState.get(p.uid);
+			let target = st?.target ?? null;
+			if (drive) {
+				const t = servoTarget(drive.duty, drive.freqHz, lim);
+				if ("angle" in t) target = t.angle;
+				else if (!this.warnedServos.has(p.uid)) {
+					this.warnedServos.add(p.uid);
+					findings.push({
+						code: "servo-signal",
+						severity: "warning",
+						parts: [p.uid],
+						pins: [],
+						key: `servo-signal|${p.uid}`,
+						message: `${p.designator}'s signal is ${t.why}, which a servo does not follow (0.4 to 2.6 ms pulses at 40 to 330 Hz): it holds its last angle.`
+					});
+				}
+			}
+			if (target === null) continue;
+			const angle = st ? slewToward(st.angle, target, nowMs - st.t, lim) : target;
+			this.servoState.set(p.uid, {
+				angle,
+				target,
+				t: nowMs
+			});
+			const view = {
+				angle,
+				target,
+				moving: Math.abs(angle - target) > 1e-6
+			};
+			views[p.uid] = view;
+			if (view.moving) moving.push(p.uid);
+		}
+		this.moving = moving;
+		return {
+			views,
+			moving,
+			findings
+		};
+	}
+};
+//#endregion
+//#region src/run/host.ts
+/** time.time() at run time 0 under the virtual clock: fixed, so runs repeat exactly. */
+var VIRTUAL_EPOCH_MS = Date.UTC(2026, 0, 1);
+var BoardRun = class {
+	memory;
+	status = "starting";
+	done;
+	o;
+	worker = null;
+	ended;
+	stopping = null;
+	constructor(o) {
+		this.o = o;
+		this.memory = boardMemory();
+		this.done = new Promise((r) => this.ended = r);
+	}
+	start() {
+		this.memory.f64[F.startMs] = this.o.mode === "virtual" ? VIRTUAL_EPOCH_MS : performance.timeOrigin + performance.now();
+		const w = this.worker = this.o.spawn();
+		w.onMessage((m) => {
+			if (m.type === "ready") this.status = "running";
+			if (m.type === "exit") this.finish(m.status);
+			if (m.type === "fatal") this.finish("error");
+			this.o.on(m);
+		});
+		w.onError((why) => {
+			if (this.status !== "starting" && this.status !== "running") return;
+			this.o.on({
+				type: "fatal",
+				error: why
+			});
+			this.finish("error");
+		});
+		w.post({
+			type: "start",
+			sab: this.memory.sab,
+			files: this.o.files,
+			source: this.o.source,
+			file: this.o.file,
+			board: this.o.board,
+			mode: this.o.mode,
+			py: this.o.py
+		});
+	}
+	finish(status) {
+		if (this.status === "starting" || this.status === "running") this.status = status;
+		this.worker?.terminate();
+		this.ended();
+	}
+	/**
+	* Stop (spec 5.4): KeyboardInterrupt now; terminated if not finished after 1 s. Once: a second
+	* Stop gets the first one's result and never interrupts the script's except or finally cleanup.
+	*/
+	async stop() {
+		if (this.stopping) return this.stopping;
+		const w = this.worker;
+		if (!w) return "ended";
+		if (this.status !== "starting" && this.status !== "running") {
+			w.terminate();
+			return "ended";
+		}
+		this.stopping = (async () => {
+			interrupt(this.memory);
+			const how = await Promise.race([this.done.then(() => "stopped"), new Promise((r) => setTimeout(() => r("terminated"), this.o.stopGraceMs ?? 1e3))]);
+			w.terminate();
+			if (how === "terminated") this.finish("stopped");
+			return how;
+		})();
+		return this.stopping;
+	}
+};
+//#endregion
+//#region src/run/limits.ts
+/** The globals Pyodide itself needs in `jsglobals` (spec 2.6: nothing else); found at the checkpoint. */
+var PY_JSGLOBALS = [];
+//#endregion
+//#region src/run/bridge.ts
+var nowAbs = () => performance.timeOrigin + performance.now();
+/** The editor's clock (spec 5.2): Atomics.wait on the wake word for at most 50 ms at a time, then checkInterrupt. */
+function realClock(m, checkInterrupt) {
+	const start = m.f64[F.startMs];
+	return {
+		epochMs: start,
+		now: () => nowAbs() - start,
+		block(untilMs) {
+			const seen = Atomics.load(m.i32, H.wake);
+			const left = untilMs - (nowAbs() - start);
+			if (left > 0) Atomics.wait(m.i32, H.wake, seen, Math.min(50, left));
+			checkInterrupt();
+		},
+		poll() {}
+	};
+}
+/** Every time call and pin read on the virtual clock advances the board by this much (spec 7). */
+var QUANTUM_MS = .01;
+/**
+* The CLI's clock (spec 7, ruling R16): the board keeps its own time, stepping 10 us per call; a wait
+* posts where it is and until when, and waits for the driver's grant (memory.ts grant: F.clockMs, where
+* the board may move to; F.horizonMs, when a pin read must sync next; then H.grant bumped and a wake).
+* Other wakes (an input write, a line, before the grant) are ignored unless Stop is set, so the board
+* never moves on a clock the driver has not finished writing. A read after setup syncs too, so its
+* solve comes at the same instant even inside the horizon.
+*/
+function virtualClock(m, post, checkInterrupt) {
+	let t = 0;
+	const sync = (untilMs) => {
+		const g = Atomics.load(m.i32, H.grant);
+		post({
+			type: "block",
+			nowMs: t,
+			untilMs
+		});
+		for (;;) {
+			const seen = Atomics.load(m.i32, H.wake);
+			if (Atomics.load(m.i32, H.grant) !== g || Atomics.load(m.i32, H.interrupt)) break;
+			Atomics.wait(m.i32, H.wake, seen);
+		}
+		t = Math.max(t, m.f64[F.clockMs]);
+		checkInterrupt();
+	};
+	return {
+		epochMs: m.f64[F.startMs],
+		now() {
+			t += QUANTUM_MS;
+			if (t >= m.f64[F.horizonMs]) sync(t);
+			return t;
+		},
+		block: (untilMs) => sync(untilMs),
+		poll() {
+			if (t >= m.f64[F.horizonMs] || Atomics.load(m.i32, H.codeSeq) > Atomics.load(m.i32, H.solvedThrough)) sync(t);
+		}
+	};
+}
+/** A number as Python prints it, for error messages. */
+var py = (x) => typeof x !== "number" ? String(x) : Number.isNaN(x) ? "nan" : x === Infinity ? "inf" : x === -Infinity ? "-inf" : String(x);
+/**
+* The JS functions Python's stand-ins call (spec 5.1). Pins are BCM numbers 0..27. User code can call
+* them directly (import circuitoon_hw), so every value bound for the shared memory the editor reads is
+* checked here: `fail` raises a Python ValueError (the worker passes pyValueError); without it a
+* RangeError is thrown.
+*/
+function makeHw(m, clock, o) {
+	const check = (ok, message) => {
+		if (ok) return;
+		if (o.fail) o.fail(message());
+		throw new RangeError(message());
+	};
+	const pin = (bcm) => check(Number.isInteger(bcm) && bcm >= 0 && bcm < 28, () => `there is no GPIO${py(bcm)}`);
+	const nowUs = () => Math.round(clock.now() * 1e3) >>> 0;
+	return {
+		/** A mode or pull change (spec 2.2): bumps the code sequence; leaving output drops the latch and the PWM descriptor. */
+		setup(bcm, mode) {
+			pin(bcm);
+			check(Number.isInteger(mode) && mode >= MODE.unused && mode <= MODE.output, () => `pin mode must be a whole number from 0 to 4, not ${py(mode)}`);
+			writeLocked(m, H.outSeq, () => {
+				setOut(m, bcm, {
+					mode,
+					...mode !== MODE.output ? {
+						latch: 0,
+						pwmActive: false
+					} : {}
+				});
+				Atomics.add(m.i32, H.codeSeq, 1);
+			});
+		},
+		/** A plain write: the latch, and the bit-bang counters (edges, high time) the sampler reads. */
+		output(bcm, value) {
+			pin(bcm);
+			const v = value ? 1 : 0;
+			const t = nowUs();
+			writeLocked(m, H.outSeq, () => {
+				const was = readOut(m, bcm);
+				if (was.latch === v) return;
+				setOut(m, bcm, v ? {
+					latch: 1,
+					changedUs: t,
+					rising: was.rising + 1
+				} : {
+					latch: 0,
+					changedUs: t,
+					falling: was.falling + 1,
+					highUs: was.highUs + (t - was.changedUs >>> 0)
+				});
+			});
+		},
+		/**
+		* A pin read (spec 4.4): an output reads its own latch; an input waits (at most 200 ms of run
+		* time) for a result solved through the latest mode change, then reads the editor's level, or its
+		* pull level before any result.
+		*/
+		read(bcm) {
+			pin(bcm);
+			clock.poll();
+			const own = readLocked(m, H.outSeq, () => readOut(m, bcm));
+			if (own.mode === MODE.output) return own.latch;
+			const want = Atomics.load(m.i32, H.codeSeq);
+			const t0 = clock.now();
+			while (Atomics.load(m.i32, H.solvedThrough) < want && clock.now() - t0 < 200) clock.block(t0 + 200);
+			const r = readLocked(m, H.inSeq, () => readIn(m, bcm));
+			if (r.status !== "none") return r.level;
+			return own.mode === MODE.pullup ? 1 : 0;
+		},
+		/** The declared PWM descriptor (spec 2.2): nothing toggles the pin. */
+		pwm(bcm, active, duty, freq) {
+			pin(bcm);
+			check(Number.isFinite(duty), () => `PWM duty cycle must be a number, not ${py(duty)}`);
+			check(Number.isFinite(freq) && freq > 0, () => `PWM frequency must be a number greater than 0, not ${py(freq)}`);
+			writeLocked(m, H.outSeq, () => setOut(m, bcm, {
+				pwmActive: !!active,
+				duty: Math.min(1, Math.max(0, duty)),
+				freq
+			}));
+		},
+		rising: (bcm) => readLocked(m, H.inSeq, () => readIn(m, bcm).rising),
+		falling: (bcm) => readLocked(m, H.inSeq, () => readIn(m, bcm).falling),
+		volts(bcm) {
+			const r = readLocked(m, H.inSeq, () => readIn(m, bcm));
+			return r.status === "value" ? r.volts : null;
+		},
+		monotonic: () => clock.now() / 1e3,
+		epoch: () => (clock.epochMs + clock.now()) / 1e3,
+		/** Python's scheduler: wait until run time `untilS` seconds (negative or infinite: until woken). */
+		block(untilS) {
+			check(!Number.isNaN(untilS), () => `wait time must be a number, not ${py(untilS)}`);
+			clock.block(untilS < 0 ? Infinity : untilS * 1e3);
+		},
+		/** A yield point: real time of the last one (the never-pauses check), whether timers or callbacks wait, and an output flush. */
+		yielded(pending) {
+			m.f64[F.lastYieldMs] = nowAbs();
+			Atomics.store(m.i32, H.pending, pending ? 1 : 0);
+			o.flush();
+		},
+		/** A timer, callback or poller now waits (the never-pauses check reads it with the last yield). */
+		pending(on) {
+			Atomics.store(m.i32, H.pending, on ? 1 : 0);
+		},
+		input_begin(prompt) {
+			Atomics.store(m.i32, H.inputState, INPUT.waiting);
+			o.onPrompt(String(prompt));
+		},
+		input_ready: () => Atomics.load(m.i32, H.inputState) === INPUT.ready,
+		input_take: () => takeLine(m),
+		board: () => o.board
+	};
+}
+//#endregion
+//#region src/run/worker/sandbox.ts
+var SANDBOXED = [
+	"fetch",
+	"XMLHttpRequest",
+	"WebSocket",
+	"WebTransport",
+	"EventSource",
+	"importScripts",
+	"indexedDB",
+	"caches",
+	"BroadcastChannel",
+	"Worker"
+];
+/** Removes `names` from `target` and its prototype chain; a name that will not go is shadowed on `target`. */
+function strip(target, names) {
+	const removed = [];
+	for (let o = target; o; o = Object.getPrototypeOf(o)) for (const name of names) {
+		if (!Object.getOwnPropertyDescriptor(o, name)) continue;
+		if (!Reflect.deleteProperty(o, name)) Object.defineProperty(target, name, {
+			value: void 0,
+			configurable: false,
+			writable: false
+		});
+		removed.push(name);
+	}
+	return removed;
+}
+function sandbox(scope) {
+	const nav = scope.navigator;
+	return [...strip(scope, SANDBOXED), ...nav ? strip(nav, ["storage"]).map((n) => `navigator.${n}`) : []];
+}
+/**
+* No code from strings (firmware spec 2.6): a JS function's constructor (Function, and its async and
+* generator relatives) would evaluate text in the worker's global scope. In the browser the CSP
+* refuses it; in Node nothing does, so every one of them throws. Call once Pyodide has loaded.
+*/
+function noCodeGeneration() {
+	const refuse = function() {
+		throw new EvalError("Code generation is disabled in the simulator");
+	};
+	for (const f of [
+		function() {},
+		async function() {},
+		function* () {},
+		async function* () {}
+	]) Object.defineProperty(Object.getPrototypeOf(f), "constructor", {
+		value: refuse,
+		writable: false,
+		configurable: false
+	});
+}
+//#endregion
+//#region src/run/worker/serve.ts
+var PY_ROOT = "/lib/circuitoon";
+function installFiles(py, files) {
+	for (const [path, text] of Object.entries(files)) {
+		const full = `${PY_ROOT}/${path}`;
+		py.FS.mkdirTree(full.slice(0, full.lastIndexOf("/")));
+		py.FS.writeFile(full, text);
+	}
+	py.runPython(`import sys\nif '${PY_ROOT}' not in sys.path: sys.path.insert(0, '${PY_ROOT}')`);
+}
+function runMain(py, source, file) {
+	const g = py.toPy({
+		SRC: source,
+		FILE: file
+	});
+	try {
+		return py.runPython("import _circuitoon\n_circuitoon.main(SRC, FILE)", { globals: g });
+	} catch (e) {
+		if (e.type === "KeyboardInterrupt") return "stopped";
+		throw e;
+	}
+}
+/** makeHw's `fail`: raises a Python ValueError with `message` (a Python exception thrown through JS arrives in Python as itself). */
+function pyValueError(py) {
+	return py.runPython("def _circuitoon_value_error(message):\n    raise ValueError(message)\n_circuitoon_value_error");
+}
+var why = (e) => e instanceof Error ? e.message : String(e);
+/** Serial output (spec 5.3): lines collected and posted at most every 16 ms, and at every yield point. */
+function outBuffer(post) {
+	let buf = null;
+	let last = 0;
+	const flush = () => {
+		if (buf) post({
+			type: "out",
+			...buf
+		});
+		buf = null;
+		last = performance.now();
+	};
+	return {
+		flush,
+		push(stream, line) {
+			if (buf && buf.stream !== stream) flush();
+			buf = {
+				stream,
+				text: (buf?.text ?? "") + line + "\n"
+			};
+			if (performance.now() - last >= 16) flush();
+		}
+	};
+}
+/**
+* The code worker (firmware spec 2.6, 5.2 to 5.4), shared by the browser and Node workers: on
+* 'start', load Pyodide (the caller's loader), remove the network and storage from the scope, write
+* our Python files, register circuitoon_hw, run the script, and say how it ended. One run per worker:
+* Reset starts a fresh one (spec 5.4).
+*/
+function serveCode(post, listen, loadPy) {
+	listen((m) => {
+		if (m.type !== "start") return;
+		(async () => {
+			let py;
+			try {
+				py = await loadPy(m.py.indexURL, m.py.lock);
+			} catch (e) {
+				return post({
+					type: "fatal",
+					error: why(e)
+				});
+			}
+			const sandboxed = sandbox(globalThis);
+			const mem = boardMemory(m.sab);
+			const check = () => py.checkInterrupt();
+			const clock = m.mode === "virtual" ? virtualClock(mem, post, check) : realClock(mem, check);
+			const out = outBuffer(post);
+			const hw = makeHw(mem, clock, {
+				board: m.board,
+				onPrompt: (text) => post({
+					type: "prompt",
+					text
+				}),
+				flush: out.flush,
+				fail: pyValueError(py)
+			});
+			py.setStdout({ batched: (s) => out.push("out", s) });
+			py.setStderr({ batched: (s) => out.push("err", s) });
+			py.setStdin({ stdin: () => {
+				Atomics.store(mem.i32, H.inputState, INPUT.waiting);
+				post({
+					type: "prompt",
+					text: ""
+				});
+				while (Atomics.load(mem.i32, H.inputState) !== INPUT.ready) clock.block(Infinity);
+				return `${takeLine(mem)}\n`;
+			} });
+			py.setInterruptBuffer(new Int32Array(m.sab, H.interrupt * 4, 1));
+			installFiles(py, m.files);
+			py.registerJsModule("circuitoon_hw", hw);
+			py.unregisterJsModule("pyodide_js");
+			py.runPython("import sys\nsys.modules.pop('pyodide_js', None)");
+			for (const name of [
+				"mountNodeFS",
+				"useNodeSockFS",
+				"mountNativeFS"
+			]) Reflect.deleteProperty(py, name);
+			delete py.FS.filesystems.NODEFS;
+			noCodeGeneration();
+			mem.f64[F.lastYieldMs] = performance.timeOrigin + performance.now();
+			post({
+				type: "ready",
+				sandboxed
+			});
+			let status;
+			try {
+				status = runMain(py, m.source, m.file);
+			} catch (e) {
+				out.push("err", why(e));
+				status = "error";
+			}
+			out.flush();
+			post({
+				type: "exit",
+				status
+			});
+		})();
+	});
+}
+//#endregion
+//#region src/run/node/codeWorker.ts
+function spawnNodeCodeWorker() {
+	const w = new Worker(fileURLToPath(import.meta.url), { workerData: { circuitoonCode: true } });
+	return {
+		post: (m) => w.postMessage(m),
+		onMessage: (cb) => void w.on("message", (m) => cb(m)),
+		onError: (cb) => {
+			w.on("error", (e) => cb(e instanceof Error ? e.message : String(e)));
+			w.on("exit", (code) => code !== 0 && cb(`the code worker exited (${code})`));
+		},
+		terminate: () => void w.terminate()
+	};
+}
+var can = (f) => {
+	try {
+		f();
+		return true;
+	} catch {
+		return false;
+	}
+};
+/** What this thread can do: a confined process (runProcess.ts) denies writes, processes, addons, WASI and code from strings. */
+function probeSandbox(paths) {
+	const p = process.permission;
+	return {
+		permission: !!p,
+		codeFromStrings: can(() => new Function("return 1")),
+		read: paths.map((path) => can(() => statSync(path).isDirectory() ? readdirSync(path) : readFileSync(path))),
+		write: p ? p.has("fs.write") : true,
+		childProcess: p ? p.has("child") : true,
+		addons: p ? p.has("addon") : true,
+		wasi: p ? p.has("wasi") : true
+	};
+}
+/** The paths a code thread in the run's process must not read (runProcess.ts sets it, as JSON). */
+var PROBE_ENV = "CIRCUITOON_RUN_PROBE";
+/** Why a process under the permission model is not confined as it should be, or null. */
+function sandboxHole(p) {
+	if (p.codeFromStrings) return "it can build code from strings";
+	if (p.permission && p.read.some(Boolean)) return "it can read outside its folders";
+	if (p.permission && (p.write || p.childProcess || p.addons || p.wasi)) return "it can write files, start processes, or load addons or WASI";
+	return null;
+}
+if (!isMainThread && workerData?.circuitoonCode) serveCode((m) => parentPort.postMessage(m), (cb) => void parentPort.on("message", cb), async (indexURL, lock) => {
+	const proc = process;
+	const binding = proc.binding;
+	proc.binding = (name) => name === "constants" ? { fs: constants } : binding.call(process, name);
+	const mod = await import(pathToFileURL(join(indexURL, "pyodide.mjs")).href);
+	const g = globalThis;
+	const py = await mod.loadPyodide({
+		indexURL,
+		lockFileContents: lock,
+		jsglobals: Object.fromEntries(PY_JSGLOBALS.map((n) => [n, g[n]]))
+	});
+	if (process.permission) {
+		const probe = probeSandbox([homedir(), ...JSON.parse(process.env["CIRCUITOON_RUN_PROBE"] ?? "[]")]);
+		parentPort.postMessage({
+			type: "probe",
+			probe
+		});
+		const hole = sandboxHole(probe);
+		if (hole) throw new Error(`the code's sandbox did not hold (${hole}); not running the code`);
+	}
+	return py;
+});
+//#endregion
+//#region src/run/driver.ts
+var stateText = (s) => typeof s === "string" ? s : `pwm ${Number((s.pwm * 100).toFixed(1))}%`;
+/** A latching switch flipped (ruling R17: a press on a latching switch flips it at its time). */
+function flipped(d, uid) {
+	return {
+		...d,
+		parts: d.parts.map((p) => {
+			if (p.uid !== uid) return p;
+			const m = d.modules[p.module];
+			const g = switchGroups(m).find((x) => x.kind === "switch" && !x.momentary);
+			if (!g) return p;
+			const on = isActive(contactPosition(p, m, g));
+			return {
+				...p,
+				values: {
+					...p.values,
+					[`contact.${g.id}`]: g.changeover ? on ? "nc" : "no" : on ? "open" : "closed"
+				}
+			};
+		})
+	};
+}
+async function drive(o) {
+	const library = o.library;
+	const realLimit = o.realLimitMs ?? 5e3;
+	const res = {
+		boards: [],
+		timeline: [],
+		findings: [],
+		simulatedMs: 0,
+		solves: [],
+		neverPauses: [],
+		lostPower: [],
+		incomplete: []
+	};
+	let sheet = o.diagram;
+	let held = null;
+	const events = [];
+	for (const p of o.presses) {
+		const part = sheet.parts.find((x) => x.uid === p.uid);
+		const group = switchGroups(sheet.modules[part.module]).find((g) => g.momentary);
+		if (group) events.push({
+			atMs: p.atMs,
+			apply: () => held = {
+				part: p.uid,
+				group: group.id
+			}
+		}, {
+			atMs: p.atMs + p.forMs,
+			apply: () => held = null
+		});
+		else events.push({
+			atMs: p.atMs,
+			apply: () => sheet = flipped(sheet, p.uid)
+		});
+	}
+	events.sort((a, b) => a.atMs - b.atMs);
+	const seen = /* @__PURE__ */ new Set();
+	const addFindings = (list) => {
+		for (const f of list) {
+			const key = `${f.code}|${f.message}`;
+			if (!seen.has(key)) seen.add(key), res.findings.push(f);
+		}
+	};
+	let revision = 0;
+	let last = null;
+	let pins = {};
+	let seq = {};
+	let moving = [];
+	const findingsOf = (x) => x.status === "ok" ? x.result.findings : x.status === "failed" ? [x.finding, ...x.findings] : x.findings;
+	let kept = false;
+	const solveAt = async (t, keep = true) => {
+		last = await solve(sheet, o.engine, ++revision, {
+			library,
+			held,
+			runPins: pins,
+			moving,
+			runSeq: seq
+		});
+		res.solves.push({
+			t,
+			outcome: last.outcome
+		});
+		if (keep) kept = true, addFindings(findingsOf(last.outcome));
+		return last;
+	};
+	let notify = () => {};
+	const first = await solveAt(0, false);
+	const live = [];
+	const core = new RunCore();
+	for (const uid of o.boards) {
+		const part = sheet.parts.find((p) => p.uid === uid);
+		const b = {
+			uid,
+			ref: part?.designator ?? uid,
+			status: "not-started",
+			serial: []
+		};
+		res.boards.push(b);
+		const stored = part && sheet.modules[part.module];
+		const m = stored && withLibraryData(stored, library);
+		const kind = boardKindOf(m);
+		const why = !part || !m || !kind ? `${b.ref} is not a board that runs code` : !part.code ? `${b.ref} has no code` : !RUNNABLE.includes(part.code.language) || !languagesOf(m).includes(part.code.language) ? `${b.ref} cannot run its code (${part.code.language})` : !simOf(m)?.power ? `${b.ref} has no simulation data` : first.outcome.status !== "ok" || !boardPower(first.circuit, first.outcome.result, uid).powered ? NO_POWER(b.ref) : null;
+		if (why) {
+			res.incomplete.push({
+				uid,
+				why
+			});
+			continue;
+		}
+		const entry = {
+			b,
+			module: m,
+			blocked: null,
+			t: 0,
+			heard: performance.now(),
+			ended: false,
+			noted: false,
+			run: null
+		};
+		entry.run = new BoardRun({
+			board: kind,
+			source: part.code.source,
+			file: part.code.file ?? "main.py",
+			mode: "virtual",
+			py: o.py,
+			files: o.files,
+			spawn: o.spawn ?? spawnNodeCodeWorker,
+			on: (msg) => {
+				if (msg.type === "block") entry.blocked = {
+					nowMs: msg.nowMs,
+					untilMs: msg.untilMs
+				}, entry.t = msg.nowMs, entry.heard = performance.now();
+				else if (msg.type === "ready") entry.heard = performance.now();
+				else if (msg.type === "probe") b.probe = msg.probe;
+				else if (msg.type === "out") b.serial.push({
+					t: entry.t,
+					stream: msg.stream,
+					text: msg.text
+				});
+				else if (msg.type === "exit" || msg.type === "fatal") {
+					if (msg.type === "fatal") b.serial.push({
+						t: entry.t,
+						stream: "err",
+						text: `${msg.error}\n`
+					});
+					entry.ended = true;
+				}
+				notify();
+			}
+		});
+		live.push(entry);
+		core.add({
+			uid,
+			ref: b.ref,
+			memory: entry.run.memory,
+			module: m
+		});
+		entry.run.memory.f64[F.horizonMs] = Math.min(16, events[0]?.atMs ?? Infinity, o.forMs);
+		entry.run.start();
+	}
+	/** Resolves when every live board waits or has ended; stops a board that never pauses. */
+	const settle = () => new Promise((resolve) => {
+		const check = () => {
+			const now = performance.now();
+			for (const e of live) if (!e.ended && !e.blocked && e.run.status !== "starting" && now - e.heard > realLimit) {
+				e.ended = true;
+				e.b.serial.push({
+					t: e.t,
+					stream: "note",
+					text: `${NEVER_PAUSES(e.b.ref)}\n`
+				});
+				res.neverPauses.push(e.b.uid);
+				e.run.stop();
+			}
+			if (live.every((e) => e.ended || e.blocked)) {
+				clearInterval(timer);
+				notify = () => {};
+				resolve();
+			}
+		};
+		const timer = setInterval(check, 100);
+		notify = check;
+		check();
+	});
+	let T = 0;
+	const at = (b) => Math.max(T, live.find((e) => e.b.uid === b.uid)?.t ?? 0);
+	let pending = true;
+	let idle = 0;
+	const shown = /* @__PURE__ */ new Map();
+	for (;;) {
+		await settle();
+		for (const e of live) if (e.ended && core.boards.some((b) => b.uid === e.b.uid)) core.remove(e.b.uid);
+		const running = live.filter((e) => !e.ended);
+		if (!running.length) break;
+		T = Math.max(T, Math.min(...running.map((e) => e.blocked.nowMs)));
+		const s = core.sample(at);
+		addFindings(s.findings);
+		pins = s.pins;
+		seq = s.seq;
+		for (const [uid, byPin] of Object.entries(pins)) for (const [pin, st] of Object.entries(byPin)) {
+			const text = stateText(st);
+			if (shown.get(`${uid}|${pin}`) !== text) {
+				res.timeline.push({
+					t: T,
+					uid,
+					pin,
+					state: text
+				});
+				shown.set(`${uid}|${pin}`, text);
+			}
+		}
+		const sv = core.servos(sheet, last?.circuit ?? null, T, library);
+		addFindings(sv.findings);
+		const moved = JSON.stringify(sv.moving) !== JSON.stringify(moving);
+		moving = sv.moving;
+		let woke = false;
+		if (s.changed || pending || moved) {
+			pending = false;
+			woke = true;
+			const r = await solveAt(T);
+			const a = core.apply(r.outcome, r.circuit, seq, at);
+			addFindings(a.findings);
+			for (const e of running) {
+				const p = a.power[e.b.uid];
+				if (!p || e.ended) continue;
+				if (!p.powered) {
+					e.b.serial.push({
+						t: T,
+						stream: "note",
+						text: `${LOST_POWER(e.b.ref)}\n`
+					});
+					res.lostPower.push(e.b.uid);
+					e.ended = true;
+					await e.run.stop();
+				} else if (underVoltage(p) && !e.noted) {
+					e.noted = true;
+					e.b.serial.push({
+						t: T,
+						stream: "note",
+						text: `${underVoltageNote(e.b.ref, p.inputVolts)}\n`
+					});
+				}
+			}
+		}
+		for (const e of running) if (!e.ended && Atomics.load(e.run.memory.i32, H.inputState) === INPUT.waiting && o.inputs.length) {
+			writeLine(e.run.memory, o.inputs.shift());
+			woke = true;
+		}
+		if (T >= o.forMs) {
+			await Promise.all(running.filter((e) => !e.ended).map((e) => e.run.stop()));
+			break;
+		}
+		if (!woke) {
+			T = Math.max(T, Math.min(...running.filter((e) => !e.ended).map((e) => e.blocked.untilMs), events[0]?.atMs ?? Infinity, o.forMs));
+			while (events.length && events[0].atMs <= T) {
+				events.shift().apply();
+				pending = true;
+			}
+			if (pending || T >= o.forMs) continue;
+		}
+		if (++idle > 1e5) throw new Error(`the run made no progress at ${T} ms`);
+		if (!woke) idle = 0;
+		const horizon = Math.min(T + 16, events[0]?.atMs ?? Infinity, o.forMs);
+		for (const e of running) {
+			if (e.ended) continue;
+			e.blocked = null;
+			e.t = Math.max(e.t, T);
+			e.heard = performance.now();
+			grant(e.run.memory, T, horizon);
+		}
+	}
+	await Promise.all(live.map((e) => e.run.done));
+	if (!kept) addFindings(findingsOf(first.outcome));
+	for (const e of live) e.b.status = res.neverPauses.includes(e.b.uid) ? "error" : e.run.status;
+	res.simulatedMs = Math.min(T, o.forMs);
+	return res;
+}
+//#endregion
+//#region src/run/node/runProcess.ts
+var CHILD = "--circuitoon-run-child";
+/** Node 22.13 and newer: the permission model without the experimental flag. */
+var PERMISSION = process.allowedNodeEnvironmentFlags.has("--permission");
+/** A run's real-time cap: at least 120 s, or --for if longer, plus the never-pauses limit; the child is killed past it. */
+var RUN_REAL_CAP_MS = 12e4;
+var realOr = (p) => {
+	try {
+		return realpathSync(p);
+	} catch {
+		return p;
+	}
+};
+/** Why the child is not confined as it should be, or null. */
+function hole(p) {
+	if (PERMISSION && !p.permission) return "the permission model is off";
+	return sandboxHole(p);
+}
+/** Runs `job` in the confined child; `readPaths` are the extra folders it may read (Pyodide's). */
+async function runIsolated(job, readPaths) {
+	const file = fileURLToPath(import.meta.url);
+	const source = file.endsWith(".ts");
+	const here = dirname(file);
+	const given = [
+		source ? resolve(here, "..", "..") : here,
+		engineDir(),
+		...readPaths
+	].filter((p) => !!p);
+	const read = [...new Set(given.flatMap((p) => [p, realOr(p)]))];
+	const inside = (p) => read.some((r) => {
+		const rel = relative(r, p);
+		return rel === "" || !rel.startsWith("..") && !isAbsolute(rel);
+	});
+	const probe = [
+		homedir(),
+		process.cwd(),
+		...job.probe ?? []
+	].filter((p) => !inside(p));
+	const execArgv = [
+		"--disallow-code-generation-from-strings",
+		"--disable-warning=SecurityWarning",
+		...PERMISSION ? [
+			"--permission",
+			"--allow-worker",
+			...read.map((p) => `--allow-fs-read=${p}`)
+		] : [],
+		...source ? [`--import=${pathToFileURL(join(here, "sourceHooks.ts")).href}`] : []
+	];
+	const { NODE_OPTIONS: _, ...env } = process.env;
+	const child = fork(file, [CHILD], {
+		cwd: here,
+		execArgv,
+		env,
+		serialization: "advanced",
+		stdio: [
+			"ignore",
+			"ignore",
+			"pipe",
+			"ipc"
+		]
+	});
+	let err = "";
+	child.stderr.on("data", (b) => err += b.toString());
+	try {
+		const reply = await new Promise((ok, fail) => {
+			child.once("message", (m) => ok(m));
+			child.once("error", fail);
+			child.once("exit", (code) => fail(/* @__PURE__ */ new Error(`the run's process ended early (exit ${code})${err.trim() ? `: ${err.trim()}` : ""}`)));
+			const cap = Math.max(RUN_REAL_CAP_MS, job.forMs) + (job.realLimitMs ?? 5e3);
+			setTimeout(() => fail(/* @__PURE__ */ new Error(`the run took more than ${cap / 1e3} s of real time and was stopped`)), cap).unref();
+			child.send({
+				...job,
+				probe
+			});
+		});
+		const why = hole(reply.probe);
+		if (why) throw new Error(`the run's sandbox did not hold (${why}); not running the code`);
+		if (!reply.ok) throw new Error(reply.error);
+		return {
+			result: reply.result,
+			probe: reply.probe
+		};
+	} finally {
+		child.kill();
+	}
+}
+if (isMainThread && process.argv.includes(CHILD) && process.send) {
+	process.on("disconnect", () => process.exit(0));
+	process.once("message", (job) => {
+		const { modules, probe, ...o } = job;
+		const sandbox = probeSandbox(probe ?? []);
+		process.env[PROBE_ENV] = JSON.stringify(probe ?? []);
+		const send = (r) => process.send(r, () => process.exit(0));
+		if (hole(sandbox)) return send({
+			ok: false,
+			error: "not confined",
+			probe: sandbox
+		});
+		const engine = makeEngine(createNodeEngineHost());
+		drive({
+			...o,
+			engine,
+			library: (id) => Object.hasOwn(modules, id) ? modules[id] : void 0
+		}).then(({ solves: _, ...result }) => send({
+			ok: true,
+			result,
+			probe: sandbox
+		})).catch((e) => send({
+			ok: false,
+			error: e instanceof Error ? e.message : String(e),
+			probe: sandbox
+		})).finally(() => engine.dispose());
+	});
+}
+//#endregion
+//#region src/cli/runCmd.ts
+var RUN_FORMAT = "circuitoon-cli/run/1";
+var USAGE$1 = "run: usage: circuitoon run <sheet.json> [--board <ref>|all] [--for 5s] [--input \"line\"]... [--press S1@1.5s[:0.2s]]... [--json] [--py-dir <dir>]";
+function parseDuration(s) {
+	const m = /^(\d+(?:\.\d+)?)(ms|s)?$/.exec(s.trim());
+	return m ? Math.round(Number(m[1]) * (m[2] === "ms" ? 1 : 1e3)) : null;
+}
+function parsePress(spec) {
+	const m = /^([A-Za-z][A-Za-z0-9_]*)@([^:]+)(?::(.+))?$/.exec(spec);
+	const at = m ? parseDuration(m[2]) : null;
+	const len = m?.[3] === void 0 ? 200 : parseDuration(m[3]);
+	return m && at !== null && len !== null ? {
+		ref: m[1],
+		atMs: at,
+		forMs: len
+	} : null;
+}
+var secs = (ms) => `${(ms / 1e3).toFixed(3)} s`;
+async function runCommand(args, io, opts = {}) {
+	const [input, ...rest] = args.positionals;
+	if (!input || rest.length) throw new CliError(USAGE$1, EXIT.input);
+	const json = args.flags.has("--json");
+	const forArg = flag(args, "--for");
+	const forMs = forArg === void 0 ? 5e3 : parseDuration(forArg);
+	if (forMs === null || forMs <= 0 || forMs > 6e5) throw new CliError(`run: --for ${forArg}: give a time from 1ms to 600s, such as 5s`, EXIT.input);
+	const { diagram: d, warnings } = loadSheet(io, input);
+	for (const w of warnings) io.stderr(`warning: ${w}\n`);
+	const byRef = new Map(d.parts.map((p) => [p.designator, p]));
+	const presses = [];
+	for (const spec of args.lists?.get("--press") ?? []) {
+		const p = parsePress(spec);
+		if (!p) throw new CliError(`run: --press ${spec}: write it as REF@TIME[:LENGTH], such as S1@1.5s:0.2s`, EXIT.input);
+		const part = byRef.get(p.ref);
+		if (!part) throw new CliError(`run: --press ${spec}: there is no ${p.ref} on the sheet`, EXIT.input);
+		if (p.atMs >= forMs) throw new CliError(`run: --press ${spec}: it is at or after the end of the run (${forMs / 1e3} s); make --for longer`, EXIT.input);
+		const groups = switchGroups(d.modules[part.module]);
+		if (!groups.some((g) => g.kind === "switch")) throw new CliError(`run: --press ${spec}: ${p.ref} is not a switch or button`, EXIT.input);
+		const button = groups.some((g) => g.momentary);
+		if (button && p.forMs <= 0) throw new CliError(`run: --press ${spec}: a button press needs a length, such as ${p.ref}@${spec.split("@")[1].split(":")[0]}:0.2s`, EXIT.input);
+		presses.push({
+			uid: part.uid,
+			atMs: p.atMs,
+			forMs: button ? p.forMs : 0
+		});
+	}
+	const held = presses.filter((p) => p.forMs > 0).sort((a, b) => a.atMs - b.atMs);
+	for (let i = 1; i < held.length; i++) if (held[i].atMs < held[i - 1].atMs + held[i - 1].forMs) throw new CliError("run: two --press button presses overlap; one button is held at a time", EXIT.input);
+	const coded = d.parts.filter((p) => p.code);
+	const board = flag(args, "--board") ?? "all";
+	let boards;
+	if (board === "all") boards = coded.map((p) => p.uid);
+	else {
+		const p = byRef.get(board);
+		if (!p?.code) throw new CliError(`run: --board ${board}: no board ${board} with code on the sheet`, EXIT.input);
+		boards = [p.uid];
+	}
+	if (!boards.length) {
+		const names = d.parts.filter((p) => boardKindOf(d.modules[p.module])).map((p) => p.designator);
+		if (json) printJson(io, {
+			format: RUN_FORMAT,
+			ok: false,
+			exit: EXIT.environment,
+			simulatedSeconds: 0,
+			boards: [],
+			timeline: [],
+			findings: [],
+			incomplete: names.map((ref) => ({
+				ref,
+				why: `${ref} has no code`
+			})),
+			neverPauses: [],
+			lostPower: []
+		});
+		io.stderr(`${names.length ? names.map((n) => `${n} has no code`).join("\n") : "The sheet has no board with code"}\n`);
+		return EXIT.environment;
+	}
+	let py;
+	try {
+		const pyDir = flag(args, "--py-dir");
+		py = await ensurePy({
+			...pyDir ? { pyDir: pathIn(io, pyDir) } : { cacheDir: cacheRoot(io.env) },
+			...opts.fetch ? { fetch: opts.fetch } : {}
+		});
+	} catch (e) {
+		throw new CliError(e instanceof Error ? e.message : String(e), EXIT.environment);
+	}
+	const modules = {};
+	for (const id of Object.keys(d.modules)) {
+		const m = libraryLookup(id);
+		if (m) modules[id] = m;
+	}
+	const { result: r } = await runIsolated({
+		diagram: d,
+		boards,
+		forMs,
+		inputs: [...args.lists?.get("--input") ?? []],
+		presses,
+		py: {
+			indexURL: py.indexURL,
+			lock: py.lock
+		},
+		files: PY_FILES,
+		modules,
+		...opts.realLimitMs ? { realLimitMs: opts.realLimitMs } : {}
+	}, [py.dir]);
+	const refOf = (uid) => d.parts.find((p) => p.uid === uid)?.designator ?? uid;
+	const blocking = r.findings.some((f) => f.severity === "error");
+	const code = r.boards.some((b) => b.status === "error") || r.lostPower.length > 0 || r.neverPauses.length > 0 || blocking ? EXIT.blocked : r.incomplete.length ? EXIT.environment : EXIT.ok;
+	if (json) {
+		printJson(io, {
+			format: RUN_FORMAT,
+			ok: code === EXIT.ok,
+			exit: code,
+			simulatedSeconds: r.simulatedMs / 1e3,
+			boards: r.boards.map((b) => ({
+				ref: b.ref,
+				status: b.status,
+				serial: b.serial.map((s) => ({
+					t: s.t / 1e3,
+					stream: s.stream,
+					text: s.text
+				}))
+			})),
+			timeline: r.timeline.map((e) => ({
+				t: e.t / 1e3,
+				ref: refOf(e.uid),
+				pin: e.pin,
+				state: e.state
+			})),
+			findings: r.findings,
+			incomplete: r.incomplete.map((x) => ({
+				ref: refOf(x.uid),
+				why: x.why
+			})),
+			neverPauses: r.neverPauses.map(refOf),
+			lostPower: r.lostPower.map(refOf)
+		});
+		return code;
+	}
+	const lines = [];
+	for (const b of r.boards) {
+		lines.push(`${b.ref}: ${b.status === "not-started" ? "did not start" : b.status} (${secs(r.simulatedMs)} simulated)`);
+		for (const s of b.serial) for (const t of s.text.replace(/\n$/, "").split("\n")) lines.push(`  [${secs(s.t)}] ${s.stream === "err" ? "error: " : s.stream === "note" ? "note: " : ""}${t}`);
+	}
+	for (const x of r.incomplete) lines.push(x.why);
+	if (r.timeline.length) lines.push("Pins:", ...r.timeline.map((e) => `  ${secs(e.t).padStart(9)}  ${refOf(e.uid)} ${e.pin} ${e.state}`));
+	if (r.findings.length) lines.push("Findings:", ...r.findings.map((f) => `  ${f.severity}: ${f.message}`));
+	io.stdout(`${lines.join("\n")}\n`);
+	return code;
+}
+//#endregion
 //#region src/cli/main.ts
 var USAGE = `circuitoon <command> [options]
 
@@ -96311,6 +98669,9 @@ var USAGE = `circuitoon <command> [options]
   sim <sheet.json|netlist.json> [--probe <ref[.pin]|net:NAME>]...
                                             solve the sheet as a DC circuit in its saved switch and GPIO state:
                                             the outcome JSON on stdout (simulation findings only), a summary on stderr
+  run <sheet.json> [--board <ref>|all] [--for 5s] [--input "line"]... [--press S1@1.5s[:0.2s]]... [--json] [--py-dir <dir>]
+                                            run the boards' code (Raspberry Pi Python) on a virtual clock with the live simulation:
+                                            Serial, a pin timeline and the findings; Python downloads once from the Circuitoon site
   module new [--spec <spec.json>] [-o <part.json>] [--json]
                                             a custom part from a part spec (or the spec on standard input), with Sticker art
   module check <part.json> [--json]         lint a part: duplicate pins, art against pins, impossible caps, untyped power pins
@@ -96335,6 +98696,7 @@ var COMMANDS = {
 	update: updateCommand,
 	gate: gateCommand,
 	sim: simCommand,
+	run: runCommand,
 	module: moduleCommand
 };
 var CODE_OF = {

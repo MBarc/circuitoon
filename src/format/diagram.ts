@@ -11,7 +11,8 @@ import { seatedLabels } from './seatedLabels.ts'
 import { LABEL_VALUE, flagRect } from './netLabels.ts'
 import { annotationRect, frameTab } from '../render/annotationGeometry.ts'
 import { isSimValueKey, simValueProblem, switchGroups } from './simState.ts'
-import { withLibrarySim } from './simModel.ts'
+import { type PartCode, checkCode, languageMismatch } from './code.ts'
+import { withLibraryData } from './simModel.ts'
 import { type BoardStrip, exitDirt, holeExits } from './boardEntry.ts'
 
 /** How every load warning about a dropped value override ends: the part now shows its module
@@ -32,6 +33,8 @@ export interface PartInstance {
   settings?: Record<string, string>
   /** The board this part is plugged into. Its pins join the hole groups their plug points sit on. */
   mount?: { board: string }
+  /** Code on a board (firmware spec 3.1), saved with the sheet. */
+  code?: PartCode
 }
 export interface Endpoint {
   part: string
@@ -1442,7 +1445,7 @@ function probeProblem(p: unknown, ids: Set<string>, pinsOf: (uid: string) => Set
  * Checks a parsed diagram file. Structural problems refuse the load (errors); a connection
  * that names a missing part or pin still loads (warning), so no wire is silently dropped.
  * `library` is the built-in parts: a saved sim value is checked against the library's sim data
- * (withLibrarySim), so a copy saved before the library had it keeps its values. Pass it on every load.
+ * (withLibraryData), so a copy saved before the library had it keeps its values. Pass it on every load.
  */
 export function validateDiagram(raw: unknown, opts: { library?: (id: string) => ModuleDef | undefined } = {}): DiagramResult {
   const errors: string[] = []
@@ -1508,11 +1511,11 @@ export function validateDiagram(raw: unknown, opts: { library?: (id: string) => 
           const who = typeof p.designator === 'string' && p.designator !== '' ? p.designator : `part ${i}`
           const dropped: string[] = []
           const stored = typeof p.module === 'string' ? modules.get(p.module) : undefined
-          const simModule = stored && withLibrarySim(stored, opts.library)
+          const dataModule = stored && withLibraryData(stored, opts.library)
           for (const [key, entry] of Object.entries(p.values)) {
             // Simulation state and overrides (spec 3.5, 4.0, 4.6; ruling R24): a bad one is dropped.
             if (isSimValueKey(key)) {
-              const problem = simValueProblem(key, entry, simModule)
+              const problem = simValueProblem(key, entry, dataModule)
               if (problem) {
                 dropped.push(key)
                 warnings.push(`${at}.values.${key}: ${who} has ${key} ${JSON.stringify(entry)}, but ${problem.text}; ${problem.electrical ? VALUE_DROPPED : 'it was dropped, so the default state is used'}`)
@@ -1585,6 +1588,17 @@ export function validateDiagram(raw: unknown, opts: { library?: (id: string) => 
           }
           if (changed) fix(i, { settings: Object.keys(kept).length ? kept : undefined })
         }
+      }
+      // Code on a board (firmware spec 3.1): bad code is dropped with a warning naming the part.
+      if (p.code !== undefined) {
+        const who = typeof p.designator === 'string' && p.designator !== '' ? p.designator : `part ${i}`
+        const r = checkCode(p.code, who)
+        for (const w of r.warnings) warnings.push(`${at}.code: ${w}`)
+        if (r.code !== p.code) fix(i, { code: r.code ?? undefined })
+        // A known language this board does not take is kept (spec 3.1) and said once.
+        const lm = typeof p.module === 'string' ? modules.get(p.module) : undefined
+        const mismatch = r.code && lm ? languageMismatch(who, withLibraryData(lm, opts.library), r.code.language) : null
+        if (mismatch) warnings.push(`${at}.code: ${mismatch}`)
       }
     })
 

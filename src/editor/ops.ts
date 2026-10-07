@@ -11,8 +11,9 @@ import { editableParams, paramValue } from '../format/values.ts'
 import { normalizeEnds, type WireEnds } from '../format/cables.ts'
 import { mainsOf } from '../format/mainsModel.ts'
 import { GPIO_CYCLE, GPIO_STATES, type GpioState, contactPosition, gpioProblem, gpioState, isActive, switchGroups } from '../format/simState.ts'
-import { simOf, withLibrarySim } from '../format/simModel.ts'
+import { simOf, withLibraryData } from '../format/simModel.ts'
 import { libraryLookup } from '../agent/catalog.ts'
+import type { PartCode } from '../format/code.ts'
 
 export interface Selection {
   parts: string[]
@@ -547,10 +548,10 @@ export function updatePartSetting(d: Diagram, uid: string, name: string, choice:
   return { ...d, parts: d.parts.map((p) => (p.uid === uid ? { ...p, settings: { ...p.settings, [name]: choice } } : p)) }
 }
 
-/** A sheet module as the simulation reads it: a built-in part takes the library's sim (withLibrarySim), so an old sheet's copy still has its GPIOs. */
+/** A sheet module as the simulation reads it: a built-in part takes the library's sim (withLibraryData), so an old sheet's copy still has its GPIOs. */
 export function simModule(d: Diagram, id: string): ModuleDef | undefined {
   const m = moduleOf(d, id)
-  return m && withLibrarySim(m, libraryLookup)
+  return m && withLibraryData(m, libraryLookup)
 }
 
 /** The GPIO states a pin can take: its caps and the module's sim.gpio (a pull it does not state) forbid the rest. */
@@ -595,4 +596,19 @@ export function cycleGpio(d: Diagram, uid: string, pin: string): Diagram | null 
   const allowed = gpioChoices(m, pin).filter((s) => GPIO_CYCLE.includes(s))
   const next = allowed[(allowed.indexOf(now ?? allowed[allowed.length - 1]) + 1) % allowed.length]
   return next && next !== now ? setSimValue(d, uid, `gpio.${pin}`, next) : null
+}
+
+/** Sets a board's code (firmware spec 3.1), or removes it with undefined. Same diagram when nothing changes. */
+export function setPartCode(d: Diagram, uid: string, code: PartCode | undefined): Diagram {
+  const part = d.parts.find((p) => p.uid === uid)
+  if (!part) return d
+  if (code === undefined ? part.code === undefined : part.code !== undefined && part.code.language === code.language && part.code.source === code.source && part.code.file === code.file) return d
+  return {
+    ...d,
+    parts: d.parts.map((p) => {
+      if (p.uid !== uid) return p
+      const { code: _old, ...rest } = p
+      return code === undefined ? rest : { ...rest, code }
+    }),
+  }
 }

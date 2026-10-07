@@ -90,7 +90,8 @@ describe('power models', () => {
     expect([none.devices, none.domains, none.unsimulated]).toEqual([[], [], [{ part: 'h1', reason: 'no voltage value' }]])
   })
   it('does not simulate USB power from a host with no power data, or through a hub (ruling R7)', () => {
-    const c = buildCircuit(sheet([{ uid: 'j1', module: 'rpi-4-model-b' }, { uid: 'u1', module: boardModule() }], [['j1.USB2-1', 'u1.USB']]))
+    const bare = { ...hostModule('test-host-nodata'), electrical: { model: 'computer' } }
+    const c = buildCircuit(sheet([{ uid: 'j1', module: bare }, { uid: 'u1', module: boardModule() }], [['j1.USB', 'u1.USB']]))
     expect(c.unsimulated).toContainEqual({ part: 'u1', reason: 'powered from J1 over USB, which has no power data' })
     // P1 is a downstream (host-role) port of the hub.
     const h = buildCircuit(sheet([{ uid: 'x1', module: 'usb-hub-powered-4port' }, { uid: 'u1', module: boardModule() }], [['x1.P1', 'u1.USB']]))

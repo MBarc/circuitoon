@@ -1,6 +1,7 @@
 // What the editor and the CLI show of a simulation, kept apart from the compute code so the editor's
 // main bundle can import it (spec 8: the solver, the findings and the engine load lazily). Type
 // imports only. Pure.
+import type { RunCode } from '../run/core.ts'
 import type { SimCode } from './results.ts'
 
 export const SIM_TITLES: Record<SimCode, string> = {
@@ -17,7 +18,11 @@ export const SIM_TITLES: Record<SimCode, string> = {
   'sim-no-convergence': 'Could not be solved',
   'sim-incomplete': 'Not simulated',
   'sim-estimate': 'Estimates used',
+  'pwm-approximate': 'PWM average is approximate',
 }
+
+/** Titles of the findings code raises while it runs (firmware spec 4.3). */
+export const RUN_TITLES: Record<RunCode, string> = { 'undefined-level': 'Between logic levels', 'floating-read': 'Reads a floating pin', 'servo-signal': 'Servo signal out of range' }
 
 /** An LED is drawn lit above this current (ruling R18). */
 export const LIT_AMPS = 1e-4

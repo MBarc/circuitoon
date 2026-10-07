@@ -11,6 +11,7 @@ import { type Classification, deviceNodes, inputPowered, openSwitchFor, pinState
 import { LED_FIT_AMPS, diodeVoltage } from './ledModels.ts'
 import { type Circuit, type Corner, type Device, type Param, type ResolvedLimit, indexOf, netNode } from './model.ts'
 import { type Outside, type SimCode, type SimFinding, basisOf } from './results.ts'
+import type { PwmPlan } from './pwm.ts'
 import { type RawRun, enableValue } from './spice.ts'
 
 export { SIM_TITLES } from './display.ts'
@@ -28,6 +29,8 @@ export interface Draft {
   pins?: { part: string; pin: string }[]
   /** An over-limit reading's ratio to its limit (sim-over-abs-max: past 2x, a representative limit still blocks). */
   overBy?: number
+  /** How far past its limit (larger is worse), so the union over PWM runs keeps the worst reading (firmware spec 4.2). */
+  worse?: number
 }
 
 export const V = (x: number) => formatValue(Number(x.toPrecision(3)), 'V')
@@ -343,7 +346,7 @@ export function runDrafts(c: Circuit, cls: Classification, raw: RawRun, corner: 
         return { value: x, what: (q) => `${r} ${name} is at ${q}`, unit: 'V' }
       }
       if (l.kind === 'ioTotalCurrent') {
-        const outs = c.gpio.filter((g) => g.part === l.part && g.domain === name && (g.state === 'high' || g.state === 'low'))
+        const outs = c.gpio.filter((g) => g.part === l.part && g.domain === name && (g.state === 'high' || g.state === 'low' || g.state === 'pwm'))
         const sum = outs.reduce((s, g) => s + Math.abs(pinI(g.part, g.pin) ?? 0), 0)
         const pins = outs.filter((g) => Math.abs(pinI(g.part, g.pin) ?? 0) > 0).map((g) => ({ part: g.part, pin: g.pin }))
         return { value: sum, what: (q) => `${r}'s GPIO pins on ${name} carry ${q} in all`, unit: 'A', ...(pins.length ? { pins } : {}) }
@@ -414,20 +417,20 @@ export function runDrafts(c: Circuit, cls: Classification, raw: RawRun, corner: 
     if (under ? m.value >= l.value.value : m.value <= l.value.value) continue
     const advice = l.kind === 'current' ? ledAdvice(l.part, l.value.value) : ''
     add({
-      code: 'sim-over-limit', severity: 'warning', parts: [l.part], inputs: [l.value], key: `limit|${subject(l)}|${l.kind}`, ...(m.pins ? { pins: m.pins } : {}),
+      code: 'sim-over-limit', severity: 'warning', parts: [l.part], inputs: [l.value], key: `limit|${subject(l)}|${l.kind}`, worse: under ? l.value.value / m.value : m.value / l.value.value, ...(m.pins ? { pins: m.pins } : {}),
       message: `${m.what(past(m.value, l.value.value, m.unit))}, ${under ? 'below' : 'above'} its ${fmt(l.value.value, m.unit)} ${under ? 'minimum' : 'rating'}${cond(l)}.${advice}`,
     })
   }
   for (const d of c.devices)
     if (d.kind === 'cell' && d.role === 'external' && d.imax && (raw.dev[d.id] ?? 0) > d.imax.value)
-      add({ code: 'sim-over-limit', severity: 'warning', parts: [d.part], inputs: [d.imax], key: `imax|${d.id}`, message: `${ref(d.part)} delivers ${past(raw.dev[d.id], d.imax.value, 'A')}, above the ${A(d.imax.value)} it can supply.` })
+      add({ code: 'sim-over-limit', severity: 'warning', parts: [d.part], inputs: [d.imax], key: `imax|${d.id}`, worse: raw.dev[d.id] / d.imax.value, message: `${ref(d.part)} delivers ${past(raw.dev[d.id], d.imax.value, 'A')}, above the ${A(d.imax.value)} it can supply.` })
   for (const u of c.usb) {
     // The cable joins the two port nets (net nodes).
     const cable = c.devices.find((x) => x.id === u.vbus)
     if (cable?.kind !== 'resistor' || !cls.driven.has(cable.a) || !solved(cable.a) || !solved(cable.b)) continue
     const i = (v(cable.a) - v(cable.b)) / Math.max(cable.ohms.value, 1e-6)
     if (i > u.limit.value)
-      add({ code: 'sim-over-limit', severity: 'warning', parts: [u.host, u.device], inputs: [u.limit], key: `usb|${u.vbus}`, message: `${ref(u.host)} ${u.hostPort} supplies ${past(i, u.limit.value, 'A')} over USB to ${ref(u.device)}, above the ${A(u.limit.value)} the port gives.` })
+      add({ code: 'sim-over-limit', severity: 'warning', parts: [u.host, u.device], inputs: [u.limit], key: `usb|${u.vbus}`, worse: i / u.limit.value, message: `${ref(u.host)} ${u.hostPort} supplies ${past(i, u.limit.value, 'A')} over USB to ${ref(u.device)}, above the ${A(u.limit.value)} the port gives.` })
   }
 
   /** An open switch on `net` (a net node) whose closing would power a load that is unpowered now. */
@@ -448,8 +451,8 @@ export function runDrafts(c: Circuit, cls: Classification, raw: RawRun, corner: 
     const expecting = c.devices.filter((x) => (x.kind === 'load' && netOf(x.p) === outNet) || ((x.kind === 'resistor' || x.kind === 'diode') && x.role === 'rail-input' && netOf(x.a) === outNet))
     if (r.ioutMax && iout > r.ioutMax.value) {
       outside.add(d.id)
-      add({ code: 'sim-outside-model', severity: 'warning', parts: [d.part], inputs: [r.ioutMax], key: `outside|${d.id}`, message: `${name} supplies ${past(iout, r.ioutMax.value, 'A')}, beyond the ${A(r.ioutMax.value)} its model covers: its voltages, and the readings upstream of it, cannot be trusted.` })
-      add({ code: 'sim-over-limit', severity: 'warning', parts: [d.part], inputs: [r.ioutMax], key: `iout|${d.id}`, message: `${name} supplies ${past(iout, r.ioutMax.value, 'A')}, above its ${A(r.ioutMax.value)} rating.` })
+      add({ code: 'sim-outside-model', severity: 'warning', parts: [d.part], inputs: [r.ioutMax], key: `outside|${d.id}`, worse: iout / r.ioutMax.value, message: `${name} supplies ${past(iout, r.ioutMax.value, 'A')}, beyond the ${A(r.ioutMax.value)} its model covers: its voltages, and the readings upstream of it, cannot be trusted.` })
+      add({ code: 'sim-over-limit', severity: 'warning', parts: [d.part], inputs: [r.ioutMax], key: `iout|${d.id}`, worse: iout / r.ioutMax.value, message: `${name} supplies ${past(iout, r.ioutMax.value, 'A')}, above its ${A(r.ioutMax.value)} rating.` })
     }
     const vin = v(d.in) - v(d.inRet)
     if (r.kind === 'ldo' && solved(d.ctl)) {
@@ -457,7 +460,7 @@ export function runDrafts(c: Circuit, cls: Classification, raw: RawRun, corner: 
       // An output held more than 10 mV above Vctl is backfed by another supply (a DevKit's own LDO
       // behind its 3V3 pin fed from outside): the regulator delivers nothing, so it is not in dropout.
       if (vctl < r.vout!.value - 0.01 && v(d.out) - v(d.ret) <= vctl + 0.01)
-        add({ code: 'sim-dropout', severity: 'error', parts: [d.part], inputs: [r.vout!, r.dropout!, ...loads.map((l) => (corner === 'peak' ? l.peak : l.typical))], key: `dropout|${d.id}`, message: `${name} cannot hold ${V(r.vout!.value)}: its input is too low (${V(vin)}), so its output follows it down to about ${V(vctl)}.` })
+        add({ code: 'sim-dropout', severity: 'error', parts: [d.part], inputs: [r.vout!, r.dropout!, ...loads.map((l) => (corner === 'peak' ? l.peak : l.typical))], key: `dropout|${d.id}`, worse: r.vout!.value / Math.max(vctl, 1e-9), message: `${name} cannot hold ${V(r.vout!.value)}: its input is too low (${V(vin)}), so its output follows it down to about ${V(vctl)}.` })
     }
     let enabled = true
     if (r.kind === 'buck' || r.kind === 'boost') {
@@ -507,7 +510,7 @@ export function runDrafts(c: Circuit, cls: Classification, raw: RawRun, corner: 
     }
     const x = v(l.p) - v(l.n)
     if (x < l.minVolts.value)
-      add({ code: 'sim-brownout', severity: 'error', parts: [l.part], inputs: [corner === 'peak' ? l.peak : l.typical, l.minVolts], key: `brownout|${l.id}`, message: `${ref(l.part)} ${l.domain} is at ${past(x, l.minVolts.value, 'V')}, below the ${V(l.minVolts.value)} it needs: it browns out.` })
+      add({ code: 'sim-brownout', severity: 'error', parts: [l.part], inputs: [corner === 'peak' ? l.peak : l.typical, l.minVolts], key: `brownout|${l.id}`, worse: l.minVolts.value / Math.max(x, 1e-9), message: `${ref(l.part)} ${l.domain} is at ${past(x, l.minVolts.value, 'V')}, below the ${V(l.minVolts.value)} it needs: it browns out.` })
   }
   return { drafts, outside }
 }
@@ -554,16 +557,41 @@ export function propagate(c: Circuit, rails: Set<string>): Outside {
   return { nets, parts, rails: marked }
 }
 
-/** Every finding of a solve, and what is outside the model (spec 4.1, 4.2, 4.5, 5.2). */
-export function analyseFindings(c: Circuit, cls: Classification, raws: Record<Corner, RawRun>, topo = topologyFindings(c, cls)): { findings: SimFinding[]; outside: Outside } {
-  const typical = runDrafts(c, cls, raws.typical, 'typical')
-  const peak = runDrafts(c, cls, raws.peak, 'peak')
-  const outside = propagate(c, new Set([...topo.shortedRails, ...typical.outside, ...peak.outside]))
+/** pwm-approximate (firmware spec 4.2, ruling R6): one note per group of two or more PWM pins. */
+function approximateDrafts(c: Circuit, plan: PwmPlan | null): Draft[] {
+  return (plan?.approximate ?? []).map((g) => {
+    const parts = [...new Set(g.map((p) => p.part))]
+    const who = parts.map((part) => `${refOf(c, part)} ${andList(g.filter((p) => p.part === part).map((p) => p.pin))}`)
+    return {
+      code: 'pwm-approximate', severity: 'note', parts, pins: g.map((p) => ({ part: p.part, pin: p.pin })), inputs: [], key: `pwm-approximate|${g.map((p) => p.id).join('|')}`,
+      message: `${andList(who)} share part of the circuit, so their averaged readings assume their PWM cycles overlap at random; the real overlap depends on timing and may differ.`,
+    }
+  })
+}
+
+/**
+ * Every finding of a solve made of several runs (firmware spec 4.2): the union over each corner's
+ * runs, one finding per key keeping the worst reading, plus pwm-approximate; and what is outside the
+ * model in any run.
+ */
+export function analyseRuns(c: Circuit, cls: Classification, runs: Record<Corner, RawRun[]>, topo = topologyFindings(c, cls), plan: PwmPlan | null = null): { findings: SimFinding[]; outside: Outside } {
+  const typical = runs.typical.map((raw) => runDrafts(c, cls, raw, 'typical'))
+  const peak = runs.peak.map((raw) => runDrafts(c, cls, raw, 'peak'))
+  const outside = propagate(c, new Set([...topo.shortedRails, ...[...typical, ...peak].flatMap((r) => [...r.outside])]))
   // Spec 4.5: the peak's short label ("Wi-Fi transmit"), never its datasheet citation; none, "At peak" alone.
   const peakLabel = [...new Set(c.devices.flatMap((d) => (d.kind === 'load' && d.peakLabel ? [d.peakLabel] : [])))].join(', ')
   // A shorted source's sim-short says it all: its delivered current over a rating (any subject but a
   // pin) is the short's current, so it is not repeated as sim-over-limit.
   const shorted = new Set(topo.drafts.filter((d) => d.code === 'sim-short').map((d) => d.parts[0]))
-  const value = [...typical.drafts, ...peak.drafts].filter((d) => !(d.code === 'sim-over-limit' && shorted.has(d.parts[0]) && !d.pins))
-  return { findings: finalize([...topo.drafts, ...value], peakLabel), outside }
+  // Worst first within each corner: finalize keeps the first draft per key (its corner sort is stable).
+  const value = [...typical, ...peak]
+    .flatMap((r) => r.drafts)
+    .filter((d) => !(d.code === 'sim-over-limit' && shorted.has(d.parts[0]) && !d.pins))
+    .sort((a, b) => (b.worse ?? b.overBy ?? 0) - (a.worse ?? a.overBy ?? 0))
+  return { findings: finalize([...topo.drafts, ...approximateDrafts(c, plan), ...value], peakLabel), outside }
+}
+
+/** Every finding of a single-run solve (spec 4.1, 4.2, 4.5, 5.2), and what is outside the model. */
+export function analyseFindings(c: Circuit, cls: Classification, raws: Record<Corner, RawRun>, topo = topologyFindings(c, cls)): { findings: SimFinding[]; outside: Outside } {
+  return analyseRuns(c, cls, { typical: [raws.typical], peak: [raws.peak] }, topo)
 }

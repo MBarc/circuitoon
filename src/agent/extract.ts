@@ -160,7 +160,7 @@ export function extractNetlist(d: Diagram, warn?: (message: string) => void): Re
       const board = p.mount?.board
       const on = board !== undefined ? refOf.get(board) : undefined
       const settings = settingsOf(p, moduleOf(d, p.module)!)
-      return { ref: refOf.get(p.uid)!, module: p.module, ...(p.values && Object.keys(p.values).length ? { values: p.values } : {}), ...(settings ? { settings } : {}), ...(on ? { on } : {}) }
+      return { ref: refOf.get(p.uid)!, module: p.module, ...(p.values && Object.keys(p.values).length ? { values: p.values } : {}), ...(settings ? { settings } : {}), ...(on ? { on } : {}), ...(p.code ? { code: p.code } : {}) }
     }),
     nets: order.map((i) => ({ name: named[i]!, pins: nets[i].pins.map((p) => `${p.ref}.${p.name}`) })),
     ...(Object.keys(color).length || ends ? { wires: { ...(Object.keys(color).length ? { color } : {}), ...(ends ? { ends } : {}) } } : {}),

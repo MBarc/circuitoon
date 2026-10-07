@@ -137,3 +137,11 @@ export function simOverride(part: { values?: Record<string, unknown> }, key: str
   const v = part.values?.[key]
   return isObj(v) && isNum(v.value) ? v.value : null
 }
+
+/**
+ * A running board's GPIO state for one solve (firmware spec 2.3, 4.1): a saved state's name, or PWM
+ * with its duty. Transient, like a held button: passed as BuildOptions.runPins, never saved.
+ */
+export type RunPinState = GpioState | { pwm: number }
+/** Run pin states by part uid, then pin name. */
+export type RunPins = Record<string, Record<string, RunPinState>>

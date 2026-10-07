@@ -4,6 +4,7 @@
 // Without -o the netlist is printed; with it, written, and a one-line summary printed. A sheet that
 // does not load is invalid input (exit 2).
 import { extractNetlist } from '../agent/extract.ts'
+import { writeCode } from './codeFiles.ts'
 import type { Args } from './args.ts'
 import { CliError, EXIT, type Io, flag, loadSheet, printJson, writeFile } from './io.ts'
 
@@ -17,6 +18,7 @@ export function netlistCommand(args: Args, io: Io): number {
   for (const w of warnings) io.stderr(`warning: ${w}\n`)
   const netlist = extractNetlist(diagram, (w) => io.stderr(`warning: ${w}\n`)) as { parts: unknown[]; nets: unknown[] }
   const out = flag(args, '--out') ?? null
+  if (out) writeCode(netlist as { parts: Record<string, unknown>[] }, out, io)
   const text = `${JSON.stringify(netlist, null, 2)}\n`
   if (out) writeFile(io, out, text)
   if (args.flags.has('--json')) printJson(io, { format: NETLIST_CMD_FORMAT, ok: true, sheet: input, output: out, netlist })
