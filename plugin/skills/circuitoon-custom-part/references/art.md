@@ -81,7 +81,7 @@ Round pads, one per pin (Adafruit style): per pin `{ "x": 2, "y": <pin y - 4>, "
 ]
 ```
 
-The round screw heads with their slot sit over each pin's row; the dark squares at the edge are the wire openings. Use #2E9E5B for a green block.
+The round screw heads with their slot sit over each pin's row; the dark squares at the edge are the wire openings. Use #2E9E5B for a green block. With `"pinLabels": "inside"` the pin names are written on the block near the edge: leave out the openings and keep the screw heads 20 px or more from the edge.
 
 ### 3.5 mm audio jack, opening on the left edge (on a 60 x 40 board)
 

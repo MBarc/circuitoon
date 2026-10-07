@@ -166,14 +166,6 @@ export function PartMaker({ editing, taken, onSave, onExport, onCancel, extra, i
           <label className="field">Typical uses <span className="pm-opt">comma separated, optional</span>
             <input data-testid="pm-uses" value={draft.uses} placeholder="battery monitor, solar logger" onChange={(e) => update({ ...draft, uses: e.target.value })} />
           </label>
-          {draft.art && (
-            <div className="pm-limited" role="note" data-testid="pm-art-kept">
-              <p>Custom art kept: this part has its own drawing, made from its spec. Pins you add or move are placed on it, so check the preview. The style, colour and size come from the drawing.</p>
-              <button type="button" className="tool small" onClick={() => {
-                if (window.confirm(`Replace the drawing of ${draft.name.trim() || 'this part'} with the part maker's plain board or chip? Its own art is dropped when you save.`)) update({ ...draft, art: undefined })
-              }}>Use the plain drawing</button>
-            </div>
-          )}
           <fieldset className="pm-style" disabled={pinsOnly || !!draft.art}>
             <legend>Drawn as</legend>
             {(['board', 'chip'] as PartStyle[]).map((s) => (
@@ -218,6 +210,14 @@ export function PartMaker({ editing, taken, onSave, onExport, onCancel, extra, i
               <button type="button" className="tool small" onClick={() => {
                 if (window.confirm(`Convert ${editing?.module.name} to a plain custom part? It is redrawn by the part maker, and saving drops: ${limited.join(', ')}.`)) setConverted(true)
               }}>Convert to a plain custom part</button>
+            </div>
+          )}
+          {draft.art && (
+            <div className="pm-limited" role="note" data-testid="pm-art-kept">
+              <p>Custom art kept: this part has its own drawing, made from its spec. Pins you add or move are placed on it, so check the preview. The style, colour and size come from the drawing.</p>
+              <button type="button" className="tool small" onClick={() => {
+                if (window.confirm(`Replace the drawing of ${draft.name.trim() || 'this part'} with the part maker's plain board or chip? Its own art is dropped when you save.`)) update({ ...draft, art: undefined })
+              }}>Use the plain drawing</button>
             </div>
           )}
           <SidePicker

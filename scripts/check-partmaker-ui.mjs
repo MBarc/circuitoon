@@ -305,6 +305,45 @@ const res = await page.evaluate(() => JSON.parse(localStorage.getItem('circuitoo
 check(res?.electrical?.params?.resistance?.default === JSON.parse(readFileSync('modules/resistor.json', 'utf8')).electrical.params.resistance.default, 'a no-op save keeps its resistance')
 await (await openActions('Resistor (1/4 W)')).getByRole('button', { name: 'Delete' }).click()
 
+// ---- A part with its own art (a spec's `art`, from the CLI): edited in the dialog, the art kept ----
+const ART_NAME = 'Arty amp'
+const artShapes = [
+  { type: 'rect', x: 0, y: 0, w: 100, h: 80, fill: '#1E4F8A', radius: 8 },
+  { type: 'rect', x: 60, y: 20, w: 28, h: 40, fill: '#2F7FD0', radius: 3 },
+  { type: 'rect', x: 64, y: 24, w: 12, h: 12, fill: '#C9CED6', radius: 6 },
+  { type: 'rect', x: 64, y: 44, w: 12, h: 12, fill: '#C9CED6', radius: 6 },
+  { type: 'rect', x: 30, y: 32, w: 22, h: 16, fill: '#1E2126', radius: 1, label: 'AMP', labelColor: '#C9CED6', labelSize: 5 },
+]
+writeFileSync(join(out, 'art-spec.json'), JSON.stringify({ name: ART_NAME, source: 'https://example.com/amp', body: { w: 10, h: 8 }, pins: { left: [{ name: 'VIN', type: 'power_in', supply: '5V' }, { name: 'GND', type: 'ground' }, { name: 'IN', type: 'input' }] }, art: { pinLabels: 'inside', shapes: artShapes } }))
+execFileSync(process.execPath, ['plugin/bin/circuitoon.mjs', 'module', 'new', '--spec', join(out, 'art-spec.json'), '-o', join(out, 'art-part.json')])
+const [artChooser] = await Promise.all([page.waitForEvent('filechooser'), page.getByRole('button', { name: 'Import part' }).click()])
+await artChooser.setFiles(join(out, 'art-part.json'))
+await page.waitForSelector(`.mine-group .lib-item.mine >> text=${ART_NAME}`)
+const storedArt = () => page.evaluate((n) => JSON.parse(localStorage.getItem('circuitoon.myParts')).parts.find((p) => p.module.name === n)?.module.art, ART_NAME)
+await (await openActions(ART_NAME)).getByRole('button', { name: 'Edit' }).click()
+await dialog().waitFor()
+check((await dialog().getByTestId('pm-art-kept').textContent()).includes('Custom art kept'), 'a part with its own art opens with "Custom art kept"')
+check(await dialog().locator('fieldset.pm-size, fieldset.pm-colors, fieldset.pm-style').evaluateAll((f) => f.length === 3 && f.every((e) => e.disabled)), 'its style, size and colour come from the drawing')
+check(await dialog().getByRole('button', { name: 'Add pin' }).isVisible(), 'and its pins are fully editable')
+await pick('Right')
+await dialog().getByRole('button', { name: 'Add pin' }).click()
+await dialog().getByLabel('Name of pin 1').fill('OUT')
+await page.waitForTimeout(200)
+check((await dialog().getByTestId('pm-preview').locator('text=AMP').count()) === 1, 'the preview draws its own art')
+await shot('dialog-custom-art-light', dialog())
+await dialog().getByRole('button', { name: 'Save changes' }).click()
+await dialog().waitFor({ state: 'detached' })
+const kept = await storedArt()
+check(JSON.stringify(kept?.shapes) === JSON.stringify(artShapes), 'saving with a pin added keeps the art exactly')
+await (await openActions(ART_NAME)).getByRole('button', { name: 'Edit' }).click()
+await dialog().waitFor()
+await dialog().getByRole('button', { name: 'Use the plain drawing' }).click()
+check(!(await dialog().getByTestId('pm-art-kept').isVisible()), 'Use the plain drawing drops the art from the dialog')
+await dialog().getByRole('button', { name: 'Save changes' }).click()
+await dialog().waitFor({ state: 'detached' })
+check(JSON.stringify((await storedArt())?.shapes) !== JSON.stringify(artShapes), 'and only then is the art replaced')
+await (await openActions(ART_NAME)).getByRole('button', { name: 'Delete' }).click()
+
 // ---- Graphite dark, picked with the theme switch on a light device ----
 /** Clicks the toolbar's theme switch (System, Light, Dark, round) until it shows `choice`. */
 const setTheme = async (choice) => {
