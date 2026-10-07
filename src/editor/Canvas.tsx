@@ -27,7 +27,7 @@ import type { Connection, Diagram, Endpoint, ProbeAnchor } from '../format/diagr
 import type { Selection } from './ops.ts'
 import { partCaption } from '../format/values.ts'
 import { SeverityMark } from './SeverityMark.tsx'
-import { SimLayer, currentFindings, shownResult } from './SimLayer.tsx'
+import { SimLayer, currentFindings, servoShaft, shownResult } from './SimLayer.tsx'
 import { ProbeLayer } from './ProbeLayer.tsx'
 import { addProbe, sameAnchor } from '../sim/probes.ts'
 import { gridOnly, snapMove, type SnapResult } from './snap.ts'
@@ -820,7 +820,7 @@ export function Canvas({ store, onReady }: { store: EditorStore; onReady?: (api:
     const m = moduleOf(diagram, p.module)
     const label = !!m && isNetLabel(m)
     return m ? (
-      <g key={p.uid} data-part={p.uid} data-label-lit={litLabels.includes(p.uid) ? '' : undefined}>
+      <g key={p.uid} data-part={p.uid} data-servo-live={run.servos[p.uid] && servoShaft(m) ? '' : undefined} data-label-lit={litLabels.includes(p.uid) ? '' : undefined}>
         {label && litLabels.includes(p.uid) && (() => {
           const r = flagRect(p, m, flags.get(p.uid) === 'ground' || flags.get(p.uid) === 'mains')
           return <rect className="label-lit" x={r.x - 4} y={r.y - 4} width={r.w + 8} height={r.h + 8} rx={6} pointerEvents="none" />

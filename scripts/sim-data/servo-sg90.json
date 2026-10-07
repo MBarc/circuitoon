@@ -33,6 +33,7 @@
       ]
     },
     "servo": {
+      "shaft": { "x": 122, "y": 24 },
       "signal": "PWM",
       "pulseMin": {
         "value": 0.0005,

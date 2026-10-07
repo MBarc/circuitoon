@@ -8,9 +8,10 @@
 // Stale readings (the last good result while a solve fails) are dimmed and say so.
 // Imports from src/sim are types and display.ts only: the compute code stays in the lazy chunk.
 import { memo } from 'react'
-import { type Diagram, moduleOf, resolveEndpoint } from '../format/diagram.ts'
-import { bodyRect } from '../format/geometry.ts'
-import { isObj, layoutModule } from '../format/module.ts'
+import { type Diagram, type PartInstance, moduleOf, resolveEndpoint } from '../format/diagram.ts'
+import { type Pt, bodyRect, toWorld } from '../format/geometry.ts'
+import { type ModuleDef, isObj, layoutModule } from '../format/module.ts'
+import { simOf } from '../format/simModel.ts'
 import { formatValue } from '../format/values.ts'
 import { LIT_AMPS } from '../sim/display.ts'
 import type { Circuit } from '../sim/model.ts'
@@ -69,6 +70,26 @@ export function hornPath(cx: number, cy: number, r: number, angle: number): stri
   const a = Math.PI - (angle * Math.PI) / 180
   const f = (x: number) => Number(x.toFixed(2))
   return `M${f(cx)} ${f(cy)} L${f(cx + r * Math.cos(a))} ${f(cy - r * Math.sin(a))}`
+}
+
+/** A servo's output shaft in art coordinates (sim.servo.shaft), or null when the module does not say. */
+export const servoShaft = (m: ModuleDef) => simOf(m)?.servo?.shaft ?? null
+
+/** Half the length of the SG90's drawn horn (art rects 100 to 144 wide): the live arm matches it. */
+export const HORN_REACH = 20
+
+/**
+ * Where the live horn turns, in world coordinates: the module's shaft point, placed the way Part.tsx
+ * places its art (centred in the layout) and rotated with the part; the body's centre when the module names none.
+ */
+export function servoPivot(p: PartInstance, m: ModuleDef): Pt {
+  const lay = layoutModule(m)
+  const sh = servoShaft(m)
+  if (!sh || !m.art) {
+    const box = bodyRect(p, lay)
+    return { x: box.x + box.w / 2, y: box.y + box.h / 2 }
+  }
+  return toWorld(p, lay, { x: (lay.w - m.art.w) / 2 + sh.x, y: (lay.h - m.art.h) / 2 + sh.y })
 }
 
 const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -180,14 +201,11 @@ export const SimLayer = memo(function SimLayer({ diagram, result, stale, circuit
         const p = diagram.parts.find((x) => x.uid === uid)
         const m = p && moduleOf(diagram, p.module)
         if (!p || !m) return null
-        const box = bodyRect(p, layoutModule(m))
-        const cx = box.x + box.w / 2
-        const cy = box.y + box.h / 2
-        const r = Math.min(box.w, box.h) * 0.42
+        const { x: cx, y: cy } = servoPivot(p, m)
         return (
           <g key={`horn-${uid}`} className="servo-horn" data-servo-horn={uid} data-angle={s.angle.toFixed(1)} pointerEvents="none">
             <title>{`${p.designator} at ${Math.round(s.angle)} degrees`}</title>
-            <path d={hornPath(cx, cy, r, reducedMotion() ? s.target : s.angle)} />
+            <path d={hornPath(cx, cy, HORN_REACH, (reducedMotion() ? s.target : s.angle) + (p.rotation ?? 0))} />
             <circle cx={cx} cy={cy} r={4} />
           </g>
         )

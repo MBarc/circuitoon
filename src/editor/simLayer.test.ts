@@ -1,7 +1,11 @@
 // Spec 6.3: LED brightness follows current on a log scale with full brightness at its current
 // limit; the shown result is the live one, or the last good one (stale) while a solve fails.
 import { describe, expect, it } from 'vitest'
-import { currentFindings, glowLevel, hornPath, runBadges, shownResult } from './SimLayer.tsx'
+import { readFileSync } from 'node:fs'
+import { type PartInstance } from '../format/diagram.ts'
+import { bodyRect, pivot } from '../format/geometry.ts'
+import { layoutModule } from '../format/module.ts'
+import { currentFindings, glowLevel, hornPath, runBadges, servoPivot, servoShaft, shownResult } from './SimLayer.tsx'
 import { EMPTY_RUN } from './store.ts'
 import { readingText } from './ProbeLayer.tsx'
 import { piBlink } from '../run/sheets.testing.ts'
@@ -71,5 +75,27 @@ describe('run marks on the sheet (spec 6.3)', () => {
     expect(readingText(v, true)).toBe('avg 1.21 V (peak 3.3 V)')
     expect(readingText(v, false)).toBe('1.21 V (peak 3.3 V)')
     expect(RUN_TITLES).toEqual({ 'undefined-level': 'Between logic levels', 'floating-read': 'Reads a floating pin', 'servo-signal': 'Servo signal out of range' })
+  })
+})
+
+describe('servoPivot (the live horn turns on the art shaft)', () => {
+  const m = JSON.parse(readFileSync('modules/servo-sg90.json', 'utf8'))
+  const lay = layoutModule(m)
+  const art = { x: (lay.w - m.art.w) / 2, y: (lay.h - m.art.h) / 2 }
+  it('is the art shaft in world coordinates at rotation 0 and 90', () => {
+    expect(servoShaft(m)).toEqual({ x: 122, y: 24 })
+    const at0 = servoPivot({ uid: 'm1', x: 200, y: 100, rotation: 0 } as PartInstance, m)
+    expect(at0).toEqual({ x: 200 + art.x + 122, y: 100 + art.y + 24 })
+    const at90 = servoPivot({ uid: 'm1', x: 200, y: 100, rotation: 90 } as PartInstance, m)
+    const c = pivot(lay.w, lay.h)
+    // Rotating 90 degrees clockwise about the layout pivot: (dx, dy) becomes (-dy, dx).
+    const dx = art.x + 122 - c.x
+    const dy = art.y + 24 - c.y
+    expect(at90).toEqual({ x: 200 + c.x - dy, y: 100 + c.y + dx })
+  })
+  it('falls back to the body centre without a shaft', () => {
+    const bare = { ...m, electrical: { ...m.electrical, sim: undefined } }
+    const box = bodyRect({ x: 0, y: 0, rotation: 0 }, lay)
+    expect(servoPivot({ uid: 'm1', x: 0, y: 0, rotation: 0 } as PartInstance, bare)).toEqual({ x: box.x + box.w / 2, y: box.y + box.h / 2 })
   })
 })

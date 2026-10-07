@@ -63,7 +63,7 @@ export interface GpioSpec { domain: string; pins: string[]; outputResistance: Qu
  * 180 degrees, the slew time per 60 degrees, the current while the horn travels (its idle current
  * is the ordinary sim.power draw) and the signal pin's input load.
  */
-export interface ServoSpec { signal: string; pulseMin: Quantity; pulseMax: Quantity; slew: Quantity; moving: Quantity; signalLoad: Quantity }
+export interface ServoSpec { /** The output shaft's centre in art coordinates, where the editor draws the live horn. */ shaft?: { x: number; y: number }; signal: string; pulseMin: Quantity; pulseMax: Quantity; slew: Quantity; moving: Quantity; signalLoad: Quantity }
 export interface SimSpec {
   /** Physics: diode is, n, rs; rInternal; contactResistance; dcr. */
   modelParams?: Record<string, Quantity>
@@ -299,8 +299,9 @@ export function validateSim(raw: Record<string, unknown>, names: Set<string>, er
     const v = s.servo
     if (!isObj(v)) errors.push(`${w}: must be an object`)
     else {
-      keys(v, ['signal', 'pulseMin', 'pulseMax', 'slew', 'moving', 'signalLoad'], w)
+      keys(v, ['shaft', 'signal', 'pulseMin', 'pulseMax', 'slew', 'moving', 'signalLoad'], w)
       if (typeof v.signal !== 'string' || !names.has(v.signal)) errors.push(`${w}.signal: no pin "${show(v.signal)}"`)
+      if (v.shaft !== undefined && !(isObj(v.shaft) && typeof v.shaft.x === 'number' && Number.isFinite(v.shaft.x) && typeof v.shaft.y === 'number' && Number.isFinite(v.shaft.y))) errors.push(`${w}.shaft: must be { "x", "y" } in art coordinates`)
       for (const [k, unit] of [['pulseMin', 's'], ['pulseMax', 's'], ['slew', 's'], ['moving', 'A'], ['signalLoad', 'ohm']] as const) quantity(v[k], `${w}.${k}`, unit, { positive: true })
       const lo = val(v.pulseMin)
       const hi = val(v.pulseMax)

@@ -62,6 +62,10 @@
         ]
       },
       "servo": {
+        "shaft": {
+          "x": 122,
+          "y": 24
+        },
         "signal": "PWM",
         "pulseMin": {
           "value": 0.0005,
@@ -233,7 +237,8 @@
         "w": 44,
         "h": 16,
         "fill": "#F4F6F8",
-        "radius": 8
+        "radius": 8,
+        "horn": true
       },
       {
         "type": "rect",
@@ -242,7 +247,8 @@
         "w": 16,
         "h": 16,
         "fill": "#F4F6F8",
-        "radius": 8
+        "radius": 8,
+        "horn": true
       },
       {
         "type": "rect",
@@ -252,7 +258,8 @@
         "h": 6,
         "fill": "#8E96A1",
         "radius": 3,
-        "outline": false
+        "outline": false,
+        "horn": true
       },
       {
         "type": "rect",

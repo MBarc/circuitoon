@@ -542,9 +542,10 @@ button.wordmark { background: none; border: 0; padding: 0; cursor: pointer; }
 .about-links a { color: var(--focus); }
 
 .run-badge rect { stroke: var(--card-edge); stroke-width: 1.5; }
-.run-badge.running rect { fill: var(--green); }
-.run-badge.error rect { fill: var(--error); }
+.run-badge.running rect { fill: #1F7A53; }
+.run-badge.error rect { fill: #B8342B; }
 .run-badge text { font: 700 11px/1 "Atkinson Hyperlegible", system-ui, sans-serif; fill: #FFFFFF; }
 .servo-horn path { stroke: #F7F8F3; stroke-width: 7; stroke-linecap: round; filter: drop-shadow(1px 1px 0 #23282F); }
 .servo-horn circle { fill: #23282F; }
 .about-sim h4 { margin-top: 8px; }
+[data-servo-live] .art-horn { display: none; }
