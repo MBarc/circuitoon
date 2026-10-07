@@ -7,7 +7,7 @@
   "properties": {
     "format": { "const": "circuitoon-cli/parts/1" },
     "parts": { "type": "array", "items": { "$ref": "#/$defs/part" } },
-    "closest": { "type": "array", "items": { "$ref": "#/$defs/part" } }
+    "closest": { "type": "array", "items": { "allOf": [{ "$ref": "#/$defs/part" }, { "required": ["score"] }] } }
   },
   "$defs": {
     "part": {

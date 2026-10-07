@@ -33,6 +33,8 @@ const SYNONYMS: Record<string, string[]> = {
   charger: ['charge', 'charging'], charging: ['charge', 'charger'], charge: ['charger', 'charging'],
   batt: ['battery'], amp: ['amplifier'], mic: ['microphone'], microphone: ['mic'],
   pushbutton: ['push', 'button'], temp: ['temperature'], temperature: ['temp'], humidity: ['humid', 'hygrometer'],
+  sd: ['microsd'], microsd: ['sd'], pot: ['potentiometer'], cap: ['capacitor'], neopixel: ['ws2812b', 'ws2812d'],
+  lipo: ['lithium', 'li', 'ion'],
 }
 /** Words for a related or wider thing, matched at half weight, so "oled" lists OLEDs before other displays and "servo" servos before motor drivers. */
 const RELATED: Record<string, string[]> = {
@@ -41,17 +43,19 @@ const RELATED: Record<string, string[]> = {
   cell: ['battery'], light: ['led', 'lamp'], led: ['light'],
 }
 
-/** "USB-C", "usb c", "Type-C" and "usbc" all become the one word "usbc", on both sides. */
-const normalize = (s: string) => s.toLowerCase().replace(/\b(?:usb|type)[\s-]?c\b/g, 'usbc')
+/** "USB-C", "usb c", "Type-C" and "usbc" all become the one word "usbc", and "3.3V" becomes "3v3", on both sides. */
+const normalize = (s: string) =>
+  s.toLowerCase().replace(/\b(?:usb|type)[\s-]?c\b/g, 'usbc').replace(/(\d)\.(\d)\s?v\b/g, '$1v$2')
 
-/** Plural to singular, the same on both sides: "displays" is "display", "batteries" is "battery". */
+/** Plural to singular, the same on both sides: "displays" is "display", "batteries" is "battery", "switches" is "switch". */
 function stem(w: string): string {
   if (w.length > 4 && w.endsWith('ies')) return `${w.slice(0, -3)}y`
+  if (/(?:ch|sh|x|ss)es$/.test(w)) return w.slice(0, -2)
   if (w.length > 3 && w.endsWith('s') && !w.endsWith('ss')) return w.slice(0, -1)
   return w
 }
 
-const words = (s: string): string[] => normalize(s).split(/[^a-z0-9]+/).filter(Boolean).map(stem)
+const words = (s: string): string[] => normalize(s).split(/[^a-z0-9]+/).filter((w) => w && !STOP.has(w)).map(stem)
 
 /** True when a and b differ by one edit: a change, an insertion, a deletion or two neighbours swapped. */
 function oneEdit(a: string, b: string): boolean {
@@ -79,14 +83,15 @@ function hit(q: string, fieldWords: string[]): number {
 }
 
 /**
- * The `limit` parts that best match a description in words, best first, ties by name. A part is
- * listed only when it hits at least half of the query's meaningful words. Each word scores its best
+ * The `limit` parts that best match a description in words, best first. A part is listed only when
+ * it hits at least half of the query's meaningful words (the first 20). Each word scores its best
  * hit (or a synonym's; a related word's at half weight) in the name (5), uses (3), description (3), category (2) or pin names (1).
+ * Ties go to the part whose fields hit the words most often, then by name.
  */
 export function rankParts(modules: ModuleDef[], query: string, table: Record<string, PartText>, limit = 5): RankedPart[] {
-  const concepts = [...new Set(words(query).filter((w) => !STOP.has(w)))].map((w): [string, number][] => [[w, 1], ...(SYNONYMS[w] ?? []).map((x): [string, number] => [x, 1]), ...(RELATED[w] ?? []).map((x): [string, number] => [x, 0.5])])
+  const concepts = [...new Set(words(query))].slice(0, 20).map((w): [string, number][] => [[w, 1], ...(SYNONYMS[w] ?? []).map((x): [string, number] => [x, 1]), ...(RELATED[w] ?? []).map((x): [string, number] => [x, 0.5])])
   if (!concepts.length) return []
-  const ranked: RankedPart[] = []
+  const ranked: (RankedPart & { depth: number })[] = []
   for (const m of modules) {
     const t = partTextOf(m, table)
     const fields: [number, string[]][] = [
@@ -98,13 +103,22 @@ export function rankParts(modules: ModuleDef[], query: string, table: Record<str
     ]
     let score = 0
     let hits = 0
+    let depth = 0
     for (const alts of concepts) {
       let best = 0
-      for (const [q, factor] of alts) for (const [weight, fw] of fields) best = Math.max(best, weight * hit(q, fw) * factor)
+      for (const [weight, fw] of fields) {
+        let inField = 0
+        for (const [q, factor] of alts) inField = Math.max(inField, weight * hit(q, fw) * factor)
+        best = Math.max(best, inField)
+        depth += inField
+      }
       if (best > 0) hits++
       score += best
     }
-    if (hits * 2 >= concepts.length) ranked.push({ module: m, score: Math.round(score * 10) / 10 })
+    if (hits * 2 >= concepts.length) ranked.push({ module: m, score: Math.round(score * 10) / 10, depth })
   }
-  return ranked.sort((a, b) => b.score - a.score || a.module.name.localeCompare(b.module.name)).slice(0, limit)
+  return ranked
+    .sort((a, b) => b.score - a.score || b.depth - a.depth || a.module.name.localeCompare(b.module.name))
+    .slice(0, limit)
+    .map(({ module, score }) => ({ module, score }))
 }

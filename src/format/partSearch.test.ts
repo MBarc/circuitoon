@@ -76,14 +76,37 @@ describe('rankParts', () => {
     expect(ids('  -- ')).toEqual([])
   })
 
-  it('lists only parts that hit at least half the words, best first, ties by name, at most `limit`', () => {
+  it('lists only parts that hit at least half the words, best first, at most `limit`', () => {
     const r = rankParts(modules, 'oled display', text, 5)
     expect(r.length).toBeLessThanOrEqual(5)
-    for (let i = 1; i < r.length; i++) {
-      expect(r[i - 1].score).toBeGreaterThanOrEqual(r[i].score)
-      if (r[i - 1].score === r[i].score) expect(r[i - 1].module.name.localeCompare(r[i].module.name)).toBeLessThanOrEqual(0)
-    }
+    for (let i = 1; i < r.length; i++) expect(r[i - 1].score).toBeGreaterThanOrEqual(r[i].score)
     expect(ids('zebra quantum')).toEqual([])
+  })
+
+  it('puts the servo before the motor driver for "servo motor" (a tie goes to the part hit more often)', () => {
+    expect(ids('servo motor')[0]).toBe('servo-sg90')
+  })
+
+  it('reads "-es" plurals: "switches" lists switches first', () => {
+    expect(modules.find((m) => m.id === ids('switches')[0])!.category).toBe('Switches')
+  })
+
+  it('finds microSD modules for "sd card reader", and reads common shorthand', () => {
+    expect(ids('sd card reader')[0]).toMatch(/^microsd-/)
+    expect(ids('pot')[0]).toMatch(/^potentiometer/)
+    expect(ids('cap')[0]).toMatch(/^capacitor-/)
+    expect(ids('neopixel')[0]).toMatch(/^ws2812/)
+  })
+
+  it('reads "3.3v" as the 3V3 the library writes, and drops stop words before stemming', () => {
+    expect(ids('3.3v regulator')).toEqual(ids('3v3 regulator'))
+    expect(ids('an oled like this')).toEqual(ids('oled'))
+  })
+
+  it('ranks only the first 20 words of a pasted wall of text', () => {
+    const t0 = performance.now()
+    rankParts(modules, Array.from({ length: 2000 }, (_, i) => `word${i}`).join(' '), text)
+    expect(performance.now() - t0).toBeLessThan(200)
   })
 
   it('expands synonyms: a mic is a microphone, temp is temperature', () => {

@@ -137,6 +137,7 @@ export function LibraryPanel({ onAdd, parts: handlers }: { onAdd: (moduleId: str
         className="lib-search"
         placeholder="Search parts"
         aria-label="Search parts"
+        maxLength={200}
         value={query}
         onChange={(ev) => setQuery(ev.target.value)}
       />

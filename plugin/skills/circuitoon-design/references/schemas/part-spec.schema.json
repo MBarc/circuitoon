@@ -11,8 +11,8 @@
     "id": { "type": "string", "maxLength": 200, "description": "Lowercase kebab-case. The module id is this exactly when it starts with \"custom-\", else \"custom-\" plus this; left out, \"custom-\" plus the name made kebab-case." },
     "category": { "type": "string", "description": "A Parts panel group such as Sensors or Displays; default Custom." },
     "source": { "type": ["string", "array"], "items": { "type": "string" }, "description": "The maker's datasheet and a second source that agrees: URLs, one string separated by spaces or a list." },
-    "description": { "type": "string", "description": "Optional: one plain sentence on what the part is, at most 300 characters. The Parts panel searches it (Closest matches) and shows it as the tooltip." },
-    "uses": { "type": "array", "items": { "type": "string" }, "description": "Optional: 1 to 8 typical uses, each at most 60 characters (\"battery monitor\")." },
+    "description": { "type": "string", "maxLength": 300, "description": "Optional: one plain sentence on what the part is, at most 300 characters. The Parts panel searches it (Closest matches) and shows it as the tooltip." },
+    "uses": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "type": "string", "maxLength": 60, "pattern": "^[^,]*$" }, "description": "Optional: 1 to 8 typical uses, each at most 60 characters and without commas (the New part dialog separates uses with commas) (\"battery monitor\")." },
     "version": { "type": "integer" },
     "style": { "enum": ["board", "chip"], "description": "board (default): a header strip and pin names inside the body. chip: a dark body with names past the pin tips." },
     "body": {

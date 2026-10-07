@@ -1231,7 +1231,7 @@
     ]
   },
   "servo-sg90": {
-    "description": "Micro servo SG90 hobby servo with three wires for ground, 5 V supply and PWM control signal.",
+    "description": "SG90 micro servo motor, a hobby servo with three wires for ground, 5 V supply and PWM control signal.",
     "uses": [
       "robot arms",
       "pan tilt cameras",

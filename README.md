@@ -93,7 +93,7 @@ If `gate.json` says `"ready": false`, readability warnings remain (overlapping w
 
 | Command | What it does |
 | --- | --- |
-| `parts [--search text]` | Lists built-in parts with their pins, labels, types, supplies and hole groups. |
+| `parts [--search text]` | Lists built-in parts with their pins, labels, types, supplies and hole groups. `--search` takes a part name or a description in words ("a touch display for the rpi") and adds the closest matches, ranked, with each part's description and typical uses. |
 | `part <id>` | One part in full: each pin's limits in words, pin notes, I2C address and pull-ups. |
 | `layout <netlist.json> -o <sheet.json>` | Places, mounts and wires a netlist. `--keep <partial.json>` pins chosen parts; `--labels none\|auto\|all` picks which nets get net labels. |
 | `render <sheet.json> -o <png>` | PNG through Chrome or Edge, plus `--svg`, `--dark`, `--scale`, `--focus <group or copy>` and `--tiles <px>` for zoomed tiles. |

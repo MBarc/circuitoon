@@ -1,6 +1,6 @@
 // A small JSON Schema checker for the CLI's --json outputs: the subset the schemas in
 // plugin/skills/circuitoon-design/references/schemas use (type, const, enum, required, properties,
-// additionalProperties false, items, and $ref to the schema's own $defs). Test helper.
+// additionalProperties false, items, allOf, and $ref to the schema's own $defs). Test helper.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -12,6 +12,7 @@ export type Schema = {
   properties?: Record<string, Schema>
   additionalProperties?: boolean
   items?: Schema
+  allOf?: Schema[]
   $ref?: string
   $defs?: Record<string, Schema>
 }
@@ -22,6 +23,7 @@ export const loadSchema = (name: string): Schema => JSON.parse(readFileSync(join
 const typeOf = (v: unknown) => (v === null ? 'null' : Array.isArray(v) ? 'array' : Number.isInteger(v) ? 'integer' : typeof v)
 
 export function schemaErrors(s: Schema, v: unknown, at = '$', root: Schema = s): string[] {
+  if (s.allOf) return s.allOf.flatMap((sub) => schemaErrors(sub, v, at, root))
   if (s.$ref) {
     const name = /^#\/\$defs\/(.+)$/.exec(s.$ref)?.[1]
     const def = name !== undefined ? root.$defs?.[name] : undefined
