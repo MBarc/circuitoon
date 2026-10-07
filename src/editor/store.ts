@@ -344,7 +344,7 @@ export class EditorStore {
     this.past = []
     this.future = []
     this.unsaved = false
-    this.set({ diagram, selection: EMPTY_SELECTION, highlight: null, held: null, run: EMPTY_RUN, linkCode: false })
+    this.set({ diagram, selection: EMPTY_SELECTION, highlight: null, held: null, run: EMPTY_RUN, dock: { ...this.state.dock, tab: null }, linkCode: false })
   }
 }
 

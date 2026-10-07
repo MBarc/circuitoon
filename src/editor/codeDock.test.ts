@@ -26,4 +26,11 @@ describe('the code dock', () => {
     s.setDock({ tab: 'gone' })
     expect(dockTabs(s.getState())).toEqual([])
   })
+  it('forgets the board being written when another sheet is opened', () => {
+    const s = new EditorStore(piBlink())
+    const plain = setPartCode(s.getState().diagram, 'u1', undefined)
+    s.setDock({ tab: 'u1' })
+    s.load(plain)
+    expect(dockTabs(s.getState())).toEqual([])
+  })
 })

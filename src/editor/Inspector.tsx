@@ -4,7 +4,7 @@ import { ArrangePanel } from './ArrangePanel.tsx'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { myParts, updateSheetModule } from './myParts.ts'
 import { type EditorStore, useEditorState } from './store.ts'
-import { LABEL_NAME_MAX, carryWireStyle, clearPartValue, clearWireRoute, deleteSelection, gpioChoices, renameLabel, setSimValue, simModule, rotateParts, setWireEnds, updateAnnotation, updatePart, updatePartSetting, updatePartValue, updateWire, type WireStyle } from './ops.ts'
+import { LABEL_NAME_MAX, carryWireStyle, clearPartValue, clearWireRoute, deleteSelection, gpioChoices, renameLabel, setPartCode, setSimValue, simModule, rotateParts, setWireEnds, updateAnnotation, updatePart, updatePartSetting, updatePartValue, updateWire, type WireStyle } from './ops.ts'
 import { ANNOTATION_LABEL_MAX, ANNOTATION_TEXT_MAX, type Connection, type Diagram, type Endpoint, NAMED_COLORS, STRIPED_COLORS, isValidColor, moduleOf, partObstacles, routeWire, wireColor, wireStripe, wireWidth } from '../format/diagram.ts'
 import { type WireLook, holdLooks } from '../format/mainsLook.ts'
 import { usbLink } from '../format/usb.ts'
@@ -21,7 +21,13 @@ import { isCustom, isNetLabel, moduleSettings, partSetting, type ModuleDef } fro
 import { labelMates, labelName } from '../format/netLabels.ts'
 import { MAINS_NOTICE, hasMains } from '../format/mains.ts'
 import { contactPosition, gpioState, switchGroups } from '../format/simState.ts'
-import { simOf } from '../format/simModel.ts'
+import { simOf, withLibraryData } from '../format/simModel.ts'
+import { LANGUAGE_EXT, LANGUAGE_NAMES, languagesOf } from '../format/code.ts'
+import { libraryLookup } from '../agent/catalog.ts'
+import { downloadName, readCodeFile, starterCode } from './codeFile.ts'
+import { runAction, runBlocker } from './running.ts'
+import { tabStatus } from './CodeDock.tsx'
+import { downloadText } from './files.ts'
 
 const GAUGES = Array.from({ length: 15 }, (_, i) => 16 + i)
 
@@ -705,6 +711,7 @@ export function Inspector({ store, onEditPart, onUpdatePart }: { store: EditorSt
           </label>
         ))}
         {m && <SimPartState store={store} diagram={diagram} part={part} m={m} />}
+        {m && <CodeSection store={store} diagram={diagram} part={part} m={m} />}
         <p className="hint">Rotation: {part.rotation ?? 0} degrees</p>
         <button type="button" className="tool" onClick={() => store.commit(rotateParts(diagram, [part.uid]))}>Rotate 90 degrees</button>
         {remove}
@@ -879,6 +886,74 @@ function SimPartState({ store, diagram, part, m }: { store: EditorStore; diagram
           </div>
         </details>
       )}
+    </section>
+  )
+}
+
+/**
+ * Firmware spec 6.2: a board whose module takes a language gets a Code section after Simulation
+ * state. With no code: Upload code (a .py file) and Write code (the dock with a starter comment).
+ * With code: its file, language and line count, Run/Stop, Edit, Download and Remove code (undoable).
+ */
+function CodeSection({ store, diagram, part, m }: { store: EditorStore; diagram: Diagram; part: Diagram['parts'][number]; m: ModuleDef }) {
+  const state = useEditorState(store)
+  const [refused, setRefused] = useState<string | null>(null)
+  const file = useRef<HTMLInputElement>(null)
+  const langs = languagesOf(withLibraryData(m, libraryLookup))
+  if (!langs.length) return null
+  const language = part.code?.language ?? langs[0]
+  const code = part.code
+  const b = state.run.boards[part.uid]
+  const live = b?.status === 'starting' || b?.status === 'running'
+  const st = tabStatus(b, code)
+  const blocker = live || !code ? null : runBlocker(state, part.uid)
+  const openDock = () => store.setDock({ open: true, tab: part.uid })
+  return (
+    <section className="code-section" aria-labelledby="code-section-title">
+      <h3 id="code-section-title">Code</h3>
+      <input
+        ref={file}
+        type="file"
+        hidden
+        accept={(LANGUAGE_EXT[language] ?? []).join(',')}
+        onChange={async (e) => {
+          const f = e.target.files?.[0]
+          e.target.value = ''
+          if (!f) return
+          const r = readCodeFile(f.name, new Uint8Array(await f.arrayBuffer()), language)
+          setRefused(r.ok ? null : r.why)
+          if (r.ok) {
+            store.commit(setPartCode(diagram, part.uid, r.code))
+            openDock()
+          }
+        }}
+      />
+      {!code ? (
+        <>
+          <p className="hint">Upload a {LANGUAGE_NAMES[language] ?? language} script, or write one here, and press Run to watch the circuit respond.</p>
+          <div className="code-section-actions">
+            <button type="button" className="tool" onClick={() => file.current?.click()}>Upload code</button>
+            <button type="button" className="tool" onClick={() => (store.commit(setPartCode(diagram, part.uid, { language, source: starterCode(part.designator, m.name), file: 'main.py' })), openDock())}>Write code</button>
+          </div>
+        </>
+      ) : (
+        <>
+          <dl className="code-facts">
+            <dt>File</dt><dd>{code.file ?? 'main.py'}</dd>
+            <dt>Language</dt><dd>{LANGUAGE_NAMES[code.language] ?? code.language}</dd>
+            <dt>Length</dt><dd>{code.source.split('\n').length} lines</dd>
+            <dt>Status</dt><dd>{st.key === 'changed' ? 'Code changed: Reset to apply' : st.text}</dd>
+          </dl>
+          <div className="code-section-actions">
+            <button type="button" className="tool" disabled={!live && !!blocker} title={blocker ?? undefined} aria-label={live ? `Stop ${part.designator}'s code` : `Run ${part.designator}'s code`} onClick={() => (openDock(), runAction(store, live ? 'stop' : 'run', part.uid))}>{live ? 'Stop' : 'Run'}</button>
+            <button type="button" className="tool" onClick={() => (openDock(), requestAnimationFrame(() => document.querySelector<HTMLElement>('#code-dock .cm-content')?.focus()))}>Edit</button>
+            <button type="button" className="tool" onClick={() => downloadText(downloadName(code, part.designator), code.source, 'text/x-python')}>Download</button>
+            <button type="button" className="tool" onClick={() => store.commit(setPartCode(diagram, part.uid, undefined))}>Remove code</button>
+          </div>
+          {blocker && <p className="hint">{blocker}</p>}
+        </>
+      )}
+      {refused && <p className="code-message" role="alert">{refused}</p>}
     </section>
   )
 }
