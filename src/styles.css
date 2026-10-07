@@ -63,6 +63,23 @@
   --mains-bg: #FFF4E5;
   --mains-text: #3A2A10;
   --mains-badge-text: var(--ink);
+  /* The code editor (firmware spec 6.1): every token colour is at least 4.5:1 on --code-bg, the
+     active line and the selection (ratios in the Task 34 report). */
+  --code-bg: #F7F8F3;
+  --code-text: #23282F;
+  --code-gutter: #E8EAE4;
+  --code-muted: #59625C;
+  --code-rule: #CCD5CC;
+  --code-active: #F7EDCC;
+  --code-active-gutter: #F1DFA6;
+  --code-selection: #D9E2EE;
+  --tok-keyword: #7E35AB;
+  --tok-string: #276633;
+  --tok-number: #9A4413;
+  --tok-comment: #525B55;
+  --tok-function: #1D55A6;
+  --tok-className: #765000;
+  --tok-operator: #454E57;
   color-scheme: light;
 }
 /* Graphite: neutral greys with no tint, so the yellow is the only colour in the chrome. The paper
@@ -86,6 +103,21 @@
   --mains-bg: #3A2A10;
   --mains-text: #FFE8C7;
   --mains-badge-text: #FFE8C7;
+  --code-bg: #1F2328;
+  --code-text: #E8EAED;
+  --code-gutter: #191C20;
+  --code-muted: #8F98A1;
+  --code-rule: #363A40;
+  --code-active: #343224;
+  --code-active-gutter: #3D3922;
+  --code-selection: #343F53;
+  --tok-keyword: #D3A6FF;
+  --tok-string: #8CE99A;
+  --tok-number: #FFB37D;
+  --tok-comment: #AAB2BA;
+  --tok-function: #93BBFF;
+  --tok-className: #FFD866;
+  --tok-operator: #C5CAD0;
   color-scheme: dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -105,6 +137,21 @@
     --mains-bg: #3A2A10;
     --mains-text: #FFE8C7;
     --mains-badge-text: #FFE8C7;
+    --code-bg: #1F2328;
+    --code-text: #E8EAED;
+    --code-gutter: #191C20;
+    --code-muted: #8F98A1;
+    --code-rule: #363A40;
+    --code-active: #343224;
+    --code-active-gutter: #3D3922;
+    --code-selection: #343F53;
+    --tok-keyword: #D3A6FF;
+    --tok-string: #8CE99A;
+    --tok-number: #FFB37D;
+    --tok-comment: #AAB2BA;
+    --tok-function: #93BBFF;
+    --tok-className: #FFD866;
+    --tok-operator: #C5CAD0;
     color-scheme: dark;
   }
 }

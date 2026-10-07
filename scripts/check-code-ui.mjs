@@ -79,6 +79,10 @@ for (const scheme of ['light', 'dark']) {
   await page.waitForSelector('#code-dock')
   check((await tab.textContent())?.includes('U1') && (await tab.textContent())?.includes('blink.py'), `${scheme}: the tab names U1 and blink.py`)
   check((await status()) === 'idle', `${scheme}: idle at first`)
+  check((await tab.getAttribute('title')) === 'U1 Raspberry Pi 4 Model B blink.py, Not running', `${scheme}: the tab's title holds its full label`)
+  // The editor follows the theme (its --code-* tokens): a light page in light, Graphite in dark.
+  const editorBg = await page.locator('.code-editor').evaluate((el) => getComputedStyle(el).backgroundColor)
+  check(editorBg === (scheme === 'dark' ? 'rgb(31, 35, 40)' : 'rgb(247, 248, 243)'), `${scheme}: the editor uses the ${scheme} code background (${editorBg})`)
   await shot('idle')
 
   // 2. starting (the Python download is held for 1.5 s)

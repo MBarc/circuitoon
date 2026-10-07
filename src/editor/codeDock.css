@@ -103,29 +103,30 @@
 .code-confirm p { margin: 0; flex: 1 1 260px; font-size: 14px; font-weight: 700; }
 .code-confirm-actions { display: flex; gap: 6px; }
 
-/* The code itself, on the sheet's paper in both themes (ink text, like the parts). */
-.code-editor { flex: 1 1 0; min-height: 0; overflow: hidden; border: 1.5px solid var(--card-edge); border-radius: 8px; background: var(--paper); color: #23282F; }
+/* The code itself: a light page in the light theme, a Graphite page in the dark one. Colours come
+   only from the --code-* and --tok-* tokens (styles.css), so the editor follows data-theme. */
+.code-editor { flex: 1 1 0; min-height: 0; overflow: hidden; border: 1.5px solid var(--card-edge); border-radius: 8px; background: var(--code-bg); color: var(--code-text); }
 .code-editor.loading { display: grid; place-items: center; }
-.code-editor.loading .hint { color: #56615B; }
+.code-editor.loading .hint { color: var(--code-muted); }
 .code-editor .cm-editor { height: 100%; font: 14px/1.55 ui-monospace, "Cascadia Mono", Consolas, monospace; }
 .code-editor .cm-editor.cm-focused { outline: none; }
 .code-editor:focus-within { outline: 3px solid var(--focus); outline-offset: 1px; }
 .code-editor .cm-scroller { font-family: inherit; }
-.code-editor .cm-content { padding: 6px 0; caret-color: #23282F; }
-.code-editor .cm-cursor { border-left: 2px solid #23282F; }
-.code-editor .cm-gutters { background: color-mix(in srgb, var(--paper) 88%, #23282F); color: #6B746E; border-right: 1.5px solid #CCD5CC; }
+.code-editor .cm-content { padding: 6px 0; caret-color: var(--code-text); }
+.code-editor .cm-cursor { border-left: 2px solid var(--code-text); }
+.code-editor .cm-gutters { background: var(--code-gutter); color: var(--code-muted); border-right: 1.5px solid var(--code-rule); }
 .code-editor .cm-lineNumbers .cm-gutterElement { padding: 0 8px 0 12px; }
-.code-editor .cm-activeLine { background: color-mix(in srgb, #F4B400 16%, transparent); }
-.code-editor .cm-activeLineGutter { background: color-mix(in srgb, #F4B400 30%, transparent); color: #23282F; }
-.code-editor .cm-selectionBackground, .code-editor .cm-focused .cm-selectionBackground { background: color-mix(in srgb, #3D6FD6 24%, transparent) !important; }
-.code-editor .cm-matchingBracket { background: color-mix(in srgb, #2F9E6E 26%, transparent); outline: 1px solid #2F9E6E; }
-.code-editor .tok-keyword { color: #8A3FB8; font-weight: 700; }
-.code-editor .tok-string, .code-editor .tok-string2 { color: #2C7A3A; }
-.code-editor .tok-number, .code-editor .tok-bool, .code-editor .tok-atom { color: #B3541E; }
-.code-editor .tok-comment { color: #6B746E; font-style: italic; }
-.code-editor .tok-variableName.tok-definition, .code-editor .tok-function { color: #1F5FB8; }
-.code-editor .tok-typeName, .code-editor .tok-className { color: #8A5A00; }
-.code-editor .tok-operator, .code-editor .tok-punctuation { color: #4A535C; }
+.code-editor .cm-activeLine { background: var(--code-active); }
+.code-editor .cm-activeLineGutter { background: var(--code-active-gutter); color: var(--code-text); }
+.code-editor .cm-selectionBackground, .code-editor .cm-focused .cm-selectionBackground { background: var(--code-selection) !important; }
+.code-editor .cm-matchingBracket { background: color-mix(in srgb, var(--green) 26%, transparent); outline: 1px solid var(--green); }
+.code-editor .tok-keyword { color: var(--tok-keyword); font-weight: 700; }
+.code-editor .tok-string, .code-editor .tok-string2 { color: var(--tok-string); }
+.code-editor .tok-number, .code-editor .tok-bool, .code-editor .tok-atom { color: var(--tok-number); }
+.code-editor .tok-comment { color: var(--tok-comment); font-style: italic; }
+.code-editor .tok-variableName.tok-definition, .code-editor .tok-function { color: var(--tok-function); }
+.code-editor .tok-typeName, .code-editor .tok-className { color: var(--tok-className); }
+.code-editor .tok-operator, .code-editor .tok-punctuation { color: var(--tok-operator); }
 .hint.code-help { font-size: 12.5px; }
 
 /* Serial: a dark terminal in both themes, its header like the panel headings. */

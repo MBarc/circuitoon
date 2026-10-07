@@ -125,7 +125,7 @@ export function CodeDock({ store }: { store: EditorStore }) {
             const ts = tabStatus(s.run.boards[t], p.code)
             const name = s.diagram.modules[p.module]?.name ?? p.module
             return (
-              <button key={t} type="button" role="tab" aria-selected={t === uid} aria-controls={s.dock.open ? 'code-dock-body' : undefined} tabIndex={t === uid ? 0 : -1} data-dock-tab={t} data-status={ts.key} className="code-dock-tab" title={ts.text} onClick={() => store.setDock({ tab: t, open: true })}>
+              <button key={t} type="button" role="tab" aria-selected={t === uid} aria-controls={s.dock.open ? 'code-dock-body' : undefined} tabIndex={t === uid ? 0 : -1} data-dock-tab={t} data-status={ts.key} className="code-dock-tab" title={`${p.designator} ${name} ${p.code?.file ?? 'main.py'}, ${ts.text}`} onClick={() => store.setDock({ tab: t, open: true })}>
                 <span className={`code-dot ${ts.key}`} aria-hidden="true" />
                 <span className="code-tab-name">{p.designator}</span>
                 <span className="code-tab-board">{name}</span>
