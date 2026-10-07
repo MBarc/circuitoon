@@ -469,3 +469,34 @@ export function buildCircuit(d: Diagram, opts: BuildOptions = {}): Circuit {
   usbLinks(b, d)
   return b.done()
 }
+
+/**
+ * Perf ruling (firmware slice 1): `base`, built with no run pins, with `runPins` applied exactly as
+ * buildCircuit applies them (the GPIO list's states and the GPIO devices' state and duty). Null when
+ * a run pin sets a pin that has no saved state: that adds a device and a tap, so build in full then.
+ */
+export function withRunPins(base: Circuit, runPins: RunPins | undefined): Circuit | null {
+  const run = new Map<string, RunPinState>()
+  for (const g of base.gpio) {
+    const r = runPins?.[g.part]?.[g.pin]
+    if (r === undefined) continue
+    if (g.state === null) return null
+    run.set(nodeKey(g.part, g.pin), r)
+  }
+  if (!run.size) return base
+  const stateOf = (r: RunPinState) => (typeof r === 'string' ? r : 'pwm')
+  return {
+    ...base,
+    gpio: base.gpio.map((g) => {
+      const r = run.get(g.key)
+      return r === undefined ? g : { ...g, state: stateOf(r) }
+    }),
+    devices: base.devices.map((d) => {
+      const r = d.kind === 'gpio' ? run.get(nodeKey(d.part, d.pin)) : undefined
+      if (d.kind !== 'gpio' || r === undefined) return d
+      // Key order as buildCircuit writes it (duty before params).
+      const { params, ...rest } = d
+      return { ...rest, state: stateOf(r), ...(typeof r === 'string' ? {} : { duty: r.pwm }), params }
+    }),
+  }
+}

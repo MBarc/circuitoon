@@ -256,6 +256,11 @@ export function classifyCached(c: Circuit, analysis: Kind = OP): Classification 
   if (!hit) byKind.set(analysis.kind, (hit = classify(c, analysis)))
   return hit
 }
+/** Records `cls` as the `op` classification of `c` (session.ts: a circuit patched from one with the same pin states). */
+export function rememberClassification(c: Circuit, cls: Classification): void {
+  if (!memo.has(c)) memo.set(c, new Map())
+  memo.get(c)!.set('op', cls)
+}
 
 /** A node's state: driven (powered), defined (held by a return through resistance) or floating. */
 export function nodeState(cls: Classification, node: string): NodeState {

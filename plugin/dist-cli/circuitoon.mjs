@@ -69630,7 +69630,7 @@ function possibleRoots(g) {
 	for (let i = 0; i < g.n; i++) parent[i] = find(parent, i);
 	return parent;
 }
-function prepare(g) {
+function prepare$1(g) {
 	const possible = possibleRoots(g);
 	const live = /* @__PURE__ */ new Set();
 	for (const s of g.sources) for (const x of [
@@ -72896,7 +72896,7 @@ function convertersInState(d, active) {
 	const plugs = plugsOf(d);
 	const g = buildMainsGraph(d, plugs, netlist(d, plugs));
 	if (!g) return /* @__PURE__ */ new Map();
-	const p = prepare(g);
+	const p = prepare$1(g);
 	if (p.sources.length > 10) return new Map(g.converters.map((c) => [c.part.uid, notChecked(c)]));
 	for (const gi of p.groupIdx) p.groupState[gi] = active(g.groups[gi].part, g.groups[gi].def.id) ? 1 : 0;
 	analyseState(p);
@@ -72918,7 +72918,7 @@ function analyseMains(d) {
 	mainsStats.runs++;
 	const plugs = plugsOf(d);
 	const g = buildMainsGraph(d, plugs, netlist(d, plugs));
-	const p = prepare(g);
+	const p = prepare$1(g);
 	const cands = candidateGroups(g, p.possible);
 	const acc = newAcc(p, cands, null);
 	for (const unit of units(p, cands)) {
@@ -91575,6 +91575,11 @@ function classifyCached(c, analysis = OP) {
 	if (!hit) byKind.set(analysis.kind, hit = classify(c, analysis));
 	return hit;
 }
+/** Records `cls` as the `op` classification of `c` (session.ts: a circuit patched from one with the same pin states). */
+function rememberClassification(c, cls) {
+	if (!memo.has(c)) memo.set(c, /* @__PURE__ */ new Map());
+	memo.get(c).set("op", cls);
+}
 /** A node's state: driven (powered), defined (held by a return through resistance) or floating. */
 function nodeState(cls, node) {
 	return cls.driven.has(node) ? "driven" : cls.defined.has(node) ? "defined" : "floating";
@@ -93433,6 +93438,43 @@ function buildCircuit(d, opts = {}) {
 	usbLinks(b, d);
 	return b.done();
 }
+/**
+* Perf ruling (firmware slice 1): `base`, built with no run pins, with `runPins` applied exactly as
+* buildCircuit applies them (the GPIO list's states and the GPIO devices' state and duty). Null when
+* a run pin sets a pin that has no saved state: that adds a device and a tap, so build in full then.
+*/
+function withRunPins(base, runPins) {
+	const run = /* @__PURE__ */ new Map();
+	for (const g of base.gpio) {
+		const r = runPins?.[g.part]?.[g.pin];
+		if (r === void 0) continue;
+		if (g.state === null) return null;
+		run.set(nodeKey(g.part, g.pin), r);
+	}
+	if (!run.size) return base;
+	const stateOf = (r) => typeof r === "string" ? r : "pwm";
+	return {
+		...base,
+		gpio: base.gpio.map((g) => {
+			const r = run.get(g.key);
+			return r === void 0 ? g : {
+				...g,
+				state: stateOf(r)
+			};
+		}),
+		devices: base.devices.map((d) => {
+			const r = d.kind === "gpio" ? run.get(nodeKey(d.part, d.pin)) : void 0;
+			if (d.kind !== "gpio" || r === void 0) return d;
+			const { params, ...rest } = d;
+			return {
+				...rest,
+				state: stateOf(r),
+				...typeof r === "string" ? {} : { duty: r.pwm },
+				params
+			};
+		})
+	};
+}
 //#endregion
 //#region src/sim/results.ts
 var NO_OUTSIDE = {
@@ -94486,10 +94528,65 @@ function mixRaws(raws, weights) {
 }
 //#endregion
 //#region src/sim/session.ts
+/** Per sheet (by its parts array): the circuit built with no run pins, and the classification and topology findings per set of GPIO states. */
+var bases = /* @__PURE__ */ new WeakMap();
+/**
+* The circuit, its classification and its topology findings (decided before the engine runs, so a
+* failed or unavailable outcome still names a real short). Perf ruling (firmware slice 1): a
+* run-state change on an unchanged sheet (the same parts, connections, modules and intent, held
+* group, library, net names and moving servos) patches the GPIO states of the circuit built with no
+* run pins (withRunPins) instead of rebuilding it, and reuses the classification and topology
+* findings of the same GPIO states (a PWM pin conducts both ways whatever its duty, so the duty is
+* not part of the key). A pin moving between driven, pulled and undriven is a new key: classified afresh.
+*/
+function prepare(d, opts) {
+	const key = [
+		d.connections,
+		d.modules,
+		d.intent,
+		opts.held?.part,
+		opts.held?.group,
+		opts.library,
+		opts.netNames,
+		JSON.stringify(opts.moving ?? [])
+	];
+	let hit = bases.get(d.parts);
+	if (!hit || hit.key.some((x, i) => x !== key[i])) bases.set(d.parts, hit = {
+		key,
+		base: buildCircuit(d, {
+			...opts,
+			runPins: void 0
+		}),
+		byStates: /* @__PURE__ */ new Map()
+	});
+	const c = withRunPins(hit.base, opts.runPins);
+	if (!c) {
+		const full = buildCircuit(d, opts);
+		const cls = classifyCached(full, { kind: "op" });
+		return {
+			c: full,
+			cls,
+			topo: topologyFindings(full, cls)
+		};
+	}
+	const states = JSON.stringify(c.gpio.map((g) => g.state));
+	let known = hit.byStates.get(states);
+	if (!known) {
+		if (hit.byStates.size >= 64) hit.byStates.clear();
+		const cls = classify(c, { kind: "op" });
+		hit.byStates.set(states, known = {
+			cls,
+			topo: topologyFindings(c, cls)
+		});
+	}
+	rememberClassification(c, known.cls);
+	return {
+		c,
+		...known
+	};
+}
 async function solve(d, engine, revision, opts = {}) {
-	const c = buildCircuit(d, opts);
-	const cls = classifyCached(c, { kind: "op" });
-	const topo = topologyFindings(c, cls);
+	const { c, cls, topo } = prepare(d, opts);
 	const plan = pwmPlan(c);
 	const typical = plan ? plan.runs.map((pins) => ({
 		kind: "op",

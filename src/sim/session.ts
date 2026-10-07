@@ -3,9 +3,9 @@
 // SimResult. SimSession keeps at most one solve in flight and one pending (a newer request replaces the pending one); a result for an older revision, or
 // one that arrives after stop(), is discarded; a failure carries the last good result.
 import type { Diagram, Probe } from '../format/diagram.ts'
-import { type BuildOptions, buildCircuit } from './build.ts'
+import { type BuildOptions, buildCircuit, withRunPins } from './build.ts'
 import type { Engine } from './engine/engine.ts'
-import { classifyCached } from './floating.ts'
+import { type Classification, classify, classifyCached, rememberClassification } from './floating.ts'
 import { analyseRuns, finalize, noConvergence, topologyFindings } from './findings.ts'
 import type { Analysis, Circuit, Corner } from './model.ts'
 import { mixRaws, pwmPlan } from './pwm.ts'
@@ -15,11 +15,43 @@ import type { RawRun } from './spice.ts'
 /** BuildOptions (held group, library, run pin states) plus probes beyond the diagram's saved ones (the CLI's), and the code sequences the run pin states were sampled at (handed back with the outcome). */
 export interface SolveOptions extends BuildOptions { probes?: Probe[]; runSeq?: Record<string, number> }
 
+type Prepared = { c: Circuit; cls: Classification; topo: ReturnType<typeof topologyFindings> }
+/** Per sheet (by its parts array): the circuit built with no run pins, and the classification and topology findings per set of GPIO states. */
+const bases = new WeakMap<object, { key: unknown[]; base: Circuit; byStates: Map<string, Omit<Prepared, 'c'>> }>()
+
+/**
+ * The circuit, its classification and its topology findings (decided before the engine runs, so a
+ * failed or unavailable outcome still names a real short). Perf ruling (firmware slice 1): a
+ * run-state change on an unchanged sheet (the same parts, connections, modules and intent, held
+ * group, library, net names and moving servos) patches the GPIO states of the circuit built with no
+ * run pins (withRunPins) instead of rebuilding it, and reuses the classification and topology
+ * findings of the same GPIO states (a PWM pin conducts both ways whatever its duty, so the duty is
+ * not part of the key). A pin moving between driven, pulled and undriven is a new key: classified afresh.
+ */
+function prepare(d: Diagram, opts: BuildOptions): Prepared {
+  const key = [d.connections, d.modules, d.intent, opts.held?.part, opts.held?.group, opts.library, opts.netNames, JSON.stringify(opts.moving ?? [])]
+  let hit = bases.get(d.parts)
+  if (!hit || hit.key.some((x, i) => x !== key[i])) bases.set(d.parts, (hit = { key, base: buildCircuit(d, { ...opts, runPins: undefined }), byStates: new Map() }))
+  const c = withRunPins(hit.base, opts.runPins)
+  if (!c) {
+    const full = buildCircuit(d, opts)
+    const cls = classifyCached(full, { kind: 'op' })
+    return { c: full, cls, topo: topologyFindings(full, cls) }
+  }
+  const states = JSON.stringify(c.gpio.map((g) => g.state))
+  let known = hit.byStates.get(states)
+  if (!known) {
+    // ponytail: dropped wholesale past 64 state sets; an LRU if a sheet toggles more pins than that.
+    if (hit.byStates.size >= 64) hit.byStates.clear()
+    const cls = classify(c, { kind: 'op' })
+    hit.byStates.set(states, (known = { cls, topo: topologyFindings(c, cls) }))
+  }
+  rememberClassification(c, known.cls)
+  return { c, ...known }
+}
+
 export async function solve(d: Diagram, engine: Engine, revision: number, opts: SolveOptions = {}): Promise<{ outcome: SimOutcome; circuit: Circuit }> {
-  const c = buildCircuit(d, opts)
-  const cls = classifyCached(c, { kind: 'op' })
-  // Decided before the engine runs, so a failed or unavailable outcome still names a real short.
-  const topo = topologyFindings(c, cls)
+  const { c, cls, topo } = prepare(d, opts)
   // PWM pins (spec 4.2): the plan's typical runs and the two peak runs, every text in one runAll.
   const plan = pwmPlan(c)
   const typical: Analysis[] = plan ? plan.runs.map((pins) => ({ kind: 'op', corner: 'typical', pins })) : [{ kind: 'op', corner: 'typical' }]

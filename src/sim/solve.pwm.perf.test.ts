@@ -7,23 +7,12 @@ import type { RunPins } from '../format/simState.ts'
 import { makeEngine } from './engine/engine.ts'
 import { createNodeEngineHost } from './engine/nodeEngine.ts'
 import { solve } from './session.ts'
-import { type PartSpec, cellModule, sheet } from './testing.ts'
+import { pwmPerfSheet } from './testing.ts'
 
 const engine = makeEngine(createNodeEngineHost())
 afterAll(() => engine.dispose())
 
-/** 200 parts: a 5 V supply, a Pi 4, an RGB LED (three LEDs on one 220 ohm resistor on GPIO17, 27, 22), and 97 resistor-LED pairs on the supply. */
-const parts: PartSpec[] = [{ uid: 'bt1', module: cellModule(5, 0.02) }, { uid: 'u1', module: 'rpi-4-model-b' }, { uid: 'rc', module: 'resistor', values: { resistance: { value: 220, unit: 'ohm' } } }]
-const wires: [string, string][] = [['bt1.+', 'u1.5V'], ['bt1.-', 'u1.GND'], ['rc.2', 'u1.GND 2']]
-for (const [i, pin] of ['GPIO17', 'GPIO27', 'GPIO22'].entries()) {
-  parts.push({ uid: `c${i}`, module: 'led' })
-  wires.push([`u1.${pin}`, `c${i}.A`], [`c${i}.K`, 'rc.1'])
-}
-for (let i = 0; i < 97; i++) {
-  parts.push({ uid: `r${i}`, module: 'resistor', values: { resistance: { value: 150 + i, unit: 'ohm' } } }, { uid: `d${i}`, module: 'led' })
-  wires.push(['bt1.+', `r${i}.1`], [`r${i}.2`, `d${i}.A`], [`d${i}.K`, 'bt1.-'])
-}
-const d = sheet(parts, wires)
+const d = pwmPerfSheet()
 
 async function p95(round: (k: number) => Promise<void>): Promise<number> {
   const times: number[] = []
