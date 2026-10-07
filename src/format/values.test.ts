@@ -15,7 +15,13 @@ import {
   partValue,
   primaryParam,
   resistorBands,
+  capacitorCode,
+  capacitorMarking,
 } from './values.ts'
+import { readFileSync } from 'node:fs'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { Part } from '../render/Part.tsx'
 import { validParamValue, type ModuleDef } from './module.ts'
 
 const OHM = 'Ω' // ohm sign
@@ -266,6 +272,41 @@ describe('resistorBands', () => {
     expect(resistorBands(123)).toBeNull()
     expect(resistorBands(0.5)).toBeNull()
     expect(resistorBands(150000000)).toBeNull()
+  })
+})
+
+describe('capacitorCode', () => {
+  it('gives the 3-digit EIA marking in picofarads: two digits and the number of zeros', () => {
+    expect(capacitorCode(1e-6)).toBe('105')
+    expect(capacitorCode(1e-7)).toBe('104')
+    expect(capacitorCode(1e-8)).toBe('103')
+    expect(capacitorCode(22e-12)).toBe('220')
+    expect(capacitorCode(4.7e-9)).toBe('472')
+    expect(capacitorCode(10e-12)).toBe('100')
+  })
+  it('is null when the value has no 3-digit code (under 10 pF, three significant digits, over 99 uF)', () => {
+    expect(capacitorCode(4.7e-12)).toBeNull()
+    expect(capacitorCode(123e-12)).toBeNull()
+    expect(capacitorCode(220e-6)).toBeNull()
+    expect(capacitorCode(0)).toBeNull()
+  })
+})
+
+describe('the ceramic capacitor marking', () => {
+  const cap = JSON.parse(readFileSync('modules/capacitor-ceramic.json', 'utf8')) as ModuleDef
+  const drawn = (values?: Record<string, unknown>) => renderToStaticMarkup(createElement('svg', null, createElement(Part, { module: cap, values })))
+  it('follows the part capacitance', () => {
+    expect(capacitorMarking(cap)).toBe('104')
+    expect(drawn()).toContain('>104</text>')
+    const uF = drawn({ capacitance: { value: 1e-6, unit: 'F' } })
+    expect(uF).toContain('>105</text>')
+    expect(uF).not.toContain('>104</text>')
+    expect(drawn({ capacitance: { value: 22e-12, unit: 'F' } })).toContain('>220</text>')
+  })
+  it('is left off for a value with no code, and never on a part without the marking slot', () => {
+    expect(drawn({ capacitance: { value: 4.7e-12, unit: 'F' } })).not.toMatch(/>\d{3}<\/text>/)
+    const resistor = JSON.parse(readFileSync('modules/resistor.json', 'utf8')) as ModuleDef
+    expect(capacitorMarking(resistor)).toBeNull()
   })
 })
 

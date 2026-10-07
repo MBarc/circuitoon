@@ -223,11 +223,12 @@ The first shape is a power LED on a board; the rest is a 5 mm LED with its leads
 
 ## Workflow
 
-1. **Find the photo.** The maker's product page for the exact board (Adafruit, SparkFun, Pololu, Waveshare, Seeed ...). Download the main image, a top-down one if there is one, and open it with the Read tool. A maker's dimension drawing or fab print gives the true size.
+1. **Find the photo.** The maker's product page for the exact board (Adafruit, SparkFun, Pololu, Waveshare, Seeed ...). Download the main image, a top-down one if there is one, and open it with the Read tool. A maker's dimension drawing or fab print gives the true size. Record its URL in the spec's `photo` (`"none"` only when no photo of the part exists anywhere): the gate blocks on a custom part without it.
 2. **Note what you see.** Board colour; outline and its proportions (width : height); every connector, its type and the edge it is on; the header, its side and its pin order as printed; mounting holes; the main chip and its marking; anything big (a trim pot, a USB port, a terminal block).
+   **Pin order comes from the photo.** List the pins in the order they physically sit on the header or pads, side by side as printed on the silkscreen, read from the photo and the maker's board drawing. Pinout pages and datasheets often group pins by function, which is NOT the physical order: the PAM8302 amp's pins listed by function are VIN, GND, A+, A-, SD, but its header reads A+, A-, SD, Vin, Gnd.
 3. **Pick the body.** In grid units, with the photo's aspect ratio, big enough for the pins (slots plus 2 on each side with pins). Turn the photo so its header is on the side you give those pins; keep the order the silkscreen shows.
 4. **Draw.** Body first, then connectors and the header, then the chip, small parts, holes and silkscreen. Copy the idioms above or from a built-in part: `circuitoon part <id> --json` prints its `art`, and `circuitoon module render <id> -o look.png` draws it.
 5. **Render and compare.** `circuitoon module new --spec spec.json -o part.json`, then `circuitoon module render part.json -o part.png`. Open the render and the photo side by side.
-6. **Fix and repeat** until a hobbyist would recognise the board: same colour, same proportions, connectors on the same edges, pins in the same order.
+6. **Fix and repeat** until a hobbyist would recognise the board: same colour, same proportions, connectors on the same edges, pins in the same order as the header in the photo.
 
 The art of a `module new` result (the generic box) can be copied into the spec whole as a start: its `w` and `h` then set the body.

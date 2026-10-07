@@ -18,10 +18,9 @@ export const MODULE_NEW_FORMAT = 'circuitoon-cli/module-new/1'
 export const MODULE_CHECK_FORMAT = 'circuitoon-cli/module-check/1'
 export const MODULE_USAGE = 'module: usage: circuitoon module new [--spec <spec.json>] [-o <part.json>] | module check <part.json> | module render <part.json|built-in id> -o <part.png> [--svg <part.svg>] [--dark] [--scale n]'
 
-const issueLines = (errors: LintIssue[], warnings: LintIssue[], notes: LintIssue[] = []) => [
+const issueLines = (errors: LintIssue[], warnings: LintIssue[]) => [
   ...errors.map((e) => `error [${e.code}] ${e.message}`),
   ...warnings.map((w) => `warning [${w.code}] ${w.message}`),
-  ...notes.map((n) => `note [${n.code}] ${n.message}`),
 ]
 
 function parseJson(text: string, what: string): unknown {
@@ -47,17 +46,17 @@ function newCommand(args: Args, io: Io): number {
   const built = buildPart(raw)
   if (!built.ok) throw new CliError(`${from} is not a valid part spec: ${built.errors.slice(0, 8).join('; ')}`, EXIT.input)
   const m = built.module
-  const lint = lintModule(m)
+  const lint = lintModule(m, { look: true })
   const out = flag(args, '--out')
   const text = `${JSON.stringify(m, null, 2)}\n`
   // A part with lint errors is never written: fix the spec first.
   if (out && lint.ok) writeFile(io, out, text)
   const code = lint.ok ? EXIT.ok : EXIT.blocked
   if (args.flags.has('--json')) {
-    printJson(io, { format: MODULE_NEW_FORMAT, ok: lint.ok, path: out && lint.ok ? out : null, module: m, notes: [...built.notes, ...lint.notes.map((n) => n.message)], errors: lint.errors, warnings: lint.warnings })
+    printJson(io, { format: MODULE_NEW_FORMAT, ok: lint.ok, path: out && lint.ok ? out : null, module: m, notes: built.notes, errors: lint.errors, warnings: lint.warnings })
     return code
   }
-  const lines = [...built.notes.map((n) => `note: ${n}`), ...issueLines(lint.errors, lint.warnings, lint.notes)]
+  const lines = [...built.notes.map((n) => `note: ${n}`), ...issueLines(lint.errors, lint.warnings)]
   if (out) {
     const lay = layoutModule(m)
     const head = lint.ok ? `Wrote ${out}: ${m.id} (${m.pins.filter((p) => !isSpacer(p)).length} pins, ${lay.w} x ${lay.h} px), a custom part, unverified.` : `Not written: ${m.id} has lint errors.`
@@ -80,12 +79,12 @@ export interface ModuleCheckReport {
   size: { w: number; h: number } | null
   errors: LintIssue[]
   warnings: LintIssue[]
-  /** Not problems: hints such as a custom part still drawn as the generic box. */
-  notes: LintIssue[]
 }
 
 export function checkModuleFile(raw: unknown, path: string): ModuleCheckReport {
-  const lint = lintModule(raw)
+  // A part outside the library (custom or hand-made) is looked at; a built-in one never.
+  const id = (raw as { id?: unknown } | null)?.id
+  const lint = lintModule(raw, { look: !(typeof id === 'string' && Object.hasOwn(modulesById, id)) })
   const v = validateModule(raw)
   const m = v.ok ? v.module : null
   const lay = m ? layoutModule(m) : null
@@ -101,7 +100,6 @@ export function checkModuleFile(raw: unknown, path: string): ModuleCheckReport {
     size: lay ? { w: lay.w, h: lay.h } : null,
     errors: lint.errors,
     warnings: lint.warnings,
-    notes: lint.notes,
   }
 }
 
@@ -115,7 +113,7 @@ function checkCommand(args: Args, io: Io): number {
     const what = r.id ? `${r.id}${r.name ? ` (${r.name})` : ''}` : input
     const facts = r.size ? `, ${r.pins} pins, ${r.size.w} x ${r.size.h} px${r.custom ? ', custom (unverified)' : ''}` : ''
     const head = r.ok ? `OK: ${what}${facts}` : `PROBLEMS: ${what}: ${r.errors.length} error${r.errors.length === 1 ? '' : 's'}`
-    io.stdout(`${[head, ...issueLines(r.errors, r.warnings, r.notes)].join('\n')}\n`)
+    io.stdout(`${[head, ...issueLines(r.errors, r.warnings)].join('\n')}\n`)
   }
   return r.ok ? EXIT.ok : EXIT.blocked
 }

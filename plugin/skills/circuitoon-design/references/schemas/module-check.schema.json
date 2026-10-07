@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "circuitoon module check <part.json> --json",
   "type": "object",
-  "required": ["format", "ok", "path", "id", "name", "custom", "pins", "size", "errors", "warnings", "notes"],
+  "required": ["format", "ok", "path", "id", "name", "custom", "pins", "size", "errors", "warnings"],
   "additionalProperties": false,
   "properties": {
     "format": { "const": "circuitoon-cli/module-check/1" },
@@ -20,8 +20,7 @@
       "description": "The drawn body in px, or null when the module is not valid."
     },
     "errors": { "$ref": "#/$defs/issues" },
-    "warnings": { "$ref": "#/$defs/issues" },
-    "notes": { "$ref": "#/$defs/issues", "description": "Not problems: hints for a better part. generic-art: a custom part still drawn as the generic box; draw its art from a photo (references/art.md in the circuitoon-custom-part skill)." }
+    "warnings": { "$ref": "#/$defs/issues", "description": "Never fail the check. (There is no notes field: the generic-art note of earlier versions is now the custom-part-look warning.) custom-part-look: a part outside the library drawn as the generic box or with no photo; the gate blocks on it, so find the maker's product photo, draw its art per the art guide (references/art.md in the circuitoon-custom-part skill) and record the photo URL in photo. custom-part-no-photo: photo is \"none\"; the gate lists it as a warning." }
   },
   "$defs": {
     "issues": {
@@ -31,7 +30,7 @@
         "required": ["code", "message"],
         "additionalProperties": false,
         "properties": {
-          "code": { "type": "string", "description": "duplicate-pin, invalid, type-caps, art-pins, caps-on-power, power-untyped, power-no-supply, ground-supply, supply-unknown, no-types, no-source, source-not-url, not-custom, long-name" },
+          "code": { "type": "string", "description": "duplicate-pin, invalid, type-caps, art-pins, caps-on-power, power-untyped, power-no-supply, ground-supply, supply-unknown, no-types, no-source, source-not-url, not-custom, long-name, firmware-custom, custom-part-look, custom-part-no-photo" },
           "message": { "type": "string" },
           "pin": { "type": "string" }
         }

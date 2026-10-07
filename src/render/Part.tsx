@@ -5,7 +5,7 @@ import { insideLabelSides, isNetLabel, type ModuleDef, type PinType, type Placed
 import type { LabelLook } from '../format/mainsLook.ts'
 import { NetLabelFlag } from './NetLabel.tsx'
 import { bodyRect, pivot, worldPins, type Rect, type Rotation, type WorldPin } from '../format/geometry.ts'
-import { bandFills } from '../format/values.ts'
+import { bandFills, capacitorMarking } from '../format/values.ts'
 import { CAPTION_SIZE, captionAnchor } from './captionBox.ts'
 
 export const INK = '#23282F'
@@ -241,6 +241,8 @@ export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, 
   const c = pivot(lay.w, lay.h)
   // Only a module with band shapes (a resistor) ever gets non-null fills here.
   const bands = bandFills(m, values)
+  // And only a ceramic capacitor (a capCode shape) gets a marking: its capacitance as a 3-digit code.
+  const marking = capacitorMarking(m, values)
   // The rotated body and pins place the pin labels; the caption anchor comes from captionBox.ts.
   const box = bodyRect({ x: 0, y: 0, rotation }, lay)
   const pins = worldPins({ x: 0, y: 0, rotation }, m)
@@ -262,12 +264,12 @@ export const Part = memo(function Part({ module: m, x = 0, y = 0, rotation = 0, 
                   stroke={i === body ? outline : s.outline === false ? 'none' : INK}
                   strokeWidth={OUTLINE}
                 />
-                {s.label && (
+                {(s.capCode ? marking : s.label) && (
                   <text
                     x={s.x + s.w / 2} y={s.y + s.h / 2} textAnchor="middle" dominantBaseline="central"
                     fontSize={s.labelSize ?? 8} fontWeight={700} fill={s.labelColor ?? INK}
                   >
-                    {s.label}
+                    {s.capCode ? marking : s.label}
                   </text>
                 )}
               </g>

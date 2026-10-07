@@ -59,7 +59,7 @@
         "h": 24,
         "fill": "#E8A33D",
         "radius": 10,
-        "label": "104",
+        "capCode": true,
         "labelColor": "#23282F",
         "labelSize": 7
       }

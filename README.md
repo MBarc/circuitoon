@@ -311,7 +311,7 @@ The CLI bundle `plugin/dist-cli/circuitoon.mjs` is committed. After any change u
 
 ## Status and roadmap
 
-Early development. The editor, the wiring checker, the part maker and the agent toolkit (plugin 0.13.0) and live DC simulation work today. Still to come in V1: saving sheets in the browser, PDF export, and an art studio for drawing a part's artwork by hand.
+Early development. The editor, the wiring checker, the part maker and the agent toolkit (plugin 0.14.0) and live DC simulation work today. Still to come in V1: saving sheets in the browser, PDF export, and an art studio for drawing a part's artwork by hand.
 
 - V2 (shipped): live DC simulation in the editor and in `circuitoon sim`, with voltages, currents, supply budgets and overcurrent.
 - V3: animation driven by that simulation. LEDs light up, switches flip.

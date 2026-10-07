@@ -4,13 +4,14 @@
 // when the sheet has an intent, verify too, so it still works on any diagram. Exit 1 when an error
 // blocks; a file that does not load as a sheet is invalid input (exit 2). Loader warnings go to
 // stderr.
-import type { Endpoint } from '../format/diagram.ts'
+import { type Endpoint, moduleOf } from '../format/diagram.ts'
 import { checkDiagram } from '../format/checks.ts'
 import { holeKey } from '../format/breadboard.ts'
 import { driftedParts, verifyDiagram } from '../agent/verify.ts'
 import { libraryLookup } from '../agent/catalog.ts'
 import { NOT_CHECKED } from '../agent/notChecked.ts'
 import { readabilityFindings } from '../agent/readabilityWarnings.ts'
+import { lookFindings, sheetCustomParts } from '../agent/customParts.ts'
 import type { Args } from './args.ts'
 import { CliError, EXIT, type Io, loadSheet, printJson } from './io.ts'
 
@@ -106,6 +107,8 @@ export function checkCommand(args: Args, io: Io): number {
   const all = verifyDiagram(diagram, libraryLookup)
   const checked = withoutStale(checkDiagram(diagram), all)
   const verified = diagram.intent !== undefined ? all.filter((f) => !alsoChecked(f, checked)) : all.filter((f) => f.rule === 'module-drift')
-  // Readability warnings (never blocking): crowded wires, wires hugging parts, covered labels, many crossings.
-  return report(io, args, 'circuitoon-cli/check/1', uniqueIds([...verified, ...checked, ...readabilityFindings(diagram)].map(cliFinding)))
+  // Readability warnings (never blocking): crowded wires, wires hugging parts, covered labels, many
+  // crossings. Custom parts that do not look like the real part block, as in the gate.
+  const look = lookFindings(sheetCustomParts(diagram, libraryLookup), (id) => moduleOf(diagram, id))
+  return report(io, args, 'circuitoon-cli/check/1', uniqueIds([...verified, ...checked, ...readabilityFindings(diagram), ...look].map(cliFinding)))
 }
