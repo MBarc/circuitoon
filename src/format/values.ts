@@ -290,6 +290,28 @@ export function bandFills(m: ModuleDef, values?: Record<string, unknown>): strin
 }
 
 /**
+ * A capacitance's 3-digit EIA marking: two digits of picofarads and the number of zeros after them
+ * (1 uF is 105, 100 nF is 104, 22 pF is 220). Null when no 3-digit code fits (under 10 pF, a third
+ * significant digit, over 99 uF).
+ */
+export function capacitorCode(farads: number): string | null {
+  const pf = farads * 1e12
+  for (let zeros = 0; zeros <= 6; zeros++) {
+    const scaled = pf / 10 ** zeros
+    const digits = Math.round(scaled)
+    if (digits >= 10 && digits <= 99 && Math.abs(scaled - digits) < 1e-6) return `${digits}${zeros}`
+  }
+  return null
+}
+
+/** The marking a module's `capCode` shape shows for the part's capacitance, or null (no such shape, or no code fits). */
+export function capacitorMarking(m: ModuleDef, values?: Record<string, unknown>): string | null {
+  if (!m.art?.shapes.some((s) => s.capCode)) return null
+  const v = partValue({ values }, m)
+  return v?.name === 'capacitance' ? capacitorCode(v.value) : null
+}
+
+/**
  * The only param names the value field, caption and (for resistance) band coloring apply to,
  * in priority order. A module can carry other numeric params (an LED's forward voltage, its max
  * current) that are not meant to be user-editable values here, so those are never picked, no
