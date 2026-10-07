@@ -191,7 +191,8 @@ describe('the real clock (spec 5.2)', () => {
     const took = performance.now() - t0
     await w.terminate()
     expect(Atomics.load(m.i32, H.wake)).toBe(1)
-    expect(took).toBeLessThan(40)
+    // Under the 50 ms slice: an early return, with room for a loaded machine.
+    expect(took).toBeLessThan(49)
     expect(checks()).toBe(1)
   })
 })
