@@ -104,7 +104,7 @@ describe('circuitoon module new', () => {
   it('is in the usage, and rejects an unknown subcommand', async () => {
     expect(USAGE).toContain('module new [--spec <spec.json>] [-o <part.json>] [--json]')
     expect(USAGE).toContain('module check <part.json> [--json]')
-    expect(USAGE).toContain('module render <part.json> -o <part.png>')
+    expect(USAGE).toContain('module render <part.json|built-in id> -o <part.png>')
     const r = await cli(['module', 'make'])
     expect(r.code).toBe(EXIT.input)
     expect(r.err).toContain('unknown subcommand "make"')
@@ -120,9 +120,21 @@ describe('circuitoon module check', () => {
     expect(r.code).toBe(0)
     const out = json(r.out)
     expect(schemaErrors(loadSchema('module-check'), out)).toEqual([])
-    expect(out).toMatchObject({ ok: true, id: ID, custom: true, pins: 4, errors: [], warnings: [] })
+    expect(out).toMatchObject({ ok: true, id: ID, custom: true, pins: 4, errors: [], warnings: [], notes: [{ code: 'generic-art' }] })
     const text = await cli(['module', 'check', 'part.json'], { cwd: dir })
-    expect(text.out).toMatch(/^OK: custom-test-humidity-sensor-i2c \(Test humidity sensor \(I2C\)\), 4 pins, \d+ x \d+ px, custom \(unverified\)\n$/)
+    expect(text.out).toMatch(/^OK: custom-test-humidity-sensor-i2c \(Test humidity sensor \(I2C\)\), 4 pins, \d+ x \d+ px, custom \(unverified\)\nnote \[generic-art\] Drawn as a generic box: .*\n$/)
+  })
+
+  it('says nothing about the drawing of a part with its own art', async () => {
+    const plain = json((await cli(['module', 'new', '--spec', 'spec.json'], { cwd: withSpec() })).out)
+    const dir = withSpec({ ...SPEC, art: { ...plain.art, shapes: [...plain.art.shapes, { type: 'rect', x: 30, y: 20, w: 12, h: 12, fill: '#1B1F24', radius: 2 }] } })
+    const r = await cli(['module', 'new', '--spec', 'spec.json', '-o', 'part.json', '--json'], { cwd: dir })
+    expect(r.code).toBe(0)
+    expect(json(r.out).notes).toEqual([])
+    expect(json(r.out).module.art.shapes).toHaveLength(plain.art.shapes.length + 1)
+    const c = json((await cli(['module', 'check', 'part.json', '--json'], { cwd: dir })).out)
+    expect(schemaErrors(loadSchema('module-check'), c)).toEqual([])
+    expect(c.notes).toEqual([])
   })
 
   it('fails duplicate pins and an invalid module with exit 1, and a file that is not JSON with exit 2', async () => {
@@ -166,6 +178,16 @@ describe('circuitoon module render', () => {
     expect(r.code).toBe(0)
     expect(readFileSync(join(dir, 'part.png')).subarray(1, 4).toString()).toBe('PNG')
   }, 60_000)
+
+  it('draws a built-in part by its id, so its art can be studied', async () => {
+    const dir = tempDir()
+    const r = await cli(['module', 'render', 'ip5306-usbc-module', '--svg', 'p.svg', '--json'], { cwd: dir })
+    expect(r.code).toBe(0)
+    expect(readFileSync(join(dir, 'p.svg'), 'utf8')).toContain('<svg')
+    const none = await cli(['module', 'render', 'no-such-part', '--svg', 'p.svg'], { cwd: dir })
+    expect(none.code).toBe(EXIT.input)
+    expect(none.err).toContain('no-such-part: not a part file or a built-in part id')
+  })
 
   it('refuses an invalid module and a missing output', async () => {
     const dir = tempDir()
@@ -241,8 +263,9 @@ describe('the part spec schema', () => {
     expect(schemaErrors(schema, { name: 'Gaps', style: 'chip', body: { w: 8, h: 4, color: '#1E4F8A' }, pins: { top: ['A', null, { spacer: true }, { name: 'B', label: 'b', caps: { inputOnly: true } }] }, internal: [['A', 'B']] })).toEqual([])
   })
   it('names the same fields as the spec validator', () => {
-    expect(Object.keys(schema.properties!).sort()).toEqual(['body', 'category', 'description', 'format', 'id', 'internal', 'name', 'pins', 'source', 'style', 'uses', 'version'])
+    expect(Object.keys(schema.properties!).sort()).toEqual(['art', 'body', 'category', 'description', 'format', 'id', 'internal', 'name', 'pins', 'source', 'style', 'uses', 'version'])
     expect(schemaErrors(schema, { ...SPEC, colour: 'red' })).toEqual(['$.colour: not allowed'])
     expect(schemaErrors(schema, { name: 'X', pins: { left: [{ name: 'A', kind: 'io' }] } })).toEqual(['$.pins.left[0].kind: not allowed'])
+    expect(Object.keys((schema.properties!.art as { properties: object }).properties).sort()).toEqual(['h', 'pinLabels', 'shapes', 'w'])
   })
 })

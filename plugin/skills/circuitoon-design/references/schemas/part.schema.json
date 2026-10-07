@@ -15,7 +15,18 @@
         "name": { "type": "string" },
         "pins": { "type": "array" },
         "holes": { "type": "array" },
-        "internal": { "type": "array" }
+        "internal": { "type": "array" },
+        "art": {
+          "type": "object",
+          "description": "How the part is drawn: rects in module px (origin at the body's top left; w and h are the body in px). Study it to copy how the library draws a feature (circuitoon module render <id> draws it), then use the same shapes in a part spec's art.",
+          "required": ["w", "h", "shapes"],
+          "properties": {
+            "w": { "type": "number" },
+            "h": { "type": "number" },
+            "pinLabels": { "enum": ["inside", "tips"] },
+            "shapes": { "type": "array", "items": { "type": "object", "required": ["type", "x", "y", "w", "h", "fill"] } }
+          }
+        }
       }
     }
   }

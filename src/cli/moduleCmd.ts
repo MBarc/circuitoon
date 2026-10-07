@@ -1,9 +1,12 @@
 // `circuitoon module new|check|render`: custom parts for agents. `new` builds a custom module from a
 // part spec (circuitoon-part-spec/1, from --spec <file> or standard input) with the editor's part
 // maker (src/format/partMaker.ts), lints it and writes it; `check` lints any module file; `render`
-// draws one part alone as PNG or SVG so the agent can look at it. A module from `new` drops straight
+// draws one part alone (a part file, or a built-in part by its id, to study its art) as PNG or SVG
+// so the agent can look at it. A module from `new` drops straight
 // into a netlist's `modules` under its own id.
+import { existsSync } from 'node:fs'
 import { type Diagram, DIAGRAM_FORMAT } from '../format/diagram.ts'
+import { modulesById } from '../library.ts'
 import { isCustom, isSpacer, layoutModule, type ModuleDef, validateModule } from '../format/module.ts'
 import { type LintIssue, buildPart, lintModule } from '../format/partMaker.ts'
 import { renderSheetSvg } from '../render/exportSvg.tsx'
@@ -13,11 +16,12 @@ import { writePng } from './png.ts'
 
 export const MODULE_NEW_FORMAT = 'circuitoon-cli/module-new/1'
 export const MODULE_CHECK_FORMAT = 'circuitoon-cli/module-check/1'
-export const MODULE_USAGE = 'module: usage: circuitoon module new [--spec <spec.json>] [-o <part.json>] | module check <part.json> | module render <part.json> -o <part.png> [--svg <part.svg>] [--dark] [--scale n]'
+export const MODULE_USAGE = 'module: usage: circuitoon module new [--spec <spec.json>] [-o <part.json>] | module check <part.json> | module render <part.json|built-in id> -o <part.png> [--svg <part.svg>] [--dark] [--scale n]'
 
-const issueLines = (errors: LintIssue[], warnings: LintIssue[]) => [
+const issueLines = (errors: LintIssue[], warnings: LintIssue[], notes: LintIssue[] = []) => [
   ...errors.map((e) => `error [${e.code}] ${e.message}`),
   ...warnings.map((w) => `warning [${w.code}] ${w.message}`),
+  ...notes.map((n) => `note [${n.code}] ${n.message}`),
 ]
 
 function parseJson(text: string, what: string): unknown {
@@ -50,10 +54,10 @@ function newCommand(args: Args, io: Io): number {
   if (out && lint.ok) writeFile(io, out, text)
   const code = lint.ok ? EXIT.ok : EXIT.blocked
   if (args.flags.has('--json')) {
-    printJson(io, { format: MODULE_NEW_FORMAT, ok: lint.ok, path: out && lint.ok ? out : null, module: m, notes: built.notes, errors: lint.errors, warnings: lint.warnings })
+    printJson(io, { format: MODULE_NEW_FORMAT, ok: lint.ok, path: out && lint.ok ? out : null, module: m, notes: [...built.notes, ...lint.notes.map((n) => n.message)], errors: lint.errors, warnings: lint.warnings })
     return code
   }
-  const lines = [...built.notes.map((n) => `note: ${n}`), ...issueLines(lint.errors, lint.warnings)]
+  const lines = [...built.notes.map((n) => `note: ${n}`), ...issueLines(lint.errors, lint.warnings, lint.notes)]
   if (out) {
     const lay = layoutModule(m)
     const head = lint.ok ? `Wrote ${out}: ${m.id} (${m.pins.filter((p) => !isSpacer(p)).length} pins, ${lay.w} x ${lay.h} px), a custom part, unverified.` : `Not written: ${m.id} has lint errors.`
@@ -76,6 +80,8 @@ export interface ModuleCheckReport {
   size: { w: number; h: number } | null
   errors: LintIssue[]
   warnings: LintIssue[]
+  /** Not problems: hints such as a custom part still drawn as the generic box. */
+  notes: LintIssue[]
 }
 
 export function checkModuleFile(raw: unknown, path: string): ModuleCheckReport {
@@ -95,6 +101,7 @@ export function checkModuleFile(raw: unknown, path: string): ModuleCheckReport {
     size: lay ? { w: lay.w, h: lay.h } : null,
     errors: lint.errors,
     warnings: lint.warnings,
+    notes: lint.notes,
   }
 }
 
@@ -108,7 +115,7 @@ function checkCommand(args: Args, io: Io): number {
     const what = r.id ? `${r.id}${r.name ? ` (${r.name})` : ''}` : input
     const facts = r.size ? `, ${r.pins} pins, ${r.size.w} x ${r.size.h} px${r.custom ? ', custom (unverified)' : ''}` : ''
     const head = r.ok ? `OK: ${what}${facts}` : `PROBLEMS: ${what}: ${r.errors.length} error${r.errors.length === 1 ? '' : 's'}`
-    io.stdout(`${[head, ...issueLines(r.errors, r.warnings)].join('\n')}\n`)
+    io.stdout(`${[head, ...issueLines(r.errors, r.warnings, r.notes)].join('\n')}\n`)
   }
   return r.ok ? EXIT.ok : EXIT.blocked
 }
@@ -126,7 +133,10 @@ function renderCommand(args: Args, io: Io): number {
   if (!png && !svgPath) throw new CliError('module render: give -o <part.png>, --svg <part.svg>, or both', EXIT.input)
   const scale = Number(flag(args, '--scale') ?? '3')
   if (!(scale > 0 && scale <= 8)) throw new CliError('module render: --scale must be a number above 0, at most 8', EXIT.input)
-  const v = validateModule(readJson(io, input))
+  // A part file, else a built-in part's id: its art is the way to learn how the library draws a feature.
+  const builtin = !existsSync(pathIn(io, input)) && Object.hasOwn(modulesById, input) ? modulesById[input] : null
+  if (!builtin && !existsSync(pathIn(io, input))) throw new CliError(`${input}: not a part file or a built-in part id (find ids with: circuitoon parts --search <text>)`, EXIT.input)
+  const v = builtin ? { ok: true as const, module: builtin } : validateModule(readJson(io, input))
   if (!v.ok) throw new CliError(`${input} is not a valid module: ${v.errors.slice(0, 5).join('; ')}`, EXIT.input)
   const drawn = renderSheetSvg(partSheet(v.module), { dark: args.flags.has('--dark') })
   const outputs: { kind: 'svg' | 'png'; path: string; width: number; height: number }[] = []

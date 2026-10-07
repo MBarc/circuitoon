@@ -167,6 +167,37 @@ describe('the part maker draft', () => {
   })
 })
 
+describe('a custom part with its own art in the part maker', () => {
+  const ART = moduleFromSpec({
+    name: 'Arty amp', source: 'https://example.com/amp', body: { w: 10, h: 8 },
+    pins: { left: [{ name: 'VIN', type: 'power_in', supply: '5V' }, { name: 'GND', type: 'ground' }] },
+    art: { pinLabels: 'inside', shapes: [{ type: 'rect', x: 0, y: 0, w: 100, h: 80, fill: '#1E4F8A', radius: 6 }, { type: 'rect', x: 40, y: 30, w: 20, h: 20, fill: '#1B1F24' }] },
+  })
+  it('opens and saves in the dialog without losing its art', () => {
+    const p = { module: ART, saved: 1 }
+    const d = draftFromPart(p)
+    expect(d.art?.shapes).toEqual(ART.art!.shapes)
+    expect(unmodeled(ART)).toEqual([])
+    const r = savedModule({ ...d, name: 'Arty amp 2' }, ART.id, ART, false)
+    expect(r.ok && r.module.art).toEqual(ART.art)
+    expect(r.ok && r.module.name).toBe('Arty amp 2')
+  })
+  it('places an added pin on the kept art, and drops the art only when asked', () => {
+    const d = draftFromPart({ module: ART, saved: 1 })
+    const more = { ...d, pins: { ...d.pins, right: [pinRow('OUT', 'output')] } }
+    const r = savedModule(more, ART.id, ART, false)
+    expect(r.ok && r.module.art).toEqual(ART.art)
+    expect(r.ok && r.module.pins.map((x) => ('name' in x ? x.name : ''))).toEqual(['VIN', 'GND', 'OUT'])
+    const plain = savedModule({ ...d, art: undefined }, ART.id, ART, false)
+    expect(plain.ok && plain.module.art).not.toEqual(ART.art)
+  })
+  it('keeps the art through Export file and Import part', () => {
+    const r = importPart(partFileText({ module: ART, saved: 1 }), [])
+    expect(r.ok && r.part.module.art).toEqual(ART.art)
+    expect(r.ok && draftFromPart(r.part).art).toBeDefined()
+  })
+})
+
 describe('tampered My parts', () => {
   // An object whose toString and valueOf are not functions: String() and template literals throw on it.
   const evil = () => JSON.parse('{"toString":null,"valueOf":null}')

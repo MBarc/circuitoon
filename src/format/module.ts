@@ -354,6 +354,26 @@ export function validParamValue(name: string, v: unknown): v is number {
   return Object.hasOwn(PARAM_RULES, name) && representableValue(v) && PARAM_RULES[name].valid(v)
 }
 
+/** What is wrong with a list of art shapes, each error at its exact path (`art.shapes[2].x`). Shared with the part spec's `art`. */
+export function artShapeErrors(shapes: unknown[]): string[] {
+  const errors: string[] = []
+  shapes.forEach((s, i) => {
+    const at = `art.shapes[${i}]`
+    if (!isObj(s) || s.type !== 'rect') return void errors.push(`${at}: only "rect" shapes are supported`)
+    for (const k of ['x', 'y', 'w', 'h']) if (!inBounds(s[k])) errors.push(`${at}.${k}: must be a number within +-${MODULE_PX_MAX}`)
+    if (typeof s.fill !== 'string') errors.push(`${at}.fill: required color`)
+    if (s.radius !== undefined && !isNum(s.radius)) errors.push(`${at}.radius: must be a number`)
+    if (s.outline !== undefined && typeof s.outline !== 'boolean') errors.push(`${at}.outline: must be true or false`)
+    if (s.label !== undefined && typeof s.label !== 'string') errors.push(`${at}.label: must be a string`)
+    if (s.labelColor !== undefined && typeof s.labelColor !== 'string') errors.push(`${at}.labelColor: must be a string`)
+    if (s.labelSize !== undefined && !isPos(s.labelSize)) errors.push(`${at}.labelSize: must be a positive number`)
+    if (s.horn !== undefined && s.horn !== true) errors.push(`${at}.horn: must be true`)
+    if (s.band !== undefined && !(Number.isInteger(s.band) && (s.band as number) >= 1 && (s.band as number) <= 4))
+      errors.push(`${at}.band: must be a whole number from 1 to 4`)
+  })
+  return errors
+}
+
 /** Checks a parsed JSON value against the module format. Errors name the exact path. */
 export function validateModule(raw: unknown): ValidationResult {
   const errors: string[] = []
@@ -537,20 +557,7 @@ export function validateModule(raw: unknown): ValidationResult {
       errors.push(`art: must be { "w", "h", "shapes": [...] } with w and h above 0 and at most ${MODULE_PX_MAX}`)
     else {
       if (art.pinLabels !== undefined && art.pinLabels !== 'inside' && art.pinLabels !== 'tips') errors.push('art.pinLabels: must be "inside" or "tips"')
-      art.shapes.forEach((s, i) => {
-        const at = `art.shapes[${i}]`
-        if (!isObj(s) || s.type !== 'rect') return void errors.push(`${at}: only "rect" shapes are supported`)
-        for (const k of ['x', 'y', 'w', 'h']) if (!inBounds(s[k])) errors.push(`${at}.${k}: must be a number within +-${MODULE_PX_MAX}`)
-        if (typeof s.fill !== 'string') errors.push(`${at}.fill: required color`)
-        if (s.radius !== undefined && !isNum(s.radius)) errors.push(`${at}.radius: must be a number`)
-        if (s.outline !== undefined && typeof s.outline !== 'boolean') errors.push(`${at}.outline: must be true or false`)
-        if (s.label !== undefined && typeof s.label !== 'string') errors.push(`${at}.label: must be a string`)
-        if (s.labelColor !== undefined && typeof s.labelColor !== 'string') errors.push(`${at}.labelColor: must be a string`)
-        if (s.labelSize !== undefined && !isPos(s.labelSize)) errors.push(`${at}.labelSize: must be a positive number`)
-        if (s.horn !== undefined && s.horn !== true) errors.push(`${at}.horn: must be true`)
-        if (s.band !== undefined && !(Number.isInteger(s.band) && (s.band as number) >= 1 && (s.band as number) <= 4))
-          errors.push(`${at}.band: must be a whole number from 1 to 4`)
-      })
+      errors.push(...artShapeErrors(art.shapes))
     }
   }
 

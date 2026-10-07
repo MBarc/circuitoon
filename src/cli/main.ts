@@ -57,8 +57,8 @@ export const USAGE = `circuitoon <command> [options]
   module new [--spec <spec.json>] [-o <part.json>] [--json]
                                             a custom part from a part spec (or the spec on standard input), with Sticker art
   module check <part.json> [--json]         lint a part: duplicate pins, art against pins, impossible caps, untyped power pins
-  module render <part.json> -o <part.png> [--svg <part.svg>] [--dark] [--scale n]
-                                            draw one part alone, to look at it
+  module render <part.json|built-in id> -o <part.png> [--svg <part.svg>] [--dark] [--scale n]
+                                            draw one part alone, to look at it (a built-in id shows how the library draws it)
 
 Exit codes: 0 ok, 1 findings that block, 2 invalid input, 3 environment problem (such as no browser),
 a simulation that failed or could not run (sim and gate, when nothing else blocks), or an internal error of the tool.

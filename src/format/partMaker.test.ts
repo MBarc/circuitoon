@@ -53,7 +53,7 @@ describe('moduleFromSpec', () => {
       expect(near, p.name).toBe(true)
     }
     expect(m.art!.shapes.some((s) => s.label === 'INA219 current sensor')).toBe(true)
-    expect(lintModule(m)).toEqual({ ok: true, errors: [], warnings: [] })
+    expect(lintModule(m)).toEqual({ ok: true, errors: [], warnings: [], notes: [{ code: 'generic-art', message: expect.any(String) }] })
   })
 
   it('auto-sizes the body to the pins and their labels, and keeps a size that is given', () => {
@@ -111,7 +111,7 @@ describe('moduleFromSpec', () => {
     expect(r.ok).toBe(false)
     if (r.ok) return
     expect(r.errors).toEqual(expect.arrayContaining([
-      'colour: unknown field (allowed: format, name, id, category, source, description, uses, version, style, body, pins, internal)',
+      'colour: unknown field (allowed: format, name, id, category, source, description, uses, version, style, body, art, pins, internal)',
       'name: required',
       'body.color: must be a colour like "#2F9E6E"',
       'pins.middle: unknown side (left, right, top or bottom)',

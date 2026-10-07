@@ -166,7 +166,15 @@ export function PartMaker({ editing, taken, onSave, onExport, onCancel, extra, i
           <label className="field">Typical uses <span className="pm-opt">comma separated, optional</span>
             <input data-testid="pm-uses" value={draft.uses} placeholder="battery monitor, solar logger" onChange={(e) => update({ ...draft, uses: e.target.value })} />
           </label>
-          <fieldset className="pm-style" disabled={pinsOnly}>
+          {draft.art && (
+            <div className="pm-limited" role="note" data-testid="pm-art-kept">
+              <p>Custom art kept: this part has its own drawing, made from its spec. Pins you add or move are placed on it, so check the preview. The style, colour and size come from the drawing.</p>
+              <button type="button" className="tool small" onClick={() => {
+                if (window.confirm(`Replace the drawing of ${draft.name.trim() || 'this part'} with the part maker's plain board or chip? Its own art is dropped when you save.`)) update({ ...draft, art: undefined })
+              }}>Use the plain drawing</button>
+            </div>
+          )}
+          <fieldset className="pm-style" disabled={pinsOnly || !!draft.art}>
             <legend>Drawn as</legend>
             {(['board', 'chip'] as PartStyle[]).map((s) => (
               <label key={s} className={draft.style === s ? 'on' : undefined}>
@@ -178,7 +186,7 @@ export function PartMaker({ editing, taken, onSave, onExport, onCancel, extra, i
               </label>
             ))}
           </fieldset>
-          <fieldset className="pm-colors" disabled={pinsOnly}>
+          <fieldset className="pm-colors" disabled={pinsOnly || !!draft.art}>
             <legend>Body colour</legend>
             <div className="pm-swatches">
               {BODY_COLORS.map((c) => (
@@ -190,7 +198,7 @@ export function PartMaker({ editing, taken, onSave, onExport, onCancel, extra, i
               </label>
             </div>
           </fieldset>
-          <fieldset className="pm-size" disabled={pinsOnly}>
+          <fieldset className="pm-size" disabled={pinsOnly || !!draft.art}>
             <legend>Body size</legend>
             <label><input type="checkbox" checked={!draft.sized} onChange={(e) => update({ ...draft, sized: !e.target.checked, ...(preview?.size ? { w: preview.size.w, h: preview.size.h } : {}) })} /> Fit the pins and labels</label>
             {draft.sized && (
