@@ -10,6 +10,9 @@ import { loadNewWireEnds, saveNewWireEnds, usbEnds } from './cableDefault.ts'
 import { loadSnapObjects, saveSnapObjects } from './snapPref.ts'
 import type { SimOutcome } from '../sim/results.ts'
 import type { Circuit } from '../sim/model.ts'
+import type { RunPins } from '../format/simState.ts'
+import type { RunFinding, ServoView } from '../run/core.ts'
+import type { RunStatus } from '../run/protocol.ts'
 
 /** The colour new wires start with until the user picks one. */
 export const NEW_WIRE_COLOR = 'blue'
@@ -18,7 +21,47 @@ export const NEW_WIRE_COLOR = 'blue'
 export type SimView =
   | { phase: 'loading'; loaded: number; total: number }
   | { phase: 'solving' }
-  | { phase: 'done'; outcome: SimOutcome; circuit: Circuit | null }
+  | { phase: 'done'; outcome: SimOutcome; circuit: Circuit | null; runSeq?: Record<string, number> }
+
+/** One Serial line (firmware spec 5.3): output, an error, a note from the simulator, or the echo of a typed line. */
+export interface SerialLine { text: string; stream: 'out' | 'err' | 'note' | 'echo' }
+/** Serial keeps this many lines (spec 5.3). */
+export const SERIAL_MAX = 5000
+/** One board's run in the editor (spec 2.1, 6.1). `source` is what it started with, so the dock can say "Code changed". */
+export interface BoardRunView {
+  status: RunStatus | 'idle'
+  source: string
+  file: string
+  serial: SerialLine[]
+  /** input() is waiting, with this prompt. */
+  prompt: string | null
+  /** The first Run's download. */
+  progress: { loaded: number; total: number } | null
+  /** Why Run did not start, or why the board stopped ("U1 has no power: connect 5V and GND"). */
+  message: string | null
+}
+/** Live run state (spec 2.3): transient like `held`; never saved, never undo history. */
+export interface RunView {
+  boards: Record<string, BoardRunView>
+  pins: RunPins
+  seq: Record<string, number>
+  moving: string[]
+  servos: Record<string, ServoView>
+  findings: RunFinding[]
+}
+export const EMPTY_RUN: RunView = { boards: {}, pins: {}, seq: {}, moving: [], servos: {}, findings: [] }
+/** The code dock (spec 6.1): open or collapsed, the tab shown, and its height (remembered per browser). */
+export interface DockState { open: boolean; tab: string | null; height: number }
+export const DOCK_HEIGHT_KEY = 'circuitoon.dockHeight'
+const DOCK_HEIGHT = 260
+function loadDockHeight(): number {
+  try {
+    const v = Number(globalThis.localStorage?.getItem(DOCK_HEIGHT_KEY))
+    return v >= 120 ? v : DOCK_HEIGHT
+  } catch {
+    return DOCK_HEIGHT
+  }
+}
 
 export interface EditorState {
   diagram: Diagram
@@ -39,6 +82,11 @@ export interface EditorState {
   sim: SimView | null
   /** A momentary button held down while simulating (spec 4.0, 6.3): closed only while held, never saved. */
   held: { part: string; group: string } | null
+  /** Code running on boards (firmware spec 2.3). Not saved. */
+  run: RunView
+  dock: DockState
+  /** The sheet came from a link with code on it, and its first Run has not been confirmed (spec 2.6). */
+  linkCode: boolean
 }
 
 export interface Highlight {
@@ -65,12 +113,12 @@ export class EditorStore {
   private coalesce: { key: string; at: number } | null = null
   private listeners = new Set<() => void>()
 
-  constructor(diagram: Diagram) {
+  constructor(diagram: Diagram, opts: { linkCode?: boolean } = {}) {
     const ends = loadNewWireEnds()
     // New wires start blue: a signal colour (red and black mean power and ground), so a plain signal
     // wire never raises wire-color-signal. Ground and supply wires still take black and red by role.
     const wireStyle: WireStyle = ends ? { color: NEW_WIRE_COLOR, gauge: 22, ends } : { color: NEW_WIRE_COLOR, gauge: 22 }
-    this.state = { diagram, selection: EMPTY_SELECTION, wireStyle, highlight: null, reveal: 0, snapObjects: loadSnapObjects(), simulate: false, simTool: 'select', sim: null, held: null }
+    this.state = { diagram, selection: EMPTY_SELECTION, wireStyle, highlight: null, reveal: 0, snapObjects: loadSnapObjects(), simulate: false, simTool: 'select', sim: null, held: null, run: EMPTY_RUN, dock: { open: true, tab: null, height: loadDockHeight() }, linkCode: !!opts.linkCode }
   }
 
   getState = (): EditorState => this.state
@@ -252,6 +300,41 @@ export class EditorStore {
     this.set({ held })
   }
 
+  setRun(patch: Partial<RunView>) {
+    this.set({ run: { ...this.state.run, ...patch } })
+  }
+  /** Sets (or with null, forgets) one board's run view. */
+  setBoardRun(uid: string, patch: Partial<BoardRunView> | null) {
+    const boards = { ...this.state.run.boards }
+    if (patch === null) delete boards[uid]
+    else boards[uid] = { ...(boards[uid] ?? { status: 'idle', source: '', file: 'main.py', serial: [], prompt: null, progress: null, message: null }), ...patch }
+    this.setRun({ boards })
+  }
+  /** Adds Serial lines, keeping the last SERIAL_MAX (spec 5.3). */
+  appendSerial(uid: string, lines: SerialLine[]) {
+    const b = this.state.run.boards[uid]
+    if (!b || !lines.length) return
+    const serial = [...b.serial, ...lines]
+    this.setBoardRun(uid, { serial: serial.length > SERIAL_MAX ? serial.slice(serial.length - SERIAL_MAX) : serial })
+  }
+  setDock(patch: Partial<DockState>) {
+    const dock = { ...this.state.dock, ...patch }
+    if (patch.height !== undefined)
+      try {
+        globalThis.localStorage?.setItem(DOCK_HEIGHT_KEY, String(Math.round(dock.height)))
+      } catch {
+        // storage refused: the height is kept for this page only
+      }
+    this.set({ dock })
+  }
+  confirmLinkCode() {
+    if (this.state.linkCode) this.set({ linkCode: false })
+  }
+  /** Boards starting or running. */
+  get activeRuns(): string[] {
+    return Object.entries(this.state.run.boards).filter(([, b]) => b.status === 'starting' || b.status === 'running').map(([uid]) => uid)
+  }
+
   /** Replaces the whole document (import, new sheet) and clears history. */
   load(diagram: Diagram) {
     this.end()
@@ -259,7 +342,7 @@ export class EditorStore {
     this.past = []
     this.future = []
     this.unsaved = false
-    this.set({ diagram, selection: EMPTY_SELECTION, highlight: null, held: null })
+    this.set({ diagram, selection: EMPTY_SELECTION, highlight: null, held: null, run: EMPTY_RUN, linkCode: false })
   }
 }
 

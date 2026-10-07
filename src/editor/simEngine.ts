@@ -2,6 +2,7 @@
 // turned on, so the circuit builder, the SPICE compiler, the findings and the engine host stay out
 // of the main bundle (spec 8). One browser engine for the page; a session per Simulate period.
 import type { Diagram } from '../format/diagram.ts'
+import type { RunPins } from '../format/simState.ts'
 import { libraryLookup } from '../agent/catalog.ts'
 import { createBrowserEngineHost } from '../sim/engine/browserEngine.ts'
 import { type Engine, makeEngine } from '../sim/engine/engine.ts'
@@ -28,11 +29,13 @@ export function browserEngine(): Engine {
 }
 
 /** A session on the page's engine, with the engine's load progress while it lasts; stop() ends both. */
-export function startSession(onOutcome: (o: SimOutcome, c?: Circuit) => void, onProgress: (loaded: number, total: number) => void) {
+export function startSession(onOutcome: (o: SimOutcome, c: Circuit | undefined, runSeq: Record<string, number> | undefined) => void, onProgress: (loaded: number, total: number) => void) {
   listeners.add(onProgress)
-  const session = new SimSession(browserEngine(), onOutcome)
+  const session = new SimSession(browserEngine(), (o, c, opts) => onOutcome(o, c, opts?.runSeq))
   return {
-    request: (d: Diagram, revision: number, held: { part: string; group: string } | null) => session.request(d, revision, { held, library: libraryLookup }),
+    request: (d: Diagram, revision: number, held: { part: string; group: string } | null, run?: { pins: RunPins; moving: string[]; seq: Record<string, number> }) =>
+      session.request(d, revision, { held, library: libraryLookup, ...(run ? { runPins: run.pins, moving: run.moving, runSeq: run.seq } : {}) }),
+    setRunning: (on: boolean) => session.setRunning(on),
     stop: () => {
       session.stop()
       listeners.delete(onProgress)
