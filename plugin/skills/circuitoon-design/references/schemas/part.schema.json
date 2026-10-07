@@ -16,6 +16,7 @@
         "pins": { "type": "array" },
         "holes": { "type": "array" },
         "internal": { "type": "array" },
+        "photo": { "type": "string", "description": "Custom parts only: the product photo the art was drawn from, or \"none\". Built-in parts never carry it." },
         "art": {
           "type": "object",
           "description": "How the part is drawn: rects in module px (origin at the body's top left; w and h are the body in px). Study it to copy how the library draws a feature (circuitoon module render <id> draws it), then use the same shapes in a part spec's art.",

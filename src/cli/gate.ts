@@ -3,7 +3,8 @@
 // when the intent has repeats), the bill of materials (bom.csv) and link; write the artifacts and gate.json with a SHA-256 of the
 // diagram and of each artifact. Blocking: loader errors, a missing module or dropped value override,
 // any verify error (missing or invalid intent included), any checker error, any blocked route, and
-// no link with no file fallback written. A wire drawn over used breadboard holes (a wire end, a leg,
+// no link with no file fallback written, and a custom part that does not look like the real part
+// (custom-part-look: generic box art or no photo). A wire drawn over used breadboard holes (a wire end, a leg,
 // a hole under a part's body) that it does not use warns (wire-over-holes); empty holes never do. Every required artifact must exist before the gate passes
 // (amendment A8): one that could not be made (no browser, a failed render) is an environment problem.
 // Exit 0 only when nothing blocks and every artifact is there; blocking findings win over a missing
@@ -15,7 +16,7 @@
 import { createHash } from 'node:crypto'
 import { readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
-import { VALUE_DROPPED, computeRoutes, validateDiagram, wirePaths } from '../format/diagram.ts'
+import { VALUE_DROPPED, computeRoutes, moduleOf, validateDiagram, wirePaths } from '../format/diagram.ts'
 import { checkDiagram, endpointName } from '../format/checks.ts'
 import { LINK_NOTICE } from '../format/link.ts'
 import { focusBounds, renderSheetSvg } from '../render/exportSvg.tsx'
@@ -25,7 +26,7 @@ import { parseNetlist } from '../agent/netlist.ts'
 import { libraryLookup } from '../agent/catalog.ts'
 import { codeFindings } from './codeFindings.ts'
 import { NOT_CHECKED } from '../agent/notChecked.ts'
-import { customPartNote, sheetCustomParts } from '../agent/customParts.ts'
+import { customPartNote, lookFindings, sheetCustomParts } from '../agent/customParts.ts'
 import { READABILITY_RULES, readabilityFindings } from '../agent/readabilityWarnings.ts'
 import { type ChannelRow, type QuantityRow, bomQuantities, channelTable, sheetBom } from '../agent/tables.ts'
 import { type Bom, bomCsv } from '../format/bom.ts'
@@ -224,9 +225,11 @@ export async function runGate(bytes: Uint8Array, opts: { sheetPath: string; outD
       note('wire-over-holes', c.uid, 'warning', `The wire ${c.label ?? `${endpointName(d, c.from)} to ${endpointName(d, c.to)}`} runs over breadboard holes in use that it is not plugged into, so in the picture it may look plugged in there.`, { parts: [c.from.part, c.to.part], wires: [c.uid] })
   // Readability (never blocking): the agent clears these or explains each one that remains.
   found.push(...readabilityFindings(d, routes).map(cliFinding))
-  // Custom parts (never blocking): user-made and unverified, named so the user knows which to check.
-  for (const c of sheetCustomParts(d, libraryLookup))
-    found.push({ id: `custom-part|${c.module}`, rule: 'custom-part', severity: 'info', message: customPartNote(c), parts: c.parts, pins: [], wires: [] })
+  // Custom parts: user-made and unverified, named so the user knows which to check (a note), and
+  // blocking when one does not look like the real part (generic box art, no photo).
+  const custom = sheetCustomParts(d, libraryLookup)
+  for (const c of custom) found.push({ id: `custom-part|${c.module}`, rule: 'custom-part', severity: 'info', message: customPartNote(c), parts: c.parts, pins: [], wires: [] })
+  found.push(...lookFindings(custom, (id) => moduleOf(d, id)))
   // Simulation (spec 7): its own findings, never suppressing or suppressed by the checker (2.1).
   // No engine (the tests' stub, or a caller's null): not run, which the matrix ignores.
   const engine = opts.engine !== undefined ? opts.engine : gateEngine.make()

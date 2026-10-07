@@ -30,6 +30,8 @@ export function partSummary(m: ModuleDef) {
     /** What the part is and its typical uses, from src/format/partText.json (null and [] until written). */
     description: text?.description || null,
     uses: text?.uses ?? [],
+    /** The product photo a custom part's art was drawn from; built-in parts have none (null). */
+    photo: m.photo ?? null,
     board: isBoard(m),
     /** A net label (a named flag, not a physical part): a netlist asks for one with "label": true on a net. */
     netLabel: isNetLabel(m),

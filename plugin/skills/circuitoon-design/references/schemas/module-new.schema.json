@@ -9,7 +9,7 @@
     "ok": { "type": "boolean", "description": "False when the lint found errors; the part is then not written." },
     "path": { "type": ["string", "null"], "description": "The file written with -o, or null." },
     "module": { "type": "object", "description": "The circuitoon-module/1 part, with \"custom\": true and an id starting with \"custom-\"." },
-    "notes": { "type": "array", "items": { "type": "string" }, "description": "What the part maker adjusted (numbered repeated names, a left-out name plate), then the lint notes, such as a custom part still drawn as the generic box." },
+    "notes": { "type": "array", "items": { "type": "string" }, "description": "What the part maker adjusted (numbered repeated names, a left-out name plate)." },
     "errors": { "$ref": "#/$defs/issues" },
     "warnings": { "$ref": "#/$defs/issues" }
   },

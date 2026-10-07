@@ -26,6 +26,8 @@ export interface Draft {
   description: string
   /** Typical uses, comma separated (optional). */
   uses: string
+  /** The product photo the art was drawn from: a URL, or "none" (optional). */
+  photo: string
   style: PartStyle
   color: string
   /** False: the body fits the pins. True: `w` x `h` grid units. */
@@ -47,7 +49,7 @@ export const pinRow = (name = '', type: PinType | '' = '', supply = ''): PinRow 
 export const gapRow = (): PinRow => ({ key: rowKey(), spacer: true, name: '', type: '', supply: '' })
 
 export function emptyDraft(): Draft {
-  return { name: '', category: DEFAULT_CATEGORY, maker: '', source: '', description: '', uses: '', style: 'board', color: DEFAULT_COLORS.board, sized: false, w: 8, h: 6, pins: { left: [pinRow()], right: [], top: [], bottom: [] } }
+  return { name: '', category: DEFAULT_CATEGORY, maker: '', source: '', description: '', uses: '', photo: '', style: 'board', color: DEFAULT_COLORS.board, sized: false, w: 8, h: 6, pins: { left: [pinRow()], right: [], top: [], bottom: [] } }
 }
 
 /** The draft for a saved part, to edit it. */
@@ -71,6 +73,7 @@ export function draftFromPart(p: MyPart): Draft {
     source: typeof spec.source === 'string' ? spec.source.split(/\s+/).filter(Boolean).join('\n') : (spec.source ?? []).join('\n'),
     description: spec.description ?? '',
     uses: (spec.uses ?? []).join(', '),
+    photo: spec.photo ?? '',
     style: spec.style ?? 'board',
     color: spec.body?.color ?? DEFAULT_COLORS[spec.style ?? 'board'],
     sized: !auto,
@@ -113,6 +116,7 @@ export function specFromDraft(d: Draft): PartSpec {
   const { description, uses } = draftText(d)
   if (description) spec.description = description
   if (uses.length) spec.uses = uses
+  if (d.photo.trim()) spec.photo = d.photo.trim()
   if (d.id) spec.id = d.id
   // Joins name pins; keep only those whose pins all still exist.
   if (d.internal?.length) {
@@ -186,10 +190,10 @@ export function savedModule(d: Draft, id: string, editing: ModuleDef | null, con
     const { type: _t, supply: _s, ...rest } = p
     return { ...rest, ...(r.type ? { type: r.type } : {}), ...(r.supply.trim() ? { supply: r.supply.trim() } : {}) }
   })
-  const { source: _src, description: _d, uses: _u, ...base } = editing
+  const { source: _src, description: _d, uses: _u, photo: _p, ...base } = editing
   const source = d.source.split(/\s+/).filter(Boolean).join(' ')
   const { description, uses } = draftText(d)
-  const m: ModuleDef = { ...base, name: d.name.trim(), ...(d.category.trim() ? { category: d.category.trim() } : {}), ...(source ? { source } : {}), ...(description ? { description } : {}), ...(uses.length ? { uses } : {}), pins }
+  const m: ModuleDef = { ...base, name: d.name.trim(), ...(d.category.trim() ? { category: d.category.trim() } : {}), ...(source ? { source } : {}), ...(description ? { description } : {}), ...(uses.length ? { uses } : {}), ...(d.photo.trim() ? { photo: d.photo.trim() } : {}), pins }
   const v = validateModule(m)
   return v.ok ? { ok: true, module: m, notes: [] } : { ok: false, errors: v.errors }
 }

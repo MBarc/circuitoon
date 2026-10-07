@@ -29,6 +29,12 @@ for (const file of readdirSync(dir).filter((f) => f.endsWith('.json')).sort()) {
     failed++
     continue
   }
+  // A photo is a custom part's record of what its art was drawn from; built-in parts are drawn in their generators.
+  if (r.module.photo !== undefined) {
+    console.error(`FAIL ${file}: built-in parts never carry "photo"`)
+    failed++
+    continue
+  }
   // Spec 3.1: a built-in module must state every field its rails need (an embedded one is listed
   // as not simulated instead, by the simulator).
   const incomplete = (simOf(r.module)?.power?.rails ?? []).map(railProblem).filter((x) => x !== null)

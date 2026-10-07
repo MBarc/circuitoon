@@ -17,7 +17,7 @@ import { natural } from '../format/words.ts'
 import { parseNetlist } from '../agent/netlist.ts'
 import { libraryLookup } from '../agent/catalog.ts'
 import { verifyDiagram } from '../agent/verify.ts'
-import { customPartNote, netlistCustomParts, sheetCustomParts } from '../agent/customParts.ts'
+import { customPartNote, lookFindings, netlistCustomParts, sheetCustomParts } from '../agent/customParts.ts'
 import type { Args } from './args.ts'
 import { CliError, EXIT, type Io, printJson, readJson } from './io.ts'
 import { type CliFinding, cliFinding, findingsText, uniqueIds } from './verifyCmd.ts'
@@ -59,8 +59,10 @@ function fromSheet(d: Diagram): Explained {
   const findings = uniqueIds(checkDiagram(d).filter((f) => isPinRule(f.rule)).map(cliFinding))
   // A sheet carries its own copy of each part; one saved before the library learned a pin's
   // capabilities is explained (and checked) without them, so say so.
+  const custom = sheetCustomParts(d, libraryLookup)
   const notes = [
-    ...sheetCustomParts(d, libraryLookup).map(customPartNote),
+    ...custom.map(customPartNote),
+    ...lookFindings(custom, (id) => moduleOf(d, id)).map((f) => f.message),
     ...verifyDiagram(d, libraryLookup).filter((f) => f.rule === 'module-drift').map((f) => `${f.message} Until then, its pin capabilities and I2C data are the old copy's.`),
   ]
   return { source: 'sheet', title: d.title, model: pm, names, findings, notes }
@@ -78,7 +80,8 @@ function fromNetlist(raw: unknown, path: string): Explained {
   const findings = uniqueIds(pinFindings(pm).map((f) => ({
     id: `${f.rule}|${[...new Set(f.causes)].sort().join(',')}`, rule: f.rule, severity: RULES[f.rule].severity, message: f.message, parts: f.parts, pins: f.pins, wires: [],
   })))
-  const notes = netlistCustomParts(intent.parts, intent.modules, libraryLookup).map(customPartNote)
+  const custom = netlistCustomParts(intent.parts, intent.modules, libraryLookup)
+  const notes = [...custom.map(customPartNote), ...lookFindings(custom, (id) => intent.modules[id]).map((f) => f.message)]
   return { source: 'netlist', title: intent.title, model: pm, names: intent.nets.map((n) => n.name), findings, notes }
 }
 

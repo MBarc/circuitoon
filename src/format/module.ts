@@ -112,6 +112,8 @@ export interface ArtShape {
   labelSize?: number
   /** Resistor color band slot 1 to 4; the renderer colors it from the part's resistance. */
   band?: 1 | 2 | 3 | 4
+  /** A ceramic capacitor's marking: the renderer writes the part's capacitance on it as its 3-digit code (104 is 100 nF), in place of `label`. */
+  capCode?: true
   /** Part of a servo's drawn horn: hidden while the editor draws the live horn over the shaft (sim.servo.shaft). */
   horn?: true
 }
@@ -231,6 +233,12 @@ export interface ModuleDef {
    */
   description?: string
   uses?: string[]
+  /**
+   * A custom part's product photo, the one its art was drawn from: an http(s) URL of a photo of this
+   * exact board or part, or "none" when no photo of it exists anywhere (a generic part with no
+   * maker). The gate blocks on a custom part without it. Built-in parts never carry it.
+   */
+  photo?: string
   /** The languages code on this part may be in (firmware spec 3.2); read only through languagesOf. */
   firmware?: { languages: string[] }
 }
@@ -239,6 +247,13 @@ export interface ModuleDef {
 export const DESCRIPTION_MAX = 300
 export const USES_MAX = 8
 export const USE_MAX = 60
+export const PHOTO_MAX = 500
+
+/** What is wrong with a `photo` value, or null (shared with the part spec). */
+export const photoError = (v: unknown): string | null =>
+  v === 'none' || (typeof v === 'string' && v.length <= PHOTO_MAX && /^https?:\/\/\S+$/.test(v))
+    ? null
+    : `photo: must be an http(s) URL of a product photo of this exact part, at most ${PHOTO_MAX} characters, or "none" when no photo of it exists`
 
 /** The id prefix every custom part has and no built-in part may use. */
 export const CUSTOM_PREFIX = 'custom-'
@@ -375,6 +390,7 @@ export function artShapeErrors(shapes: unknown[]): string[] {
     if (s.labelColor !== undefined && typeof s.labelColor !== 'string') errors.push(`${at}.labelColor: must be a string`)
     if (s.labelSize !== undefined && !(isPos(s.labelSize) && s.labelSize <= ART_LABEL_SIZE_MAX)) errors.push(`${at}.labelSize: must be a number above 0, at most ${ART_LABEL_SIZE_MAX}`)
     if (s.horn !== undefined && s.horn !== true) errors.push(`${at}.horn: must be true`)
+    if (s.capCode !== undefined && s.capCode !== true) errors.push(`${at}.capCode: must be true`)
     if (s.band !== undefined && !(Number.isInteger(s.band) && (s.band as number) >= 1 && (s.band as number) <= 4))
       errors.push(`${at}.band: must be a whole number from 1 to 4`)
   })
@@ -408,6 +424,7 @@ export function validateModule(raw: unknown): ValidationResult {
         if (typeof u !== 'string' || !u.trim() || u.length > USE_MAX) errors.push(`uses[${i}]: must be a non-empty string, at most ${USE_MAX} characters`)
       })
   }
+  if (raw.photo !== undefined && photoError(raw.photo)) errors.push(photoError(raw.photo)!)
   if (raw.firmware !== undefined) {
     const f = raw.firmware
     if (!isObj(f) || Object.keys(f).some((k) => k !== 'languages') || !Array.isArray(f.languages) || !f.languages.length) errors.push('firmware: must be { "languages": [<language id>, ...] }')

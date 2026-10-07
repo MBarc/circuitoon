@@ -3,6 +3,7 @@
 // beside the "not checked" list; the checker still uses whatever pin types they declare.
 import { type Diagram, moduleOf } from '../format/diagram.ts'
 import { isCustom, isNetLabel, type ModuleDef } from '../format/module.ts'
+import { customLook } from '../format/partMaker.ts'
 import type { ModuleLookup } from './netlist.ts'
 
 export interface CustomPart {
@@ -46,3 +47,28 @@ export function netlistCustomParts(parts: { ref: string; module: string }[], mod
 /** One plain sentence about a custom part, for gate notes and explain. */
 export const customPartNote = (c: CustomPart): string =>
   `${c.designators.join(', ')}: ${c.name} [${c.module}] is a custom part, user-made and unverified. Its pins and pin types are as its maker gave them, and the checks rely on them; confirm them against the maker's datasheet before wiring.`
+
+/** A custom part that does not look like the real thing (customLook), as a gate and check finding. */
+export interface LookFinding {
+  id: string
+  rule: 'custom-part-look' | 'custom-part-no-photo'
+  severity: 'error' | 'warning'
+  message: string
+  parts: string[]
+  pins: []
+  wires: []
+}
+
+/**
+ * The look findings for custom parts (`rows`, from sheetCustomParts or netlistCustomParts): a part
+ * drawn as the generic box or with no photo blocks (custom-part-look); "photo": "none" warns.
+ */
+export function lookFindings(rows: CustomPart[], moduleOf: (id: string) => ModuleDef | undefined): LookFinding[] {
+  return rows.flatMap((c) => {
+    const m = moduleOf(c.module)
+    const look = m && customLook(m)
+    if (!look) return []
+    const rule = look.code as LookFinding['rule']
+    return [{ id: `${rule}|${c.module}`, rule, severity: rule === 'custom-part-look' ? 'error' : 'warning', message: `${c.designators.join(', ')}: ${c.name} [${c.module}] ${look.message}`, parts: c.parts, pins: [], wires: [] }]
+  })
+}

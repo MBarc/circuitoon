@@ -5,7 +5,7 @@
 // the buttons, Alt+Up/Down or by dragging (onto another edge of the body to move a pin there), and
 // pasted as lines ("1 VCC power", "GND"). Saving needs a part with no errors.
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react'
-import { DESCRIPTION_MAX, PIN_TYPES, SIDES, isSpacer, pinRoom, type PinType, type Side } from '../format/module.ts'
+import { DESCRIPTION_MAX, PHOTO_MAX, PIN_TYPES, SIDES, isSpacer, pinRoom, type PinType, type Side } from '../format/module.ts'
 import { BODY_COLORS, DEFAULT_COLORS, lintModule, parsePinLines, unmodeled, type PartStyle } from '../format/partMaker.ts'
 import { CATEGORY_ORDER } from './libraryGroups.ts'
 import { Part, partBounds } from '../render/Part.tsx'
@@ -165,6 +165,9 @@ export function PartMaker({ editing, taken, onSave, onExport, onCancel, extra, i
           </label>
           <label className="field">Typical uses <span className="pm-opt">comma separated, optional</span>
             <input data-testid="pm-uses" value={draft.uses} placeholder="battery monitor, solar logger" onChange={(e) => update({ ...draft, uses: e.target.value })} />
+          </label>
+          <label className="field">Photo of the real part <span className="pm-opt">link, or "none", optional</span>
+            <input data-testid="pm-photo" value={draft.photo} maxLength={PHOTO_MAX} placeholder="https://..." onChange={(e) => update({ ...draft, photo: e.target.value })} />
           </label>
           <fieldset className="pm-style" disabled={pinsOnly || !!draft.art}>
             <legend>Drawn as</legend>

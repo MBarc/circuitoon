@@ -12,7 +12,7 @@
   "$defs": {
     "part": {
       "type": "object",
-      "required": ["id", "name", "category", "source", "description", "uses", "board", "netLabel", "pins", "holes"],
+      "required": ["id", "name", "category", "source", "description", "uses", "photo", "board", "netLabel", "pins", "holes"],
       "additionalProperties": false,
       "properties": {
         "id": { "type": "string" },
@@ -21,6 +21,7 @@
         "source": { "type": ["string", "null"] },
         "description": { "type": ["string", "null"] },
         "uses": { "type": "array", "items": { "type": "string" } },
+        "photo": { "type": ["string", "null"], "description": "Always null for built-in parts: only custom parts record the photo their art was drawn from." },
         "score": { "type": "number" },
         "board": { "type": "boolean" },
         "netLabel": { "type": "boolean" },

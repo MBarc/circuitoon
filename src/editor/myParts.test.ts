@@ -154,6 +154,16 @@ describe('the part maker draft', () => {
     const r = savedModule({ ...draftFromPart(p), description: 'Charges a cell.', uses: 'power bank' }, p.module.id, p.module, false)
     expect(r.ok && r.module).toMatchObject({ description: 'Charges a cell.', uses: ['power bank'] })
   })
+  it('takes the photo the art was drawn from, and leaves it out when empty', () => {
+    const d = { ...emptyDraft(), name: 'Sensor P', photo: ' https://example.com/p.jpg ', pins: { left: [pinRow('A')], right: [], top: [], bottom: [] } }
+    const m = moduleFromSpec(specFromDraft(d))
+    expect(m.photo).toBe('https://example.com/p.jpg')
+    expect(draftFromPart({ module: m, saved: 1 }).photo).toBe('https://example.com/p.jpg')
+    expect('photo' in moduleFromSpec(specFromDraft({ ...d, photo: ' ' }))).toBe(false)
+    const p = { module: modulesById['tp4056-module'], saved: 1 }
+    const r = savedModule({ ...draftFromPart(p), photo: 'none' }, p.module.id, p.module, false)
+    expect(r.ok && r.module.photo).toBe('none')
+  })
   it('moves rows within a side and onto another side', () => {
     const d = { ...emptyDraft(), pins: { left: [pinRow('A'), pinRow('B'), pinRow('C')], right: [], top: [], bottom: [] } }
     expect(moveRow(d, 'left', 0, 2).pins.left.map((r) => r.name)).toEqual(['B', 'C', 'A'])

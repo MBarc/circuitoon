@@ -1,8 +1,9 @@
 // A part spec's own art (`art: { shapes, pinLabels? }`): drawn on the body under the pins the part
 // maker places, validated with the module rules, kept through specFromModule, and the lint note on
-// a custom part still drawn as the generated generic box.
+// the photo it was drawn from, and the look check on a custom part (generic box art, no photo).
 import { describe, expect, it } from 'vitest'
-import { ART_OVERHANG, buildPart, lintModule, moduleFromSpec, specFromModule, unmodeled, validateSpec, type PartSpec } from './partMaker.ts'
+import { readFileSync } from 'node:fs'
+import { ART_OVERHANG, buildPart, customLook, lintModule, moduleFromSpec, specFromModule, unmodeled, validateSpec, type PartSpec } from './partMaker.ts'
 import { ART_LABEL_MAX, ART_LABEL_SIZE_MAX, ART_SHAPES_MAX, validateModule } from './module.ts'
 
 const AMP: PartSpec = {
@@ -93,16 +94,44 @@ describe('spec art', () => {
   })
 })
 
-describe('lint note on generic art', () => {
-  it('notes a custom part drawn as the generated generic box, never as an error or a warning', () => {
-    const r = lintModule(moduleFromSpec({ ...AMP, art: undefined }))
-    expect(r.ok).toBe(true)
-    expect(r.notes).toEqual([{ code: 'generic-art', message: 'Drawn as a generic box: draw its art from a photo of the real part (see the art guide, references/art.md in the circuitoon-custom-part skill).' }])
-    expect(r.warnings.some((w) => w.code === 'generic-art')).toBe(false)
+const PHOTO = 'https://example.com/amp.jpg'
+const TODO = `Find the maker's product photo, draw its art per the art guide, record the photo URL in "photo" (see the circuitoon-custom-part skill).`
+
+describe('the photo field', () => {
+  it('is carried from the spec onto the module and back', () => {
+    const m = moduleFromSpec({ ...AMP, photo: PHOTO })
+    expect(m.photo).toBe(PHOTO)
+    expect(specFromModule(m).photo).toBe(PHOTO)
+    expect(specFromModule(moduleFromSpec({ ...AMP, art: undefined, photo: 'none' })).photo).toBe('none')
+    expect(unmodeled(m)).toEqual([])
+    expect('photo' in moduleFromSpec(AMP)).toBe(false)
   })
 
-  it('says nothing for a part with its own art', () => {
-    expect(lintModule(moduleFromSpec(AMP)).notes).toEqual([])
+  it('is validated in the spec with its exact path', () => {
+    const r = validateSpec({ ...AMP, photo: 'a photo' })
+    expect(r.ok ? [] : r.errors).toEqual(['photo: must be an http(s) URL of a product photo of this exact part, at most 500 characters, or "none" when no photo of it exists'])
+  })
+})
+
+describe('how a custom part looks', () => {
+  it('is a problem when the part is drawn as the generic box or has no photo, and never for a built-in part', () => {
+    expect(customLook(moduleFromSpec({ ...AMP, art: undefined, photo: PHOTO }))).toEqual({ code: 'custom-part-look', message: `does not look like the real part yet: it is drawn as the generic box. ${TODO}` })
+    expect(customLook(moduleFromSpec(AMP))).toEqual({ code: 'custom-part-look', message: `does not look like the real part yet: it has no "photo". ${TODO}` })
+    expect(customLook(moduleFromSpec({ ...AMP, art: undefined }))?.message).toMatch(/: it is drawn as the generic box and it has no "photo"\. /)
+    expect(customLook(moduleFromSpec({ ...AMP, art: undefined, photo: 'none' }))?.code).toBe('custom-part-look')
+    expect(customLook(moduleFromSpec({ ...AMP, photo: PHOTO }))).toBeNull()
+    expect(customLook(moduleFromSpec({ ...AMP, photo: 'none' }))?.code).toBe('custom-part-no-photo')
+    const builtIn = validateModule(JSON.parse(readFileSync('modules/resistor.json', 'utf8')))
+    expect(builtIn.ok && customLook(builtIn.module)).toBeNull()
+  })
+
+  it('is a lint warning only when asked (module new and check ask, the editor does not)', () => {
+    const generic = moduleFromSpec({ ...AMP, art: undefined })
+    expect(lintModule(generic)).toEqual({ ok: true, errors: [], warnings: [] })
+    const r = lintModule(generic, { look: true })
+    expect(r.ok).toBe(true)
+    expect(r.warnings).toEqual([{ code: 'custom-part-look', message: `Test mono amp ${customLook(generic)!.message}` }])
+    expect(lintModule(moduleFromSpec({ ...AMP, photo: PHOTO }), { look: true }).warnings).toEqual([])
   })
 })
 

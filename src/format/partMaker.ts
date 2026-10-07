@@ -6,7 +6,7 @@
 // A custom part is user-made and unverified: `custom: true` and an id starting with "custom-", so it
 // never collides with a built-in id. The checker treats it like any part, using the pin types given.
 import {
-  CUSTOM_PREFIX, GRID, MODULE_FORMAT, MODULE_PX_MAX, PIN_TYPES, SIDES, artShapeErrors, isCustom, isObj, isNum, isSpacer, layoutModule, validateModule,
+  CUSTOM_PREFIX, GRID, MODULE_FORMAT, MODULE_PX_MAX, PIN_TYPES, SIDES, artShapeErrors, isCustom, isObj, isNum, isSpacer, layoutModule, photoError, validateModule,
   type Art, type ArtShape, type ModuleDef, type PinCaps, type PinDef, type PinEntry, type PinType, type Side,
 } from './module.ts'
 import { parseSupply } from './checks.ts'
@@ -52,9 +52,11 @@ export interface PartSpec {
   description?: string
   /** Typical uses ("plant monitor"), for the closest-match search. */
   uses?: string[]
+  /** The product photo the art was drawn from (an http(s) URL), or "none" when no photo exists (see ModuleDef.photo). */
+  photo?: string
 }
 
-/** A spec's own art: the module art language without `band` and `horn` (built-in parts only). `w` and `h` (px) are optional, so a module's art copies in whole. */
+/** A spec's own art: the module art language without `band`, `capCode` and `horn` (built-in parts only). `w` and `h` (px) are optional, so a module's art copies in whole. */
 export interface SpecArt {
   w?: number
   h?: number
@@ -90,8 +92,9 @@ const PLATE_H = 16
 const PLATE_CHARS = 22
 const COLOR_RE = /^#[0-9a-f]{6}$/i
 const ID_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/
-const SPEC_KEYS = ['format', 'name', 'id', 'category', 'source', 'description', 'uses', 'version', 'style', 'body', 'art', 'pins', 'internal']
+const SPEC_KEYS = ['format', 'name', 'id', 'category', 'source', 'description', 'uses', 'photo', 'version', 'style', 'body', 'art', 'pins', 'internal']
 const ART_KEYS = ['w', 'h', 'pinLabels', 'shapes']
+const BUILT_IN_SHAPE_KEYS = ['band', 'capCode', 'horn']
 const SHAPE_KEYS = ['type', 'x', 'y', 'w', 'h', 'fill', 'radius', 'outline', 'label', 'labelColor', 'labelSize']
 /** How far, in px, a spec art shape may reach past the body's edge: a jack, a USB plug or a cable stub sticking out, as built-in boards draw their USB ports. */
 export const ART_OVERHANG = 20
@@ -123,6 +126,7 @@ export function validateSpec(raw: unknown): SpecResult {
   if (raw.category !== undefined && (typeof raw.category !== 'string' || raw.category.trim() === '' || raw.category.length > 60)) errors.push('category: must be a non-empty string, at most 60 characters')
   if (raw.description !== undefined && typeof raw.description !== 'string') errors.push('description: must be a string (one sentence)')
   if (raw.uses !== undefined && !(Array.isArray(raw.uses) && raw.uses.every((u) => typeof u === 'string'))) errors.push('uses: must be a list of strings')
+  if (raw.photo !== undefined && photoError(raw.photo)) errors.push(photoError(raw.photo)!)
   if (raw.source !== undefined && typeof raw.source !== 'string' && !(Array.isArray(raw.source) && raw.source.every((s) => typeof s === 'string')))
     errors.push('source: must be a string or a list of strings (URLs)')
   if (raw.version !== undefined && !(Number.isInteger(raw.version) && (raw.version as number) >= 1)) errors.push('version: must be a whole number, 1 or more')
@@ -216,8 +220,8 @@ function artSpecErrors(art: unknown, body: Record<string, unknown>, pinned: Set<
   art.shapes.forEach((s, i) => {
     const at = `art.shapes[${i}]`
     if (!isObj(s)) return
-    for (const k of ['band', 'horn']) if (s[k] !== undefined) errors.push(`${at}.${k}: built-in parts only`)
-    for (const k of Object.keys(s)) if (!SHAPE_KEYS.includes(k) && k !== 'band' && k !== 'horn') errors.push(`${at}.${k}: unknown field (allowed: ${SHAPE_KEYS.join(', ')})`)
+    for (const k of BUILT_IN_SHAPE_KEYS) if (s[k] !== undefined) errors.push(`${at}.${k}: built-in parts only`)
+    for (const k of Object.keys(s)) if (!SHAPE_KEYS.includes(k) && !BUILT_IN_SHAPE_KEYS.includes(k)) errors.push(`${at}.${k}: unknown field (allowed: ${SHAPE_KEYS.join(', ')})`)
     for (const k of ['fill', 'labelColor']) if (typeof s[k] === 'string' && !COLOR_RE.test(s[k] as string)) errors.push(`${at}.${k}: must be a colour like "#2F9E6E"`)
     if (!box || shapeErrors.some((e) => e.startsWith(`${at}.`) || e.startsWith(`${at}:`)) || ![s.x, s.y, s.w, s.h].every(isNum)) return
     const [x, y, w, h] = [s.x, s.y, s.w, s.h] as number[]
@@ -463,6 +467,7 @@ export function buildPart(raw: unknown): BuildResult {
     ...(source ? { source } : {}),
     ...(spec.description?.trim() ? { description: spec.description.trim() } : {}),
     ...(uses.length ? { uses } : {}),
+    ...(spec.photo ? { photo: spec.photo } : {}),
     custom: true,
     pins,
     ...(spec.internal?.length ? { internal: spec.internal } : {}),
@@ -539,6 +544,7 @@ function plainSpec(m: ModuleDef): PartSpec {
     ...(m.source ? { source: m.source } : {}),
     ...(m.description ? { description: m.description } : {}),
     ...(m.uses?.length ? { uses: m.uses } : {}),
+    ...(m.photo ? { photo: m.photo } : {}),
     ...(m.version && m.version > 1 ? { version: m.version } : {}),
     style,
     pins,
@@ -562,10 +568,23 @@ export interface LintReport {
   ok: boolean
   errors: LintIssue[]
   warnings: LintIssue[]
-  /** Not problems: hints for a better part (a custom part still drawn as the generic box). */
-  notes: LintIssue[]
 }
-export const GENERIC_ART_NOTE: LintIssue = { code: 'generic-art', message: 'Drawn as a generic box: draw its art from a photo of the real part (see the art guide, references/art.md in the circuitoon-custom-part skill).' }
+
+const LOOK_TODO = `Find the maker's product photo, draw its art per the art guide, record the photo URL in "photo" (see the circuitoon-custom-part skill).`
+
+/**
+ * Whether a custom part looks like the real thing, the message without the part's name: null when
+ * it does (or it is not custom). custom-part-look (the gate blocks): drawn as the generic box the
+ * part maker generates, or no `photo`. custom-part-no-photo (a warning): `"photo": "none"` with art
+ * of its own.
+ */
+export function customLook(m: ModuleDef): LintIssue | null {
+  if (!isCustom(m)) return null
+  const why = [...(!m.art || sameArt(m.art, generatedArt(m)) ? ['it is drawn as the generic box'] : []), ...(m.photo === undefined ? ['it has no "photo"'] : [])]
+  if (why.length) return { code: 'custom-part-look', message: `does not look like the real part yet: ${why.join(' and ')}. ${LOOK_TODO}` }
+  if (m.photo === 'none') return { code: 'custom-part-no-photo', message: 'has "photo": "none", so its art was not drawn from a photo of the real part. Say so when you present the design.' }
+  return null
+}
 
 /** Pin names that are power or ground by convention. */
 const POWER_NAME = /^(v(cc|dd|in|bus|bat|sys|s|\+)?|vcc\d*|vdd\d*|gnd\d*|vss|agnd|dgnd|pgnd|3v3|3\.3v|5v|12v|v\+|v-|\+|-|\+?\d+(\.\d+)?v\d*)$/i
@@ -574,9 +593,10 @@ const GROUND_NAME = /^(gnd\d*|vss|agnd|dgnd|pgnd|v-|-|0v)$/i
 /**
  * What is wrong (errors) or doubtful (warnings) about a module: everything validateModule finds,
  * plus duplicate pin names, art that does not match its pins, impossible pin capabilities, power
- * pins without a type or supply, supplies that do not parse and a missing source.
+ * pins without a type or supply, supplies that do not parse and a missing source; with `look`,
+ * how a custom part looks (customLook), as a warning.
  */
-export function lintModule(raw: unknown): LintReport {
+export function lintModule(raw: unknown, opts: { look?: boolean } = {}): LintReport {
   const errors: LintIssue[] = []
   const warnings: LintIssue[] = []
   const v = validateModule(raw)
@@ -585,7 +605,7 @@ export function lintModule(raw: unknown): LintReport {
       const dup = /duplicate pin name "(.*)"/.exec(e)
       errors.push(dup ? { code: 'duplicate-pin', message: `Two pins are named "${dup[1]}": every pin needs its own name (a second GND is "GND 2" with the label "GND").`, pin: dup[1] } : { code: 'invalid', message: e })
     }
-    return { ok: false, errors, warnings, notes: [] }
+    return { ok: false, errors, warnings }
   }
   const m = v.module
   const pins = m.pins.filter((p): p is PinDef => !isSpacer(p))
@@ -612,8 +632,10 @@ export function lintModule(raw: unknown): LintReport {
   if (m.name.length > NAME_MAX) warnings.push({ code: 'long-name', message: `The name is over ${NAME_MAX} characters.` })
   if (m.firmware) warnings.push({ code: 'firmware-custom', message: 'Code on custom parts is not supported yet, so this part\'s "firmware" is ignored.' })
   lintArt(m, errors, warnings)
-  const notes = isCustom(m) && (!m.art || sameArt(m.art, generatedArt(m))) ? [GENERIC_ART_NOTE] : []
-  return { ok: errors.length === 0, errors, warnings, notes }
+  // How it looks: for agents (module new and check), never in the editor's dialog, where people make parts.
+  const look = opts.look ? customLook(m) : null
+  if (look) warnings.push({ ...look, message: `${m.name} ${look.message}` })
+  return { ok: errors.length === 0, errors, warnings }
 }
 
 /** Art that does not match the pins: a body that grows past the drawing, or header holes off every pin. */
@@ -721,7 +743,7 @@ export function unmodeled(m: ModuleDef): string[] {
   const rebuilt = labelled(r.module)
   const own = labelled(m)
   const keys = new Set([...Object.keys(own), ...Object.keys(rebuilt)])
-  // The category, source, description and uses are edited in the dialog; a missing category only gains the default.
-  for (const k of ['format', 'id', 'custom', 'version', 'name', 'category', 'source', 'description', 'uses', 'internal']) keys.delete(k)
+  // The category, source, description, uses and photo are edited in the dialog; a missing category only gains the default.
+  for (const k of ['format', 'id', 'custom', 'version', 'name', 'category', 'source', 'description', 'uses', 'photo', 'internal']) keys.delete(k)
   return [...keys].filter((k) => JSON.stringify(own[k]) !== JSON.stringify(rebuilt[k])).map((k) => FIELD_WORDS[k] ?? k)
 }
