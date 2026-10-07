@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "circuitoon-part-spec/1: the input of circuitoon module new",
-  "description": "A custom part: its name, category, body and pins per side in physical order. Left and right pins run top to bottom, top and bottom pins left to right. A pin is a name, null for a physical gap, or an object.",
+  "description": "A custom part: its name, category, body, its own drawing (art) and pins per side in physical order. Left and right pins run top to bottom, top and bottom pins left to right. A pin is a name, null for a physical gap, or an object.",
   "type": "object",
   "required": ["name", "pins"],
   "additionalProperties": false,
@@ -21,7 +21,41 @@
       "properties": {
         "w": { "type": "integer", "description": "Width in grid units (10 px), 2 to 400. Left out, it fits the pins and labels." },
         "h": { "type": "integer", "description": "Height in grid units (10 px), 2 to 400." },
-        "color": { "type": "string", "description": "Body colour, #RRGGBB." }
+        "color": { "type": "string", "description": "Body colour, #RRGGBB (not used when art is given)." }
+      }
+    },
+    "art": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shapes"],
+      "description": "The part's own drawing, made to look like the real board (see references/art.md in the circuitoon-custom-part skill). Rects in module px on a body of body.w x body.h grid units (10 px each), origin at the body's top left; give body.w and body.h, or art.w and art.h in px (multiples of 10, matching body.w and body.h when both are given). The pins are still placed from pins, over the drawing, and the body must be big enough for them. style and body.color are not used when art is given: pinLabels sets where the pin names go. The renderer adds the dark ink outline to every shape unless outline is false. A shape may stick out of the body by at most 20 px (a jack, a plug), and only on a side without pins. Left out, the part maker draws a generic board or chip. The art of a module from module new copies in whole.",
+      "properties": {
+        "w": { "type": "integer", "multipleOf": 10, "minimum": 20, "maximum": 4000, "description": "Body width in px; optional when body.w is given." },
+        "h": { "type": "integer", "multipleOf": 10, "minimum": 20, "maximum": 4000, "description": "Body height in px; optional when body.h is given." },
+        "pinLabels": { "enum": ["inside", "tips"], "description": "inside: pin names inside the body beside each pin, like silkscreen (boards with a header). tips: past each pin stub's tip (chips). Left out: beside the stub, outside the body." },
+        "shapes": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Drawn in order, first at the back. The largest shape is the body.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "x", "y", "w", "h", "fill"],
+            "properties": {
+              "type": { "const": "rect" },
+              "x": { "type": "number" },
+              "y": { "type": "number" },
+              "w": { "type": "number" },
+              "h": { "type": "number" },
+              "fill": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+              "radius": { "type": "number", "description": "Corner radius; half the width of a square makes a circle, half the height a pill." },
+              "outline": { "type": "boolean", "description": "false: no ink outline (pads, holes, text plates, fine detail)." },
+              "label": { "type": "string", "description": "Text centred on the shape (silkscreen, a chip's marking)." },
+              "labelColor": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+              "labelSize": { "type": "number", "exclusiveMinimum": 0, "description": "Font size in px; 8 by default." }
+            }
+          }
+        }
       }
     },
     "pins": {

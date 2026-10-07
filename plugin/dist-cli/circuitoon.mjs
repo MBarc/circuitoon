@@ -1272,6 +1272,33 @@ var PARAM_RULES = {
 function validParamValue(name, v) {
 	return Object.hasOwn(PARAM_RULES, name) && representableValue(v) && PARAM_RULES[name].valid(v);
 }
+/** Limits on art, so a runaway or hostile part file cannot swamp the editor (the largest built-in part has about 200 shapes, labels of 22 characters and a label size of 15). */
+var ART_SHAPES_MAX = 2e3;
+/** What is wrong with a list of art shapes, each error at its exact path (`art.shapes[2].x`). Shared with the part spec's `art`. */
+function artShapeErrors(shapes) {
+	if (shapes.length > 2e3) return [`art.shapes: at most ${ART_SHAPES_MAX} shapes (${shapes.length} given)`];
+	const errors = [];
+	shapes.forEach((s, i) => {
+		const at = `art.shapes[${i}]`;
+		if (!isObj(s) || s.type !== "rect") return void errors.push(`${at}: only "rect" shapes are supported`);
+		for (const k of [
+			"x",
+			"y",
+			"w",
+			"h"
+		]) if (!inBounds(s[k])) errors.push(`${at}.${k}: must be a number within +-${MODULE_PX_MAX}`);
+		if (typeof s.fill !== "string") errors.push(`${at}.fill: required color`);
+		if (s.radius !== void 0 && !(isNum(s.radius) && s.radius >= 0)) errors.push(`${at}.radius: must be a number, 0 or more`);
+		if (s.outline !== void 0 && typeof s.outline !== "boolean") errors.push(`${at}.outline: must be true or false`);
+		if (s.label !== void 0 && typeof s.label !== "string") errors.push(`${at}.label: must be a string`);
+		else if (typeof s.label === "string" && s.label.length > 40) errors.push(`${at}.label: at most 40 characters`);
+		if (s.labelColor !== void 0 && typeof s.labelColor !== "string") errors.push(`${at}.labelColor: must be a string`);
+		if (s.labelSize !== void 0 && !(isPos(s.labelSize) && s.labelSize <= 40)) errors.push(`${at}.labelSize: must be a number above 0, at most 40`);
+		if (s.horn !== void 0 && s.horn !== true) errors.push(`${at}.horn: must be true`);
+		if (s.band !== void 0 && !(Number.isInteger(s.band) && s.band >= 1 && s.band <= 4)) errors.push(`${at}.band: must be a whole number from 1 to 4`);
+	});
+	return errors;
+}
 /** Checks a parsed JSON value against the module format. Errors name the exact path. */
 function validateModule(raw) {
 	const errors = [];
@@ -1452,24 +1479,7 @@ function validateModule(raw) {
 		if (!isObj(art) || !sizeInBounds(art.w) || !sizeInBounds(art.h) || !Array.isArray(art.shapes)) errors.push(`art: must be { "w", "h", "shapes": [...] } with w and h above 0 and at most ${MODULE_PX_MAX}`);
 		else {
 			if (art.pinLabels !== void 0 && art.pinLabels !== "inside" && art.pinLabels !== "tips") errors.push("art.pinLabels: must be \"inside\" or \"tips\"");
-			art.shapes.forEach((s, i) => {
-				const at = `art.shapes[${i}]`;
-				if (!isObj(s) || s.type !== "rect") return void errors.push(`${at}: only "rect" shapes are supported`);
-				for (const k of [
-					"x",
-					"y",
-					"w",
-					"h"
-				]) if (!inBounds(s[k])) errors.push(`${at}.${k}: must be a number within +-${MODULE_PX_MAX}`);
-				if (typeof s.fill !== "string") errors.push(`${at}.fill: required color`);
-				if (s.radius !== void 0 && !isNum(s.radius)) errors.push(`${at}.radius: must be a number`);
-				if (s.outline !== void 0 && typeof s.outline !== "boolean") errors.push(`${at}.outline: must be true or false`);
-				if (s.label !== void 0 && typeof s.label !== "string") errors.push(`${at}.label: must be a string`);
-				if (s.labelColor !== void 0 && typeof s.labelColor !== "string") errors.push(`${at}.labelColor: must be a string`);
-				if (s.labelSize !== void 0 && !isPos(s.labelSize)) errors.push(`${at}.labelSize: must be a positive number`);
-				if (s.horn !== void 0 && s.horn !== true) errors.push(`${at}.horn: must be true`);
-				if (s.band !== void 0 && !(Number.isInteger(s.band) && s.band >= 1 && s.band <= 4)) errors.push(`${at}.band: must be a whole number from 1 to 4`);
-			});
+			errors.push(...artShapeErrors(art.shapes));
 		}
 	}
 	if (!errors.length && Array.isArray(raw.pins)) {
@@ -98110,8 +98120,28 @@ var SPEC_KEYS = [
 	"version",
 	"style",
 	"body",
+	"art",
 	"pins",
 	"internal"
+];
+var ART_KEYS = [
+	"w",
+	"h",
+	"pinLabels",
+	"shapes"
+];
+var SHAPE_KEYS = [
+	"type",
+	"x",
+	"y",
+	"w",
+	"h",
+	"fill",
+	"radius",
+	"outline",
+	"label",
+	"labelColor",
+	"labelSize"
 ];
 var PIN_KEYS = [
 	"name",
@@ -98201,6 +98231,10 @@ function validateSpec(raw) {
 		});
 	}
 	if (isObj(raw.pins) && count === 0) errors.push("pins: at least one pin");
+	if (raw.art !== void 0) {
+		const sides = isObj(raw.pins) ? SIDES.filter((s) => Array.isArray(raw.pins[s]) && raw.pins[s].some((p) => p !== null)) : [];
+		artSpecErrors(raw.art, isObj(raw.body) ? raw.body : {}, new Set(sides), errors);
+	}
 	if (raw.internal !== void 0 && !(Array.isArray(raw.internal) && raw.internal.every((g) => Array.isArray(g) && g.every((n) => typeof n === "string")))) errors.push("internal: must be a list of pin-name groups");
 	return errors.length ? {
 		ok: false,
@@ -98209,6 +98243,77 @@ function validateSpec(raw) {
 		ok: true,
 		spec: raw
 	};
+}
+/** The body in px a spec's art is drawn on: body.w and body.h (grid units), else art.w and art.h; null when neither gives a side. */
+function artBox(art, body) {
+	const side = (k) => Number.isInteger(body[k]) ? body[k] * 10 : Number.isInteger(art[k]) ? art[k] : null;
+	const w = side("w");
+	const h = side("h");
+	return w !== null && h !== null ? {
+		w,
+		h
+	} : null;
+}
+/** A spec's `art`: the module rules for every shape (artShapeErrors), plus the body box, no built-in-only fields, and shapes on the body. */
+function artSpecErrors(art, body, pinned, errors) {
+	if (!isObj(art)) return void errors.push("art: must be { \"shapes\": [...], \"pinLabels\"? }");
+	for (const k of Object.keys(art)) if (!ART_KEYS.includes(k)) errors.push(`art.${k}: unknown field (allowed: ${ART_KEYS.join(", ")})`);
+	if (art.pinLabels !== void 0 && art.pinLabels !== "inside" && art.pinLabels !== "tips") errors.push("art.pinLabels: must be \"inside\" or \"tips\"");
+	for (const k of ["w", "h"]) {
+		const v = art[k];
+		if (v === void 0) continue;
+		if (!(Number.isInteger(v) && v % 10 === 0 && v >= 20 && v <= 4e3)) errors.push(`art.${k}: must be a multiple of 10 px, from 20 to ${MODULE_PX_MAX}`);
+		else if (Number.isInteger(body[k]) && body[k] * 10 !== v) errors.push(`art.${k}: ${v} px does not match body.${k} (${body[k]} grid units, ${body[k] * 10} px)`);
+	}
+	const box = artBox(art, body);
+	if (!box) errors.push("art: give the body size: body.w and body.h in grid units (or art.w and art.h in px, multiples of 10)");
+	if (!Array.isArray(art.shapes)) return void errors.push("art.shapes: required, a list of rects");
+	if (!art.shapes.length) return void errors.push("art.shapes: at least one shape");
+	const shapeErrors = artShapeErrors(art.shapes);
+	errors.push(...shapeErrors);
+	art.shapes.forEach((s, i) => {
+		const at = `art.shapes[${i}]`;
+		if (!isObj(s)) return;
+		for (const k of ["band", "horn"]) if (s[k] !== void 0) errors.push(`${at}.${k}: built-in parts only`);
+		for (const k of Object.keys(s)) if (!SHAPE_KEYS.includes(k) && k !== "band" && k !== "horn") errors.push(`${at}.${k}: unknown field (allowed: ${SHAPE_KEYS.join(", ")})`);
+		for (const k of ["fill", "labelColor"]) if (typeof s[k] === "string" && !COLOR_RE.test(s[k])) errors.push(`${at}.${k}: must be a colour like "#2F9E6E"`);
+		if (!box || shapeErrors.some((e) => e.startsWith(`${at}.`) || e.startsWith(`${at}:`)) || ![
+			s.x,
+			s.y,
+			s.w,
+			s.h
+		].every(isNum)) return;
+		const [x, y, w, h] = [
+			s.x,
+			s.y,
+			s.w,
+			s.h
+		];
+		const past = [
+			[
+				"left",
+				"left edge",
+				-x
+			],
+			[
+				"top",
+				"top edge",
+				-y
+			],
+			[
+				"right",
+				`right edge (${box.w} px)`,
+				x + w - box.w
+			],
+			[
+				"bottom",
+				`bottom edge (${box.h} px)`,
+				y + h - box.h
+			]
+		];
+		for (const [side, edge, by] of past) if (by > 0 && pinned.has(side)) errors.push(`${at}: sticks out ${by} px past the ${side} edge, which has pins: it would cover their stubs. Only a side without pins may have a shape sticking out.`);
+		else if (by > 20) errors.push(`${at}: reaches ${by} px past the body's ${edge}; at most 20 px may stick out`);
+	});
 }
 /**
 * Pin entries for one side, from the spec, in order. Every pin gets an explicit label (its name
@@ -98498,9 +98603,25 @@ function buildPart(raw) {
 	]) for (const p of sideEntries(side, spec.pins[side] ?? [])) pins.push(p);
 	const renamed = numberRepeats(pins);
 	if (renamed.length) notes.push(`Repeated pin names were numbered in physical order: ${renamed.join(", ")}. If they are joined inside the part, list them in "internal".`);
-	const g = geometry(pins, style, plateText(spec.name), spec.body);
-	if (!g.plate) notes.push("The body is too small for the name plate, so it was left out.");
-	if (g.crowded) notes.push("Pin labels on two sides meet in a corner at this body size; make the body larger or leave the size out.");
+	const box = spec.art ? artBox(spec.art, spec.body ?? {}) : null;
+	const g = geometry(pins, style, plateText(spec.name), box ? {
+		w: box.w / 10,
+		h: box.h / 10
+	} : spec.body);
+	if (box) {
+		const need = {
+			w: g.wu,
+			h: g.hu
+		};
+		const small = ["w", "h"].flatMap((k) => need[k] * 10 > box[k] ? [`body.${k}: the pins need at least ${need[k]} grid units with this art (${box[k] / 10} given)`] : []);
+		if (small.length) return {
+			ok: false,
+			errors: small
+		};
+	} else {
+		if (!g.plate) notes.push("The body is too small for the name plate, so it was left out.");
+		if (g.crowded) notes.push("Pin labels on two sides meet in a corner at this body size; make the body larger or leave the size out.");
+	}
 	const color = spec.body?.color ?? DEFAULT_COLORS[style];
 	const source = Array.isArray(spec.source) ? spec.source.map((s) => s.trim()).filter(Boolean).join(" ") : spec.source?.trim();
 	const uses = (spec.uses ?? []).map((u) => u.trim()).filter(Boolean);
@@ -98520,7 +98641,12 @@ function buildPart(raw) {
 			w: g.wu,
 			h: g.hu
 		},
-		art: partArt(pins, style, color, spec.name, g)
+		art: spec.art ? {
+			w: g.wu * 10,
+			h: g.hu * 10,
+			...spec.art.pinLabels ? { pinLabels: spec.art.pinLabels } : {},
+			shapes: structuredClone(spec.art.shapes)
+		} : partArt(pins, style, color, spec.name, g)
 	};
 	const r = validateModule(m);
 	if (!r.ok) return {
@@ -98533,6 +98659,67 @@ function buildPart(raw) {
 		notes
 	};
 }
+/** The art's body colour (its largest shape's fill). */
+function bodyColor(m) {
+	let best;
+	for (const s of m.art?.shapes ?? []) if (!best || s.w * s.h > best.w * best.h) best = s;
+	return best && COLOR_RE.test(best.fill) ? best.fill : void 0;
+}
+/** The same art: size, label mode and shapes (key order aside at the top level). */
+var sameArt = (a, b) => !!a && !!b && a.w === b.w && a.h === b.h && a.pinLabels === b.pinLabels && JSON.stringify(a.shapes) === JSON.stringify(b.shapes);
+/** The art the part maker would draw for this module's pins, name, style and size (its generic board or chip). */
+function generatedArt(m) {
+	const r = buildPart(plainSpec(m));
+	return r.ok ? r.module.art : void 0;
+}
+/** specFromModule without art: what the part maker's own drawing is made from. */
+function plainSpec(m) {
+	const style = m.art?.pinLabels === "tips" ? "chip" : "board";
+	const pins = {};
+	for (const p of m.pins) {
+		const list = pins[p.side] ??= [];
+		if (isSpacer(p)) {
+			list.push(null);
+			continue;
+		}
+		const o = { name: p.name };
+		if (p.label !== void 0 && p.label !== p.name) o.label = p.label;
+		if (p.type) o.type = p.type;
+		if (p.supply) o.supply = p.supply;
+		if (p.caps) o.caps = p.caps;
+		list.push(o);
+	}
+	const color = bodyColor(m);
+	const spec = {
+		format: SPEC_FORMAT,
+		name: m.name,
+		id: m.id,
+		category: m.category ?? "Custom",
+		...m.source ? { source: m.source } : {},
+		...m.description ? { description: m.description } : {},
+		...m.uses?.length ? { uses: m.uses } : {},
+		...m.version && m.version > 1 ? { version: m.version } : {},
+		style,
+		pins,
+		...m.internal?.length ? { internal: m.internal } : {}
+	};
+	const auto = buildPart({
+		...spec,
+		body: color ? { color } : void 0
+	});
+	spec.body = {
+		...auto.ok && m.size && (auto.module.size?.w !== m.size.w || auto.module.size?.h !== m.size.h) && m.size ? {
+			w: m.size.w,
+			h: m.size.h
+		} : {},
+		...color ? { color } : {}
+	};
+	return spec;
+}
+var GENERIC_ART_NOTE = {
+	code: "generic-art",
+	message: "Drawn as a generic box: draw its art from a photo of the real part (see the art guide, references/art.md in the circuitoon-custom-part skill)."
+};
 /** Pin names that are power or ground by convention. */
 var POWER_NAME = /^(v(cc|dd|in|bus|bat|sys|s|\+)?|vcc\d*|vdd\d*|gnd\d*|vss|agnd|dgnd|pgnd|3v3|3\.3v|5v|12v|v\+|v-|\+|-|\+?\d+(\.\d+)?v\d*)$/i;
 var GROUND_NAME = /^(gnd\d*|vss|agnd|dgnd|pgnd|v-|-|0v)$/i;
@@ -98560,7 +98747,8 @@ function lintModule(raw) {
 		return {
 			ok: false,
 			errors,
-			warnings
+			warnings,
+			notes: []
 		};
 	}
 	const m = v.module;
@@ -98634,10 +98822,12 @@ function lintModule(raw) {
 		message: "Code on custom parts is not supported yet, so this part's \"firmware\" is ignored."
 	});
 	lintArt(m, errors, warnings);
+	const notes = isCustom(m) && (!m.art || sameArt(m.art, generatedArt(m))) ? [GENERIC_ART_NOTE] : [];
 	return {
 		ok: errors.length === 0,
 		errors,
-		warnings
+		warnings,
+		notes
 	};
 }
 /** Art that does not match the pins: a body that grows past the drawing, or header holes off every pin. */
@@ -98669,8 +98859,12 @@ function lintArt(m, errors, warnings) {
 //#region src/cli/moduleCmd.ts
 var MODULE_NEW_FORMAT = "circuitoon-cli/module-new/1";
 var MODULE_CHECK_FORMAT = "circuitoon-cli/module-check/1";
-var MODULE_USAGE = "module: usage: circuitoon module new [--spec <spec.json>] [-o <part.json>] | module check <part.json> | module render <part.json> -o <part.png> [--svg <part.svg>] [--dark] [--scale n]";
-var issueLines = (errors, warnings) => [...errors.map((e) => `error [${e.code}] ${e.message}`), ...warnings.map((w) => `warning [${w.code}] ${w.message}`)];
+var MODULE_USAGE = "module: usage: circuitoon module new [--spec <spec.json>] [-o <part.json>] | module check <part.json> | module render <part.json|built-in id> -o <part.png> [--svg <part.svg>] [--dark] [--scale n]";
+var issueLines = (errors, warnings, notes = []) => [
+	...errors.map((e) => `error [${e.code}] ${e.message}`),
+	...warnings.map((w) => `warning [${w.code}] ${w.message}`),
+	...notes.map((n) => `note [${n.code}] ${n.message}`)
+];
 function parseJson(text, what) {
 	try {
 		return JSON.parse(text);
@@ -98709,13 +98903,13 @@ function newCommand(args, io) {
 			ok: lint.ok,
 			path: out && lint.ok ? out : null,
 			module: m,
-			notes: built.notes,
+			notes: [...built.notes, ...lint.notes.map((n) => n.message)],
 			errors: lint.errors,
 			warnings: lint.warnings
 		});
 		return code;
 	}
-	const lines = [...built.notes.map((n) => `note: ${n}`), ...issueLines(lint.errors, lint.warnings)];
+	const lines = [...built.notes.map((n) => `note: ${n}`), ...issueLines(lint.errors, lint.warnings, lint.notes)];
 	if (out) {
 		const lay = layoutModule(m);
 		const head = lint.ok ? `Wrote ${out}: ${m.id} (${m.pins.filter((p) => !isSpacer(p)).length} pins, ${lay.w} x ${lay.h} px), a custom part, unverified.` : `Not written: ${m.id} has lint errors.`;
@@ -98745,7 +98939,8 @@ function checkModuleFile(raw, path) {
 			h: lay.h
 		} : null,
 		errors: lint.errors,
-		warnings: lint.warnings
+		warnings: lint.warnings,
+		notes: lint.notes
 	};
 }
 function checkCommand(args, io) {
@@ -98758,7 +98953,7 @@ function checkCommand(args, io) {
 		const what = r.id ? `${r.id}${r.name ? ` (${r.name})` : ""}` : input;
 		const facts = r.size ? `, ${r.pins} pins, ${r.size.w} x ${r.size.h} px${r.custom ? ", custom (unverified)" : ""}` : "";
 		const head = r.ok ? `OK: ${what}${facts}` : `PROBLEMS: ${what}: ${r.errors.length} error${r.errors.length === 1 ? "" : "s"}`;
-		io.stdout(`${[head, ...issueLines(r.errors, r.warnings)].join("\n")}\n`);
+		io.stdout(`${[head, ...issueLines(r.errors, r.warnings, r.notes)].join("\n")}\n`);
 	}
 	return r.ok ? EXIT.ok : EXIT.blocked;
 }
@@ -98787,7 +98982,12 @@ function renderCommand(args, io) {
 	if (!png && !svgPath) throw new CliError("module render: give -o <part.png>, --svg <part.svg>, or both", EXIT.input);
 	const scale = Number(flag(args, "--scale") ?? "3");
 	if (!(scale > 0 && scale <= 8)) throw new CliError("module render: --scale must be a number above 0, at most 8", EXIT.input);
-	const v = validateModule(readJson(io, input));
+	const builtin = !existsSync(pathIn(io, input)) && Object.hasOwn(modulesById, input) ? modulesById[input] : null;
+	if (!builtin && !existsSync(pathIn(io, input))) throw new CliError(`${input}: not a part file or a built-in part id (find ids with: circuitoon parts --search <text>)`, EXIT.input);
+	const v = builtin ? {
+		ok: true,
+		module: builtin
+	} : validateModule(readJson(io, input));
 	if (!v.ok) throw new CliError(`${input} is not a valid module: ${v.errors.slice(0, 5).join("; ")}`, EXIT.input);
 	const drawn = renderSheetSvg(partSheet(v.module), { dark: args.flags.has("--dark") });
 	const outputs = [];
@@ -100600,8 +100800,8 @@ var USAGE = `circuitoon <command> [options]
   module new [--spec <spec.json>] [-o <part.json>] [--json]
                                             a custom part from a part spec (or the spec on standard input), with Sticker art
   module check <part.json> [--json]         lint a part: duplicate pins, art against pins, impossible caps, untyped power pins
-  module render <part.json> -o <part.png> [--svg <part.svg>] [--dark] [--scale n]
-                                            draw one part alone, to look at it
+  module render <part.json|built-in id> -o <part.png> [--svg <part.svg>] [--dark] [--scale n]
+                                            draw one part alone, to look at it (a built-in id shows how the library draws it)
 
 Exit codes: 0 ok, 1 findings that block, 2 invalid input, 3 environment problem (such as no browser),
 a simulation that failed or could not run (sim and gate, when nothing else blocks), or an internal error of the tool.

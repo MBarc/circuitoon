@@ -1,7 +1,7 @@
 // The part maker dialog's working copy of a part (a draft): rows per side that the person edits, and
 // the conversions to and from a part spec. Pure, so it is unit-tested apart from the dialog.
 import { SIDES, isSpacer, validateModule, type ModuleDef, type PinCaps, type PinEntry, type PinType, type Side } from '../format/module.ts'
-import { type BuildResult, type PartSpec, type PartStyle, type PastedPin, DEFAULT_CATEGORY, DEFAULT_COLORS, SPEC_FORMAT, buildPart, customId, specFromModule, unmodeled } from '../format/partMaker.ts'
+import { type BuildResult, type PartSpec, type PartStyle, type PastedPin, type SpecArt, DEFAULT_CATEGORY, DEFAULT_COLORS, SPEC_FORMAT, buildPart, customId, specFromModule, unmodeled } from '../format/partMaker.ts'
 import { type MyPart, freeId } from './myParts.ts'
 import { modulesById } from '../library.ts'
 
@@ -34,6 +34,8 @@ export interface Draft {
   h: number
   pins: Record<Side, PinRow[]>
   internal?: string[][]
+  /** The part's own drawing, from its spec (made outside the dialog): kept as it is, on a body of `w` x `h`, until the person drops it. */
+  art?: SpecArt
   /** The module id while editing a saved part: it stays, so sheets using the part follow the edit. */
   id?: string
 }
@@ -76,6 +78,7 @@ export function draftFromPart(p: MyPart): Draft {
     h: spec.body?.h ?? lay.h,
     pins,
     ...(spec.internal ? { internal: spec.internal } : {}),
+    ...(spec.art ? { art: spec.art } : {}),
     id: p.module.id,
   }
 }
@@ -102,9 +105,10 @@ export function specFromDraft(d: Draft): PartSpec {
     name: d.name.trim(),
     category: d.category.trim() || DEFAULT_CATEGORY,
     style: d.style,
-    body: d.sized ? { w: d.w, h: d.h, color: d.color } : { color: d.color },
+    body: d.sized || d.art ? { w: d.w, h: d.h, color: d.color } : { color: d.color },
     pins,
   }
+  if (d.art) spec.art = d.art
   if (source.length) spec.source = source
   const { description, uses } = draftText(d)
   if (description) spec.description = description

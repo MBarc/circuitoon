@@ -2,7 +2,7 @@
 
 Embed a part only when `circuitoon parts --search` has no match.
 
-The easy way is `circuitoon module new --spec spec.json -o part.json`: it draws the part, marks it custom and lints it (see the `circuitoon-custom-part` skill). This page is the format underneath, for parts you write by hand.
+The easy way is `circuitoon module new --spec spec.json -o part.json`: it draws the part, marks it custom and lints it (see the `circuitoon-custom-part` skill). A spec's `art` (the same rect shapes as `art.shapes` below, on a body of `body.w` x `body.h` grid units) draws the part like the real board; the skill's `references/art.md` is the guide. This page is the format underneath, for parts you write by hand.
 
 - Take every pin from the maker's documentation (a datasheet, the maker's wiki, or a vendor pinout with a legible silkscreen).
 - List those URLs in `source`, separated by spaces.
@@ -30,7 +30,7 @@ This example lays out and passes `gate`. The URLs are placeholders: yours must b
 }
 ```
 
-Without `art`, the part is drawn as a plain box with its pins, which is enough for a wiring diagram.
+Without `art`, the part is drawn as a plain box with its pins. That wires correctly, but nobody recognises the board: make custom parts with `module new` and draw their `art` from a photo of the real part (the `circuitoon-custom-part` skill and its `references/art.md`).
 
 ## Fields
 

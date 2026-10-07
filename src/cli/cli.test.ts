@@ -88,6 +88,7 @@ describe('circuitoon parts and part', () => {
     const r = await cli(['part', 'mcp23017-dip28', '--json'])
     expect(r.code).toBe(0)
     expect(schemaErrors(loadSchema('part'), JSON.parse(r.out))).toEqual([])
+    expect(JSON.parse(r.out).module.art.shapes.length).toBeGreaterThan(0)
     expect((await cli(['part', 'mcp23017-dip28'])).out).toContain('GPA0')
     const bad = await cli(['part', 'no-such-part'])
     expect(bad.code).toBe(2)

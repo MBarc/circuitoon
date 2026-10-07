@@ -6,8 +6,8 @@
 // A custom part is user-made and unverified: `custom: true` and an id starting with "custom-", so it
 // never collides with a built-in id. The checker treats it like any part, using the pin types given.
 import {
-  CUSTOM_PREFIX, GRID, MODULE_FORMAT, MODULE_PX_MAX, PIN_TYPES, SIDES, isCustom, isObj, isSpacer, layoutModule, validateModule,
-  type ArtShape, type ModuleDef, type PinCaps, type PinDef, type PinEntry, type PinType, type Side,
+  CUSTOM_PREFIX, GRID, MODULE_FORMAT, MODULE_PX_MAX, PIN_TYPES, SIDES, artShapeErrors, isCustom, isObj, isNum, isSpacer, layoutModule, validateModule,
+  type Art, type ArtShape, type ModuleDef, type PinCaps, type PinDef, type PinEntry, type PinType, type Side,
 } from './module.ts'
 import { parseSupply } from './checks.ts'
 
@@ -38,6 +38,12 @@ export interface PartSpec {
   style?: PartStyle
   /** Body size in grid units (10 px each) and colour (#RRGGBB). Left out, the size fits the pins and their labels. */
   body?: { w?: number; h?: number; color?: string }
+  /**
+   * The part's own drawing, in place of the generated one: rects in module px on a body of body.w x
+   * body.h grid units (or art.w x art.h px, multiples of 10), origin at its top left. The pins are
+   * still placed from `pins`, over the drawing. Left out, the part maker draws a board or a chip.
+   */
+  art?: SpecArt
   /** Pins per side in physical order: left and right top to bottom, top and bottom left to right. */
   pins: Partial<Record<Side, PinSpec[]>>
   /** Pins joined inside the part (all its GND pins). */
@@ -46,6 +52,15 @@ export interface PartSpec {
   description?: string
   /** Typical uses ("plant monitor"), for the closest-match search. */
   uses?: string[]
+}
+
+/** A spec's own art: the module art language without `band` and `horn` (built-in parts only). `w` and `h` (px) are optional, so a module's art copies in whole. */
+export interface SpecArt {
+  w?: number
+  h?: number
+  /** "inside": pin names inside the body beside each pin (boards); "tips": past the stub tips (chips); left out: beside the stub, outside the body. */
+  pinLabels?: Art['pinLabels']
+  shapes: ArtShape[]
 }
 
 export const DEFAULT_CATEGORY = 'Custom'
@@ -75,7 +90,11 @@ const PLATE_H = 16
 const PLATE_CHARS = 22
 const COLOR_RE = /^#[0-9a-f]{6}$/i
 const ID_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/
-const SPEC_KEYS = ['format', 'name', 'id', 'category', 'source', 'description', 'uses', 'version', 'style', 'body', 'pins', 'internal']
+const SPEC_KEYS = ['format', 'name', 'id', 'category', 'source', 'description', 'uses', 'version', 'style', 'body', 'art', 'pins', 'internal']
+const ART_KEYS = ['w', 'h', 'pinLabels', 'shapes']
+const SHAPE_KEYS = ['type', 'x', 'y', 'w', 'h', 'fill', 'radius', 'outline', 'label', 'labelColor', 'labelSize']
+/** How far, in px, a spec art shape may reach past the body's edge: a jack, a USB plug or a cable stub sticking out, as built-in boards draw their USB ports. */
+export const ART_OVERHANG = 20
 const PIN_KEYS = ['name', 'label', 'type', 'supply', 'caps', 'spacer']
 
 /** A name made kebab-case for an id: "My Sensor (v2)" is "my-sensor-v2". */
@@ -160,9 +179,55 @@ export function validateSpec(raw: unknown): SpecResult {
       })
     }
   if (isObj(raw.pins) && count === 0) errors.push('pins: at least one pin')
+  if (raw.art !== undefined) {
+    const sides = isObj(raw.pins) ? SIDES.filter((s) => Array.isArray((raw.pins as Record<string, unknown>)[s]) && ((raw.pins as Record<string, unknown[]>)[s]).some((p) => p !== null)) : []
+    artSpecErrors(raw.art, isObj(raw.body) ? raw.body : {}, new Set(sides), errors)
+  }
   if (raw.internal !== undefined && !(Array.isArray(raw.internal) && raw.internal.every((g) => Array.isArray(g) && g.every((n) => typeof n === 'string'))))
     errors.push('internal: must be a list of pin-name groups')
   return errors.length ? { ok: false, errors } : { ok: true, spec: raw as unknown as PartSpec }
+}
+
+/** The body in px a spec's art is drawn on: body.w and body.h (grid units), else art.w and art.h; null when neither gives a side. */
+function artBox(art: Record<string, unknown>, body: Record<string, unknown>): { w: number; h: number } | null {
+  const side = (k: 'w' | 'h') => (Number.isInteger(body[k]) ? (body[k] as number) * GRID : Number.isInteger(art[k]) ? (art[k] as number) : null)
+  const w = side('w')
+  const h = side('h')
+  return w !== null && h !== null ? { w, h } : null
+}
+
+/** A spec's `art`: the module rules for every shape (artShapeErrors), plus the body box, no built-in-only fields, and shapes on the body. */
+function artSpecErrors(art: unknown, body: Record<string, unknown>, pinned: Set<Side>, errors: string[]) {
+  if (!isObj(art)) return void errors.push('art: must be { "shapes": [...], "pinLabels"? }')
+  for (const k of Object.keys(art)) if (!ART_KEYS.includes(k)) errors.push(`art.${k}: unknown field (allowed: ${ART_KEYS.join(', ')})`)
+  if (art.pinLabels !== undefined && art.pinLabels !== 'inside' && art.pinLabels !== 'tips') errors.push('art.pinLabels: must be "inside" or "tips"')
+  for (const k of ['w', 'h'] as const) {
+    const v = art[k]
+    if (v === undefined) continue
+    if (!(Number.isInteger(v) && (v as number) % GRID === 0 && (v as number) >= 2 * GRID && (v as number) <= MODULE_PX_MAX)) errors.push(`art.${k}: must be a multiple of 10 px, from 20 to ${MODULE_PX_MAX}`)
+    else if (Number.isInteger(body[k]) && (body[k] as number) * GRID !== v) errors.push(`art.${k}: ${v} px does not match body.${k} (${body[k]} grid units, ${(body[k] as number) * GRID} px)`)
+  }
+  const box = artBox(art, body)
+  if (!box) errors.push('art: give the body size: body.w and body.h in grid units (or art.w and art.h in px, multiples of 10)')
+  if (!Array.isArray(art.shapes)) return void errors.push('art.shapes: required, a list of rects')
+  if (!art.shapes.length) return void errors.push('art.shapes: at least one shape')
+  const shapeErrors = artShapeErrors(art.shapes)
+  errors.push(...shapeErrors)
+  art.shapes.forEach((s, i) => {
+    const at = `art.shapes[${i}]`
+    if (!isObj(s)) return
+    for (const k of ['band', 'horn']) if (s[k] !== undefined) errors.push(`${at}.${k}: built-in parts only`)
+    for (const k of Object.keys(s)) if (!SHAPE_KEYS.includes(k) && k !== 'band' && k !== 'horn') errors.push(`${at}.${k}: unknown field (allowed: ${SHAPE_KEYS.join(', ')})`)
+    for (const k of ['fill', 'labelColor']) if (typeof s[k] === 'string' && !COLOR_RE.test(s[k] as string)) errors.push(`${at}.${k}: must be a colour like "#2F9E6E"`)
+    if (!box || shapeErrors.some((e) => e.startsWith(`${at}.`) || e.startsWith(`${at}:`)) || ![s.x, s.y, s.w, s.h].every(isNum)) return
+    const [x, y, w, h] = [s.x, s.y, s.w, s.h] as number[]
+    const past: [Side, string, number][] = [['left', 'left edge', -x], ['top', 'top edge', -y], ['right', `right edge (${box.w} px)`, x + w - box.w], ['bottom', `bottom edge (${box.h} px)`, y + h - box.h]]
+    for (const [side, edge, by] of past) {
+      // The art is drawn over the pin stubs: a shape sticking out of a side with pins would hide them.
+      if (by > 0 && pinned.has(side)) errors.push(`${at}: sticks out ${by} px past the ${side} edge, which has pins: it would cover their stubs. Only a side without pins may have a shape sticking out.`)
+      else if (by > ART_OVERHANG) errors.push(`${at}: reaches ${by} px past the body's ${edge}; at most ${ART_OVERHANG} px may stick out`)
+    }
+  })
 }
 
 /**
@@ -375,9 +440,17 @@ export function buildPart(raw: unknown): BuildResult {
   // Trailing and leading gaps on a side would only move its pins: kept, they are the user's choice.
   const renamed = numberRepeats(pins)
   if (renamed.length) notes.push(`Repeated pin names were numbered in physical order: ${renamed.join(', ')}. If they are joined inside the part, list them in "internal".`)
-  const g = geometry(pins, style, plateText(spec.name), spec.body)
-  if (!g.plate) notes.push('The body is too small for the name plate, so it was left out.')
-  if (g.crowded) notes.push('Pin labels on two sides meet in a corner at this body size; make the body larger or leave the size out.')
+  const box = spec.art ? artBox(spec.art as unknown as Record<string, unknown>, (spec.body ?? {}) as Record<string, unknown>)! : null
+  const g = geometry(pins, style, plateText(spec.name), box ? { w: box.w / GRID, h: box.h / GRID } : spec.body)
+  if (box) {
+    // The drawing is made for its box: a body grown under it would leave the pins off the drawing.
+    const need = { w: g.wu, h: g.hu }
+    const small = (['w', 'h'] as const).flatMap((k) => (need[k] * GRID > box[k] ? [`body.${k}: the pins need at least ${need[k]} grid units with this art (${box[k] / GRID} given)`] : []))
+    if (small.length) return { ok: false, errors: small }
+  } else {
+    if (!g.plate) notes.push('The body is too small for the name plate, so it was left out.')
+    if (g.crowded) notes.push('Pin labels on two sides meet in a corner at this body size; make the body larger or leave the size out.')
+  }
   const color = spec.body?.color ?? DEFAULT_COLORS[style]
   const source = Array.isArray(spec.source) ? spec.source.map((s) => s.trim()).filter(Boolean).join(' ') : spec.source?.trim()
   const uses = (spec.uses ?? []).map((u) => u.trim()).filter(Boolean)
@@ -394,7 +467,7 @@ export function buildPart(raw: unknown): BuildResult {
     pins,
     ...(spec.internal?.length ? { internal: spec.internal } : {}),
     size: { w: g.wu, h: g.hu },
-    art: partArt(pins, style, color, spec.name, g),
+    art: spec.art ? { w: g.wu * GRID, h: g.hu * GRID, ...(spec.art.pinLabels ? { pinLabels: spec.art.pinLabels } : {}), shapes: structuredClone(spec.art.shapes) } : partArt(pins, style, color, spec.name, g),
   }
   const r = validateModule(m)
   if (!r.ok) return { ok: false, errors: r.errors }
@@ -415,8 +488,32 @@ function bodyColor(m: ModuleDef): string | undefined {
   return best && COLOR_RE.test(best.fill) ? best.fill : undefined
 }
 
-/** The spec a custom module was built from, near enough to edit it again (the size kept only when it differs from the automatic one). */
+/** The same art: size, label mode and shapes (key order aside at the top level). */
+const sameArt = (a: Art | undefined, b: Art | undefined) =>
+  !!a && !!b && a.w === b.w && a.h === b.h && a.pinLabels === b.pinLabels && JSON.stringify(a.shapes) === JSON.stringify(b.shapes)
+
+/** The art the part maker would draw for this module's pins, name, style and size (its generic board or chip). */
+function generatedArt(m: ModuleDef): Art | undefined {
+  const r = buildPart(plainSpec(m))
+  return r.ok ? r.module.art : undefined
+}
+
+/**
+ * The spec a custom module was built from, near enough to edit it again (the size kept only when it
+ * differs from the automatic one). A drawing of its own that the spec can carry (not the generated
+ * one) comes back as `art`; one it cannot (a resistor's bands) is left out (see unmodeled).
+ */
 export function specFromModule(m: ModuleDef): PartSpec {
+  const spec = plainSpec(m)
+  const art = m.art
+  if (!art || sameArt(art, generatedArt(m)) || art.w % GRID || art.h % GRID) return spec
+  const own: PartSpec = { ...spec, body: { ...(spec.body?.color ? { color: spec.body.color } : {}), w: art.w / GRID, h: art.h / GRID }, art: { ...(art.pinLabels ? { pinLabels: art.pinLabels } : {}), shapes: art.shapes } }
+  const r = buildPart(own)
+  return r.ok && sameArt(r.module.art, art) && r.module.size?.w === m.size?.w && r.module.size?.h === m.size?.h ? own : spec
+}
+
+/** specFromModule without art: what the part maker's own drawing is made from. */
+function plainSpec(m: ModuleDef): PartSpec {
   const style: PartStyle = m.art?.pinLabels === 'tips' ? 'chip' : 'board'
   const pins: Partial<Record<Side, PinSpec[]>> = {}
   for (const p of m.pins) {
@@ -465,7 +562,10 @@ export interface LintReport {
   ok: boolean
   errors: LintIssue[]
   warnings: LintIssue[]
+  /** Not problems: hints for a better part (a custom part still drawn as the generic box). */
+  notes: LintIssue[]
 }
+export const GENERIC_ART_NOTE: LintIssue = { code: 'generic-art', message: 'Drawn as a generic box: draw its art from a photo of the real part (see the art guide, references/art.md in the circuitoon-custom-part skill).' }
 
 /** Pin names that are power or ground by convention. */
 const POWER_NAME = /^(v(cc|dd|in|bus|bat|sys|s|\+)?|vcc\d*|vdd\d*|gnd\d*|vss|agnd|dgnd|pgnd|3v3|3\.3v|5v|12v|v\+|v-|\+|-|\+?\d+(\.\d+)?v\d*)$/i
@@ -485,7 +585,7 @@ export function lintModule(raw: unknown): LintReport {
       const dup = /duplicate pin name "(.*)"/.exec(e)
       errors.push(dup ? { code: 'duplicate-pin', message: `Two pins are named "${dup[1]}": every pin needs its own name (a second GND is "GND 2" with the label "GND").`, pin: dup[1] } : { code: 'invalid', message: e })
     }
-    return { ok: false, errors, warnings }
+    return { ok: false, errors, warnings, notes: [] }
   }
   const m = v.module
   const pins = m.pins.filter((p): p is PinDef => !isSpacer(p))
@@ -512,7 +612,8 @@ export function lintModule(raw: unknown): LintReport {
   if (m.name.length > NAME_MAX) warnings.push({ code: 'long-name', message: `The name is over ${NAME_MAX} characters.` })
   if (m.firmware) warnings.push({ code: 'firmware-custom', message: 'Code on custom parts is not supported yet, so this part\'s "firmware" is ignored.' })
   lintArt(m, errors, warnings)
-  return { ok: errors.length === 0, errors, warnings }
+  const notes = isCustom(m) && (!m.art || sameArt(m.art, generatedArt(m))) ? [GENERIC_ART_NOTE] : []
+  return { ok: errors.length === 0, errors, warnings, notes }
 }
 
 /** Art that does not match the pins: a body that grows past the drawing, or header holes off every pin. */
