@@ -96,10 +96,10 @@ describe('validateModule', () => {
     })
     if (!r2.ok)
       expect(r2.errors).toEqual([
-        'art.shapes[0].radius: must be a number',
+        'art.shapes[0].radius: must be a number, 0 or more',
         'art.shapes[0].outline: must be true or false',
         'art.shapes[0].labelColor: must be a string',
-        'art.shapes[0].labelSize: must be a positive number',
+        'art.shapes[0].labelSize: must be a number above 0, at most 40',
       ])
     expect(r2.ok).toBe(false)
   })

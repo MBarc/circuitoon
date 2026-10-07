@@ -3,7 +3,7 @@
 // a custom part still drawn as the generated generic box.
 import { describe, expect, it } from 'vitest'
 import { ART_OVERHANG, buildPart, lintModule, moduleFromSpec, specFromModule, unmodeled, validateSpec, type PartSpec } from './partMaker.ts'
-import { validateModule } from './module.ts'
+import { ART_LABEL_MAX, ART_LABEL_SIZE_MAX, ART_SHAPES_MAX, validateModule } from './module.ts'
 
 const AMP: PartSpec = {
   name: 'Test mono amp',
@@ -58,12 +58,20 @@ describe('spec art', () => {
     expect(validateSpec({ ...AMP, art: { shapes: AMP.art!.shapes, extra: 1 } })).toEqual({ ok: false, errors: ['art.extra: unknown field (allowed: w, h, pinLabels, shapes)'] })
   })
 
-  it(`lets a shape stick out of the body by at most ${ART_OVERHANG} px (a jack, a plug), no further`, () => {
-    const at = (x: number, w: number) => validateSpec({ ...AMP, art: { shapes: [AMP.art!.shapes[0], { type: 'rect', x, y: 30, w, h: 20, fill: '#C9CED6' }] } })
-    expect(at(100 - 10, 10 + ART_OVERHANG).ok).toBe(true)
+  it(`lets a shape stick out of a side with no pins by at most ${ART_OVERHANG} px (a jack, a plug), no further`, () => {
+    // AMP has pins on the left and right only: the top and bottom are free.
+    const at = (y: number, h: number) => validateSpec({ ...AMP, art: { shapes: [AMP.art!.shapes[0], { type: 'rect', x: 30, y, w: 20, h, fill: '#C9CED6' }] } })
+    expect(at(80 - 10, 10 + ART_OVERHANG).ok).toBe(true)
     expect(at(-ART_OVERHANG, 30).ok).toBe(true)
-    expect(at(90, 11 + ART_OVERHANG)).toEqual({ ok: false, errors: [`art.shapes[1]: reaches 21 px past the body's right edge (100 px); at most ${ART_OVERHANG} px may stick out`] })
-    expect(at(-25, 30)).toEqual({ ok: false, errors: [`art.shapes[1]: reaches 25 px past the body's left edge; at most ${ART_OVERHANG} px may stick out`] })
+    expect(at(70, 11 + ART_OVERHANG)).toEqual({ ok: false, errors: [`art.shapes[1]: reaches 21 px past the body's bottom edge (80 px); at most ${ART_OVERHANG} px may stick out`] })
+    expect(at(-25, 30)).toEqual({ ok: false, errors: [`art.shapes[1]: reaches 25 px past the body's top edge; at most ${ART_OVERHANG} px may stick out`] })
+  })
+
+  it('refuses a shape that sticks out of a side with pins, where it would cover the pin stubs', () => {
+    const at = (x: number, w: number) => validateSpec({ ...AMP, art: { shapes: [AMP.art!.shapes[0], { type: 'rect', x, y: 30, w, h: 20, fill: '#C9CED6' }] } })
+    expect(at(-6, 20)).toEqual({ ok: false, errors: ['art.shapes[1]: sticks out 6 px past the left edge, which has pins: it would cover their stubs. Only a side without pins may have a shape sticking out.'] })
+    expect(at(90, 15)).toEqual({ ok: false, errors: ['art.shapes[1]: sticks out 5 px past the right edge, which has pins: it would cover their stubs. Only a side without pins may have a shape sticking out.'] })
+    expect(at(0, 100).ok).toBe(true)
   })
 
   it('refuses a body too small for the pins instead of growing it under the drawing', () => {
@@ -95,5 +103,21 @@ describe('lint note on generic art', () => {
 
   it('says nothing for a part with its own art', () => {
     expect(lintModule(moduleFromSpec(AMP)).notes).toEqual([])
+  })
+})
+
+describe('art shape limits', () => {
+  const m = (shapes: unknown[]) => ({ format: 'circuitoon-module/1', id: 'x', name: 'x', pins: [{ name: 'A', side: 'left' }], art: { w: 40, h: 30, shapes } })
+  const rect = (extra: object = {}) => ({ type: 'rect', x: 0, y: 0, w: 40, h: 30, fill: '#2F9E6E', ...extra })
+  const errors = (shapes: unknown[]) => { const r = validateModule(m(shapes)); return r.ok ? [] : r.errors }
+  it('caps the shape count, label length, radius and label size, in spec and module art alike', () => {
+    expect(errors(Array.from({ length: ART_SHAPES_MAX }, () => rect()))).toEqual([])
+    expect(errors(Array.from({ length: ART_SHAPES_MAX + 1 }, () => rect()))).toEqual([`art.shapes: at most ${ART_SHAPES_MAX} shapes (${ART_SHAPES_MAX + 1} given)`])
+    expect(errors([rect({ label: 'x'.repeat(ART_LABEL_MAX) })])).toEqual([])
+    expect(errors([rect({ label: 'x'.repeat(ART_LABEL_MAX + 1) })])).toEqual([`art.shapes[0].label: at most ${ART_LABEL_MAX} characters`])
+    expect(errors([rect({ radius: -1 })])).toEqual(['art.shapes[0].radius: must be a number, 0 or more'])
+    expect(errors([rect({ labelSize: ART_LABEL_SIZE_MAX + 1 })])).toEqual([`art.shapes[0].labelSize: must be a number above 0, at most ${ART_LABEL_SIZE_MAX}`])
+    const spec = validateSpec({ name: 'X', body: { w: 4, h: 3 }, pins: { left: ['A'] }, art: { shapes: [rect({ label: 'x'.repeat(ART_LABEL_MAX + 1) })] } })
+    expect(spec).toEqual({ ok: false, errors: [`art.shapes[0].label: at most ${ART_LABEL_MAX} characters`] })
   })
 })

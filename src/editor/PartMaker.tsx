@@ -214,7 +214,7 @@ export function PartMaker({ editing, taken, onSave, onExport, onCancel, extra, i
           )}
           {draft.art && (
             <div className="pm-limited" role="note" data-testid="pm-art-kept">
-              <p>Custom art kept: this part has its own drawing, made from its spec. Pins you add or move are placed on it, so check the preview. The style, colour and size come from the drawing.</p>
+              <p>Custom art kept: this part has its own drawing, made from its spec. Pins you add or move are placed on it, so check the preview. The style, colour and size come from the drawing. If the pins no longer fit on it, use the plain drawing below, or make the part again from a spec with a larger drawing.</p>
               <button type="button" className="tool small" onClick={() => {
                 if (window.confirm(`Replace the drawing of ${draft.name.trim() || 'this part'} with the part maker's plain board or chip? Its own art is dropped when you save.`)) update({ ...draft, art: undefined })
               }}>Use the plain drawing</button>

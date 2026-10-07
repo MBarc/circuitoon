@@ -14,11 +14,11 @@ Flat colours inside a dark ink outline, on graph paper. Only rectangles: `{ "typ
 ## Coordinates and where the pins land
 
 - Units are px at 100% zoom. One grid unit is 10 px, the 0.1 inch header pitch. Origin is the body's top left.
-- The body is `body.w` x `body.h` grid units (or `art.w` x `art.h` px). Every shape must stay inside it, except that a connector may stick out by up to 20 px (a jack, a USB plug). Do not let a shape stick out on a side that has pins: the art is drawn over the pin stubs.
+- The body is `body.w` x `body.h` grid units (or `art.w` x `art.h` px). Every shape must stay inside it, except that a connector may stick out by up to 20 px (a jack, a USB plug), and only on a side without pins: the art is drawn over the pin stubs, so `module new` refuses a shape sticking out of a side with pins. Keep any overhang short: the layout counts only the body, so the caption ("U1") above the part and wires beside it may sit over the part that sticks out.
 - The part maker places the pins from `pins`, as always: the left and right sides top to bottom, top and bottom left to right, one slot per entry, `null` for a gap. A side `L` units long with `n` slots puts its first slot at `ceil((L - (n - 1)) / 2)` units, then one every 10 px. Example: 5 pins on the left of an 8-unit-tall body sit at y = 20, 30, 40, 50, 60; on the right, `["+", null, "-"]` on the same body sits at y = 30 and 50.
 - Pins sit on the body edge (x = 0 on the left, x = body width on the right, y = 0 on top, y = body height at the bottom). Draw each pin's pad or terminal on its row, within 12 px of that edge.
 - The body must have room for the pins: at least the number of slots on a side plus 2 units, and at least 4 x 3 units. `module new` says when it is too small.
-- `pinLabels`: `"inside"` writes each pin's name inside the body beside its pin, like silkscreen (boards with a header: keep the outer 12 px of those sides for pads, and keep other detail clear of the labels); `"tips"` writes names past the pin stubs (bare chips); left out, names sit beside the stub, outside the body (parts with wire leads or terminals).
+- `pinLabels`: `"inside"` writes each pin's name inside the body beside its pin, like silkscreen (boards with a header: keep the outer 12 px of those sides for pads, and keep other detail clear of the labels); `"tips"` writes names past the pin stubs (bare chips); left out, names sit beside the stub, outside the body (parts with wire leads or terminals). Names left outside need room: at 10 px pitch they cover the next pin's stub and name, on any side. Pins next to each other take `"inside"` (on the top and bottom the names turn and read upward); keep names outside only with a `null` gap between pins (`["+", null, "-"]`), and on the top or bottom only for names of one or two characters.
 - A header hole drawn in #8A6A1E (3 x 3 px or smaller) must sit on a pin's row near its edge, or `module check` says the art does not match the pins. Use another colour for mounting holes.
 
 ## Palette
@@ -83,7 +83,7 @@ Round pads, one per pin (Adafruit style): per pin `{ "x": 2, "y": <pin y - 4>, "
 
 The round screw heads with their slot sit over each pin's row; the dark squares at the edge are the wire openings. Use #2E9E5B for a green block. With `"pinLabels": "inside"` the pin names are written on the block near the edge: leave out the openings and keep the screw heads 20 px or more from the edge.
 
-### 3.5 mm audio jack, opening on the left edge (on a 60 x 40 board)
+### 3.5 mm audio jack, opening on the left edge (on an 80 x 50 board, pins TIP, RING, SLEEVE on the right, "inside" labels)
 
 ```json
 [
@@ -94,7 +94,7 @@ The round screw heads with their slot sit over each pin's row; the dark squares 
 ]
 ```
 
-A black block with a round barrel standing out of the edge. Its pins (tip, ring, sleeve) are usually on the opposite side or the bottom: put the jack on a side without pins.
+A black block with a round barrel standing out of the edge. Its pins (tip, ring, sleeve) are usually on the opposite side or the bottom: put the jack on a side without pins. Pins on the opposite side (here the right) read best, with `"inside"` labels; leave room on the board between the jack and those labels.
 
 ### USB-A plug on the left edge (a dongle; 60 x 60 body)
 
@@ -106,7 +106,7 @@ A black block with a round barrel standing out of the edge. Its pins (tip, ring,
 ]
 ```
 
-### USB-C receptacle on the top edge (on a 60 x 60 board)
+### USB-C receptacle on the top edge (on a 60 x 60 board, pins VBUS and GND on the bottom with "inside" labels)
 
 ```json
 [
@@ -124,7 +124,7 @@ A black block with a round barrel standing out of the edge. Its pins (tip, ring,
 ]
 ```
 
-When the board's USB port is a real connection in the design, give it a pin of its own on that edge instead (a `usb` pin is drawn by the renderer as the connector), and leave this out.
+A part spec cannot make a USB port pin (`module new` refuses `"type": "usb"`). When the port only powers the board, draw it with this recipe and give its power lines as plain pins (`VBUS` as `power_in`, `GND` as `ground`). When the design needs a real USB link (a cable to a host), write the module by hand with a `usb` pin as `../circuitoon-design/references/module-schema.md` describes.
 
 ### Round speaker, seen from the front (80 x 80 body)
 
@@ -138,7 +138,7 @@ When the board's USB port is a real connection in the design, give it a pin of i
 ]
 ```
 
-Concentric circles: metal frame, surround, cone, dust cap, a highlight. Its two leads go on one side, with `pinLabels` left out so the names sit outside.
+Concentric circles: metal frame, surround, cone, dust cap, a highlight. Its two leads go on one side with a gap between them (`["+", null, "-"]`), with `pinLabels` left out so the names sit outside.
 
 ### Electrolytic capacitor on a board, seen from above (30 x 30 area)
 

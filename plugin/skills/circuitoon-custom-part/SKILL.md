@@ -25,7 +25,14 @@ Run `circuitoon parts --search <text>` with the chip name and the board name. If
 
 4. **Never invent a pin.** A pin you could not source does not go in. If that leaves the part unusable, stop and tell the user what is missing. Never fill a gap from memory, from a similar part, or from what a pin is "usually" called.
 
-5. **Look at the real board.** Find a product photo of the exact board on its maker's page (Adafruit, SparkFun, Pololu, Waveshare, Seeed, ...): a top-down shot of the component side is best. Download the image to the scratch folder (for example `curl -L -o photo.jpg <image URL>`; the image URLs are in the page's HTML) and open it with the Read tool: WebFetch describes a page but does not show you its images. A dimension drawing or fab print from the maker gives the true outline. Note:
+5. **Look at the real board.** Find a product photo of the exact board on its maker's page (Adafruit, SparkFun, Pololu, Waveshare, Seeed, ...): a top-down shot of the component side is best. Download the image to the scratch folder and open it with the Read tool: WebFetch describes a page but does not show you its images, nor their URLs. List the image URLs in the page's HTML, then download one:
+
+   ```bash
+   curl -sL <product page URL> | grep -oE 'https://[^"]+\.(jpg|jpeg|png)' | sort -u
+   curl -sL -o photo.jpg <image URL>
+   ```
+
+   Some shops refuse plain curl requests. Then try the maker's image CDN link directly (shown on the page or in its search results), or the next source (a distributor's listing of the same board). Never set a User-Agent or any other request field that carries the user's name, email or other personal data. A dimension drawing or fab print from the maker gives the true outline. Note:
    - the board colour, and its outline and proportions (width : height, from the dimensions when given);
    - every connector: its type (pin header, screw terminal, JST, USB-C, micro USB, 3.5 mm jack, ...) and the edge it sits on;
    - where the pin header is, and its pin order as the silkscreen prints it;

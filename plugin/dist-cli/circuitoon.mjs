@@ -1272,8 +1272,11 @@ var PARAM_RULES = {
 function validParamValue(name, v) {
 	return Object.hasOwn(PARAM_RULES, name) && representableValue(v) && PARAM_RULES[name].valid(v);
 }
+/** Limits on art, so a runaway or hostile part file cannot swamp the editor (the largest built-in part has about 200 shapes, labels of 22 characters and a label size of 15). */
+var ART_SHAPES_MAX = 2e3;
 /** What is wrong with a list of art shapes, each error at its exact path (`art.shapes[2].x`). Shared with the part spec's `art`. */
 function artShapeErrors(shapes) {
+	if (shapes.length > 2e3) return [`art.shapes: at most ${ART_SHAPES_MAX} shapes (${shapes.length} given)`];
 	const errors = [];
 	shapes.forEach((s, i) => {
 		const at = `art.shapes[${i}]`;
@@ -1285,11 +1288,12 @@ function artShapeErrors(shapes) {
 			"h"
 		]) if (!inBounds(s[k])) errors.push(`${at}.${k}: must be a number within +-${MODULE_PX_MAX}`);
 		if (typeof s.fill !== "string") errors.push(`${at}.fill: required color`);
-		if (s.radius !== void 0 && !isNum(s.radius)) errors.push(`${at}.radius: must be a number`);
+		if (s.radius !== void 0 && !(isNum(s.radius) && s.radius >= 0)) errors.push(`${at}.radius: must be a number, 0 or more`);
 		if (s.outline !== void 0 && typeof s.outline !== "boolean") errors.push(`${at}.outline: must be true or false`);
 		if (s.label !== void 0 && typeof s.label !== "string") errors.push(`${at}.label: must be a string`);
+		else if (typeof s.label === "string" && s.label.length > 40) errors.push(`${at}.label: at most 40 characters`);
 		if (s.labelColor !== void 0 && typeof s.labelColor !== "string") errors.push(`${at}.labelColor: must be a string`);
-		if (s.labelSize !== void 0 && !isPos(s.labelSize)) errors.push(`${at}.labelSize: must be a positive number`);
+		if (s.labelSize !== void 0 && !(isPos(s.labelSize) && s.labelSize <= 40)) errors.push(`${at}.labelSize: must be a number above 0, at most 40`);
 		if (s.horn !== void 0 && s.horn !== true) errors.push(`${at}.horn: must be true`);
 		if (s.band !== void 0 && !(Number.isInteger(s.band) && s.band >= 1 && s.band <= 4)) errors.push(`${at}.band: must be a whole number from 1 to 4`);
 	});
@@ -98227,7 +98231,10 @@ function validateSpec(raw) {
 		});
 	}
 	if (isObj(raw.pins) && count === 0) errors.push("pins: at least one pin");
-	if (raw.art !== void 0) artSpecErrors(raw.art, isObj(raw.body) ? raw.body : {}, errors);
+	if (raw.art !== void 0) {
+		const sides = isObj(raw.pins) ? SIDES.filter((s) => Array.isArray(raw.pins[s]) && raw.pins[s].some((p) => p !== null)) : [];
+		artSpecErrors(raw.art, isObj(raw.body) ? raw.body : {}, new Set(sides), errors);
+	}
 	if (raw.internal !== void 0 && !(Array.isArray(raw.internal) && raw.internal.every((g) => Array.isArray(g) && g.every((n) => typeof n === "string")))) errors.push("internal: must be a list of pin-name groups");
 	return errors.length ? {
 		ok: false,
@@ -98248,7 +98255,7 @@ function artBox(art, body) {
 	} : null;
 }
 /** A spec's `art`: the module rules for every shape (artShapeErrors), plus the body box, no built-in-only fields, and shapes on the body. */
-function artSpecErrors(art, body, errors) {
+function artSpecErrors(art, body, pinned, errors) {
 	if (!isObj(art)) return void errors.push("art: must be { \"shapes\": [...], \"pinLabels\"? }");
 	for (const k of Object.keys(art)) if (!ART_KEYS.includes(k)) errors.push(`art.${k}: unknown field (allowed: ${ART_KEYS.join(", ")})`);
 	if (art.pinLabels !== void 0 && art.pinLabels !== "inside" && art.pinLabels !== "tips") errors.push("art.pinLabels: must be \"inside\" or \"tips\"");
@@ -98283,12 +98290,29 @@ function artSpecErrors(art, body, errors) {
 			s.h
 		];
 		const past = [
-			["left edge", -x],
-			["top edge", -y],
-			[`right edge (${box.w} px)`, x + w - box.w],
-			[`bottom edge (${box.h} px)`, y + h - box.h]
+			[
+				"left",
+				"left edge",
+				-x
+			],
+			[
+				"top",
+				"top edge",
+				-y
+			],
+			[
+				"right",
+				`right edge (${box.w} px)`,
+				x + w - box.w
+			],
+			[
+				"bottom",
+				`bottom edge (${box.h} px)`,
+				y + h - box.h
+			]
 		];
-		for (const [edge, by] of past) if (by > 20) errors.push(`${at}: reaches ${by} px past the body's ${edge}; at most 20 px may stick out`);
+		for (const [side, edge, by] of past) if (by > 0 && pinned.has(side)) errors.push(`${at}: sticks out ${by} px past the ${side} edge, which has pins: it would cover their stubs. Only a side without pins may have a shape sticking out.`);
+		else if (by > 20) errors.push(`${at}: reaches ${by} px past the body's ${edge}; at most 20 px may stick out`);
 	});
 }
 /**

@@ -179,7 +179,10 @@ export function validateSpec(raw: unknown): SpecResult {
       })
     }
   if (isObj(raw.pins) && count === 0) errors.push('pins: at least one pin')
-  if (raw.art !== undefined) artSpecErrors(raw.art, isObj(raw.body) ? raw.body : {}, errors)
+  if (raw.art !== undefined) {
+    const sides = isObj(raw.pins) ? SIDES.filter((s) => Array.isArray((raw.pins as Record<string, unknown>)[s]) && ((raw.pins as Record<string, unknown[]>)[s]).some((p) => p !== null)) : []
+    artSpecErrors(raw.art, isObj(raw.body) ? raw.body : {}, new Set(sides), errors)
+  }
   if (raw.internal !== undefined && !(Array.isArray(raw.internal) && raw.internal.every((g) => Array.isArray(g) && g.every((n) => typeof n === 'string'))))
     errors.push('internal: must be a list of pin-name groups')
   return errors.length ? { ok: false, errors } : { ok: true, spec: raw as unknown as PartSpec }
@@ -194,7 +197,7 @@ function artBox(art: Record<string, unknown>, body: Record<string, unknown>): { 
 }
 
 /** A spec's `art`: the module rules for every shape (artShapeErrors), plus the body box, no built-in-only fields, and shapes on the body. */
-function artSpecErrors(art: unknown, body: Record<string, unknown>, errors: string[]) {
+function artSpecErrors(art: unknown, body: Record<string, unknown>, pinned: Set<Side>, errors: string[]) {
   if (!isObj(art)) return void errors.push('art: must be { "shapes": [...], "pinLabels"? }')
   for (const k of Object.keys(art)) if (!ART_KEYS.includes(k)) errors.push(`art.${k}: unknown field (allowed: ${ART_KEYS.join(', ')})`)
   if (art.pinLabels !== undefined && art.pinLabels !== 'inside' && art.pinLabels !== 'tips') errors.push('art.pinLabels: must be "inside" or "tips"')
@@ -218,8 +221,12 @@ function artSpecErrors(art: unknown, body: Record<string, unknown>, errors: stri
     for (const k of ['fill', 'labelColor']) if (typeof s[k] === 'string' && !COLOR_RE.test(s[k] as string)) errors.push(`${at}.${k}: must be a colour like "#2F9E6E"`)
     if (!box || shapeErrors.some((e) => e.startsWith(`${at}.`) || e.startsWith(`${at}:`)) || ![s.x, s.y, s.w, s.h].every(isNum)) return
     const [x, y, w, h] = [s.x, s.y, s.w, s.h] as number[]
-    const past: [string, number][] = [['left edge', -x], ['top edge', -y], [`right edge (${box.w} px)`, x + w - box.w], [`bottom edge (${box.h} px)`, y + h - box.h]]
-    for (const [edge, by] of past) if (by > ART_OVERHANG) errors.push(`${at}: reaches ${by} px past the body's ${edge}; at most ${ART_OVERHANG} px may stick out`)
+    const past: [Side, string, number][] = [['left', 'left edge', -x], ['top', 'top edge', -y], ['right', `right edge (${box.w} px)`, x + w - box.w], ['bottom', `bottom edge (${box.h} px)`, y + h - box.h]]
+    for (const [side, edge, by] of past) {
+      // The art is drawn over the pin stubs: a shape sticking out of a side with pins would hide them.
+      if (by > 0 && pinned.has(side)) errors.push(`${at}: sticks out ${by} px past the ${side} edge, which has pins: it would cover their stubs. Only a side without pins may have a shape sticking out.`)
+      else if (by > ART_OVERHANG) errors.push(`${at}: reaches ${by} px past the body's ${edge}; at most ${ART_OVERHANG} px may stick out`)
+    }
   })
 }
 
