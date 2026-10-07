@@ -33,6 +33,8 @@ export interface BoardRunView {
   source: string
   file: string
   serial: SerialLine[]
+  /** Lines ever appended this session (monotonic; survives the trim to SERIAL_MAX and Clear). */
+  serialSeq?: number
   /** input() is waiting, with this prompt. */
   prompt: string | null
   /** The first Run's download. */
@@ -315,7 +317,7 @@ export class EditorStore {
     const b = this.state.run.boards[uid]
     if (!b || !lines.length) return
     const serial = [...b.serial, ...lines]
-    this.setBoardRun(uid, { serial: serial.length > SERIAL_MAX ? serial.slice(serial.length - SERIAL_MAX) : serial })
+    this.setBoardRun(uid, { serial: serial.length > SERIAL_MAX ? serial.slice(serial.length - SERIAL_MAX) : serial, serialSeq: (b.serialSeq ?? b.serial.length) + lines.length })
   }
   setDock(patch: Partial<DockState>) {
     const dock = { ...this.state.dock, ...patch }

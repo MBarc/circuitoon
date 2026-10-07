@@ -2,9 +2,10 @@
 // extension that does not fit the language); downloads are named <file> or <designator>.py; Write
 // code starts from a short starter comment; traceback lines link to the script's own lines; Serial
 // announces new lines (throttled by the panel).
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SOURCE_MAX_BYTES } from '../format/code.ts'
-import { announcement, downloadName, lineRef, readCodeFile, starterCode } from './codeFile.ts'
+import { SERIAL_MAX, type SerialLine } from './store.ts'
+import { announcement, createAnnouncer, downloadName, lineRef, readCodeFile, starterCode } from './codeFile.ts'
 
 const enc = (s: string) => new TextEncoder().encode(s)
 
@@ -38,5 +39,51 @@ describe('Serial (spec 5.3, 6.4)', () => {
     expect(announcement(lines, 0)).toBe('b. c. d')
     expect(announcement(lines, 3)).toBe('d')
     expect(announcement(lines, 4)).toBe('')
+  })
+})
+
+describe('Serial announcer throttle (spec 6.4)', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+  const setup = () => {
+    const st = { lines: [] as SerialLine[], total: 0 }
+    const said: string[] = []
+    const a = createAnnouncer(() => st, (t) => said.push(t))
+    const add = (text: string) => {
+      st.lines.push({ text, stream: 'out' })
+      if (st.lines.length > SERIAL_MAX) st.lines.shift()
+      st.total++
+      a.poke()
+    }
+    return { st, said, a, add }
+  }
+  it('announces about once a second for output every 500 ms', () => {
+    const { said, add } = setup()
+    for (let i = 0; i < 10; i++) {
+      add(`n${i}`)
+      vi.advanceTimersByTime(500)
+    }
+    expect(said.length).toBeGreaterThanOrEqual(4)
+    expect(said.length).toBeLessThanOrEqual(5)
+  })
+  it('keeps announcing at the line cap', () => {
+    const { st, said, add } = setup()
+    for (let i = 0; i < SERIAL_MAX; i++) add('x')
+    vi.advanceTimersByTime(1000)
+    said.length = 0
+    add('late')
+    expect(st.lines.length).toBe(SERIAL_MAX)
+    vi.advanceTimersByTime(1000)
+    expect(said).toEqual(['late'])
+  })
+  it('keeps announcing after Clear', () => {
+    const { st, said, add } = setup()
+    add('a')
+    add('b')
+    vi.advanceTimersByTime(1000)
+    st.lines.length = 0
+    add('c')
+    vi.advanceTimersByTime(1000)
+    expect(said).toEqual(['a. b', 'c'])
   })
 })

@@ -43,3 +43,29 @@ export function lineRef(text: string, file: string): { before: string; ref: stri
 
 /** What a screen reader hears for the lines since `from`: the last three at most. */
 export const announcement = (lines: SerialLine[], from: number): string => lines.slice(Math.max(from, lines.length - 3)).map((l) => l.text).join('. ')
+
+/**
+ * Serial's polite announcements, throttled (spec 6.4): `poke` after output arrives; one timer runs at
+ * a time and is never restarted, so steady output is announced about once per `ms`. `total` counts
+ * lines ever appended, so trimming at the cap and Clear do not silence it.
+ */
+export function createAnnouncer(read: () => { lines: SerialLine[]; total: number }, say: (text: string) => void, ms = 1000) {
+  let said = read().total
+  let timer: ReturnType<typeof setTimeout> | undefined
+  return {
+    poke() {
+      if (timer !== undefined || read().total === said) return
+      timer = setTimeout(() => {
+        timer = undefined
+        const { lines, total } = read()
+        const fresh = Math.min(total - said, lines.length)
+        said = total
+        say(announcement(lines, lines.length - fresh))
+      }, ms)
+    },
+    stop() {
+      clearTimeout(timer)
+      timer = undefined
+    },
+  }
+}

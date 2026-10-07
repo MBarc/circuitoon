@@ -4,7 +4,7 @@
 // polite region announces new lines at most once a second. A traceback's `File "blink.py", line 12`
 // is a button that moves the editor to that line.
 import { useEffect, useRef, useState } from 'react'
-import { announcement, lineRef } from './codeFile.ts'
+import { createAnnouncer, lineRef } from './codeFile.ts'
 import { runAction } from './running.ts'
 import { type EditorStore, useEditorState } from './store.ts'
 
@@ -15,18 +15,21 @@ export function SerialPanel({ store, uid, onGoto }: { store: EditorStore; uid: s
   const file = b?.file ?? 'main.py'
   const log = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
-  const [said, setSaid] = useState({ text: '', count: 0 })
+  const [said, setSaid] = useState('')
+  const latest = useRef({ lines, total: b?.serialSeq ?? lines.length })
+  latest.current = { lines, total: b?.serialSeq ?? lines.length }
+  const announcer = useRef<ReturnType<typeof createAnnouncer> | undefined>(undefined)
   const [entry, setEntry] = useState('')
   useEffect(() => {
     const el = log.current
     if (el && pinned.current) el.scrollTop = el.scrollHeight
   }, [lines])
-  // At most one announcement a second (spec 6.4).
+  // At most one announcement a second (spec 6.4): a throttle, one timer that new lines do not restart.
   useEffect(() => {
-    if (lines.length === said.count) return
-    const t = setTimeout(() => setSaid({ text: announcement(lines, said.count), count: lines.length }), 1000)
-    return () => clearTimeout(t)
-  }, [lines, said.count])
+    announcer.current = createAnnouncer(() => latest.current, setSaid)
+    return () => announcer.current?.stop()
+  }, [uid])
+  useEffect(() => announcer.current?.poke(), [lines])
   return (
     <section className="serial" aria-labelledby={`serial-${uid}`}>
       <div className="serial-head">
@@ -63,7 +66,7 @@ export function SerialPanel({ store, uid, onGoto }: { store: EditorStore; uid: s
           )
         })}
       </div>
-      <p className="sr-only" aria-live="polite">{said.text}</p>
+      <p className="sr-only" aria-live="polite">{said}</p>
       {b?.prompt !== null && b?.prompt !== undefined && (
         <form
           className="serial-input"
