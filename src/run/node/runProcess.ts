@@ -12,6 +12,7 @@
 // back the same way. Like the workers, the child runs this same file: the CLI bundle, or this .ts file
 // under vitest (with sourceHooks.ts standing in for what Vite fills at build time).
 import { fork } from 'node:child_process'
+import { realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -38,6 +39,14 @@ export const RUN_REAL_CAP_MS = 120_000
 export type RunResult = Omit<DriveResult, 'solves'>
 type Reply = { ok: true; result: RunResult; probe: SandboxProbe } | { ok: false; error: string; probe: SandboxProbe }
 
+const realOr = (p: string): string => {
+  try {
+    return realpathSync(p)
+  } catch {
+    return p
+  }
+}
+
 /** Why the child is not confined as it should be, or null. */
 function hole(p: SandboxProbe): string | null {
   if (PERMISSION && !p.permission) return 'the permission model is off'
@@ -50,7 +59,9 @@ export async function runIsolated(job: RunJob, readPaths: string[]): Promise<{ r
   const source = file.endsWith('.ts')
   const here = dirname(file)
   // The code itself: the bundle's folder, or src/ from the source tree.
-  const read = [source ? resolve(here, '..', '..') : here, engineDir(), ...readPaths].filter((p): p is string => !!p)
+  // Node checks reads against the real path, so a folder behind a junction or symlink is allowed by both names.
+  const given = [source ? resolve(here, '..', '..') : here, engineDir(), ...readPaths].filter((p): p is string => !!p)
+  const read = [...new Set(given.flatMap((p) => [p, realOr(p)]))]
   const inside = (p: string) => read.some((r) => {
     const rel = relative(r, p)
     return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))

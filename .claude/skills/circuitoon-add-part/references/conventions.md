@@ -5,6 +5,9 @@ Flat fills inside a dark ink outline (#23282F), on graph paper. Rectangles only 
 
 Art coordinates are px at 100% zoom, 10 px per grid unit, origin at the body's top left. The body grows to the larger of `size`, the art box, and the pins' needs; art is centered in the body.
 
+## Servos
+A servo's horn is drawn with art rects marked `"horn": true` (the SG90's white arm and its cap, `scripts/gen-outputs.mjs`). Give the module `electrical.sim.servo.shaft`, the centre of the output shaft in art coordinates (`{ "x": 122, "y": 24 }` on the SG90): while code drives the servo the editor hides the `horn` rects and draws the live horn turning about that point. Without `shaft` the drawn horn stays and the live one turns about the body's centre, so the horn shows twice: set both on every new servo, with the shaft point on the drawn shaft cap.
+
 ## Palette in use
 | Use | Color |
 | --- | --- |

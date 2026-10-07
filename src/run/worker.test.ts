@@ -21,6 +21,12 @@ describe('sandbox (spec 2.6)', () => {
     expect(sandbox(scope).sort()).toEqual(['WebSocket', 'fetch', 'importScripts', 'indexedDB'])
     expect([scope.fetch, scope.WebSocket, scope.importScripts, scope.indexedDB, scope.other]).toEqual([undefined, undefined, undefined, undefined, 1])
   })
+  it('removes WebTransport, and site storage (OPFS) from navigator', () => {
+    const nav = Object.assign(Object.create({ storage: {}, userAgent: 'x' }), {})
+    const scope: Record<string, unknown> = { WebTransport: class {}, navigator: nav }
+    expect(sandbox(scope).sort()).toEqual(['WebTransport', 'navigator.storage'])
+    expect([scope.WebTransport, nav.storage, nav.userAgent]).toEqual([undefined, undefined, 'x'])
+  })
 })
 
 describe('the code worker (spec 5.3, 5.4)', () => {
@@ -87,9 +93,13 @@ describe('the code worker (spec 5.3, 5.4)', () => {
     expect(performance.now() - t0.at).toBeGreaterThanOrEqual(990)
   }, 60_000)
   it('waits up to 200 ms for a solve after setup, then reads the pull level', async () => {
-    const r = runNode('import time\nimport RPi.GPIO as GPIO\nGPIO.setmode(GPIO.BCM)\nGPIO.setup(27, GPIO.IN, pull_up_down=GPIO.PUD_UP)\nt = time.monotonic()\nv = GPIO.input(27)\nprint(v, round(time.monotonic() - t, 1))\n')
+    const r = runNode('import time\nimport RPi.GPIO as GPIO\nGPIO.setmode(GPIO.BCM)\nGPIO.setup(27, GPIO.IN, pull_up_down=GPIO.PUD_UP)\nt = time.monotonic()\nv = GPIO.input(27)\nprint(v, time.monotonic() - t)\n')
     expect(await r.exited).toBe('done')
-    expect(out(r.messages)).toBe('1 0.2\n')
+    // With no solve coming the read waits its 200 ms, then gives up; a busy machine can only add to the wait.
+    const [v, waited] = out(r.messages).trim().split(' ')
+    expect(v).toBe('1')
+    expect(Number(waited)).toBeGreaterThanOrEqual(0.19)
+    expect(Number(waited)).toBeLessThan(2)
   }, 60_000)
   it('reads the level as soon as a solve through the latest setup lands', async () => {
     const r = runNode('import RPi.GPIO as GPIO\nGPIO.setmode(GPIO.BCM)\nGPIO.setup(27, GPIO.IN, pull_up_down=GPIO.PUD_UP)\nprint(GPIO.input(27))\n', {

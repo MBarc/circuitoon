@@ -4,7 +4,7 @@
 // confines (no reads outside the code and Pyodide folders, no writes, no processes, no code from
 // strings).
 import { describe, expect, it } from 'vitest'
-import { rmSync, writeFileSync } from 'node:fs'
+import { rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { serializeDiagram } from '../format/diagram.ts'
@@ -46,6 +46,13 @@ describe('circuitoon run (spec 7)', () => {
     expect(doc).toMatchObject({ format: 'circuitoon-cli/run/1', ok: true, exit: 0, simulatedSeconds: 2, boards: [{ ref: 'U1', status: 'stopped' }] })
     // GPIO17 is an output once the code runs: the saved-state solve before the code starts reports nothing.
     expect(doc.findings.filter((f: { message: string }) => f.message.includes('GPIO17 is an input with nothing driving it'))).toEqual([])
+  }, 120_000)
+  it('runs with a --py-dir reached through a junction or symlink', async () => {
+    const dir = sheet(piBlink())
+    const link = join(tempDir(), 'pyodide')
+    symlinkSync(PY, link, 'junction')
+    const r = await cli(['run', 's.json', '--py-dir', link, '--for', '1s'], { cwd: dir })
+    expect([r.code, r.err]).toEqual([0, ''])
   }, 120_000)
   it('presses a button and feeds input()', async () => {
     const pressed = await run(sheet(piButton("from gpiozero import Button\nfrom signal import pause\nb = Button(27)\nb.when_pressed = lambda: print('pressed')\npause()\n")), '--for', '3s', '--press', 'S1@1.5s')
