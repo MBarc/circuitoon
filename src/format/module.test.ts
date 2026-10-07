@@ -37,6 +37,16 @@ describe('validateModule', () => {
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.errors).toEqual(['source: must be a string (one or more URLs)'])
   })
+  it('accepts a description and uses, and rejects wrong types and lengths', () => {
+    const pins = [{ name: 'A', side: 'left' }]
+    expect(validateModule({ ...base, pins, description: 'A thing.', uses: ['one', 'two'] }).ok).toBe(true)
+    const r = validateModule({ ...base, pins, description: 'x'.repeat(301), uses: ['ok', '', 'y'.repeat(61), 3] })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errors).toEqual(['description: must be a non-empty string, at most 300 characters', 'uses[1]: must be a non-empty string, at most 60 characters', 'uses[2]: must be a non-empty string, at most 60 characters', 'uses[3]: must be a non-empty string, at most 60 characters'])
+    const many = validateModule({ ...base, pins, description: ' ', uses: Array(9).fill('u') })
+    if (!many.ok) expect(many.errors).toEqual(['description: must be a non-empty string, at most 300 characters', 'uses: must be a list of 1 to 8 short strings'])
+    else expect.unreachable()
+  })
   it('rejects an object-valued pin label', () => {
     const r = validateModule({ ...base, pins: [{ name: 'A', side: 'left', label: { x: 1 } }] })
     expect(r.ok).toBe(false)

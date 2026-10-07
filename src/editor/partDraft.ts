@@ -22,6 +22,10 @@ export interface Draft {
   maker: string
   /** Datasheet and pinout links, one per line (or separated by spaces). */
   source: string
+  /** One sentence on what the part is (optional). */
+  description: string
+  /** Typical uses, comma separated (optional). */
+  uses: string
   style: PartStyle
   color: string
   /** False: the body fits the pins. True: `w` x `h` grid units. */
@@ -41,7 +45,7 @@ export const pinRow = (name = '', type: PinType | '' = '', supply = ''): PinRow 
 export const gapRow = (): PinRow => ({ key: rowKey(), spacer: true, name: '', type: '', supply: '' })
 
 export function emptyDraft(): Draft {
-  return { name: '', category: DEFAULT_CATEGORY, maker: '', source: '', style: 'board', color: DEFAULT_COLORS.board, sized: false, w: 8, h: 6, pins: { left: [pinRow()], right: [], top: [], bottom: [] } }
+  return { name: '', category: DEFAULT_CATEGORY, maker: '', source: '', description: '', uses: '', style: 'board', color: DEFAULT_COLORS.board, sized: false, w: 8, h: 6, pins: { left: [pinRow()], right: [], top: [], bottom: [] } }
 }
 
 /** The draft for a saved part, to edit it. */
@@ -63,6 +67,8 @@ export function draftFromPart(p: MyPart): Draft {
     category: spec.category ?? DEFAULT_CATEGORY,
     maker: p.maker ?? '',
     source: typeof spec.source === 'string' ? spec.source.split(/\s+/).filter(Boolean).join('\n') : (spec.source ?? []).join('\n'),
+    description: spec.description ?? '',
+    uses: (spec.uses ?? []).join(', '),
     style: spec.style ?? 'board',
     color: spec.body?.color ?? DEFAULT_COLORS[spec.style ?? 'board'],
     sized: !auto,
@@ -100,6 +106,9 @@ export function specFromDraft(d: Draft): PartSpec {
     pins,
   }
   if (source.length) spec.source = source
+  const { description, uses } = draftText(d)
+  if (description) spec.description = description
+  if (uses.length) spec.uses = uses
   if (d.id) spec.id = d.id
   // Joins name pins; keep only those whose pins all still exist.
   if (d.internal?.length) {
@@ -109,6 +118,9 @@ export function specFromDraft(d: Draft): PartSpec {
   }
   return spec
 }
+
+/** The draft's description, trimmed, and its comma separated uses as a list. */
+const draftText = (d: Draft) => ({ description: d.description.trim(), uses: d.uses.split(',').map((u) => u.trim()).filter(Boolean) })
 
 /** The id a new part would get. */
 export const draftId = (d: Draft): string => d.id ?? customId({ name: d.name.trim() || 'part' })
@@ -170,9 +182,10 @@ export function savedModule(d: Draft, id: string, editing: ModuleDef | null, con
     const { type: _t, supply: _s, ...rest } = p
     return { ...rest, ...(r.type ? { type: r.type } : {}), ...(r.supply.trim() ? { supply: r.supply.trim() } : {}) }
   })
-  const { source: _src, ...base } = editing
+  const { source: _src, description: _d, uses: _u, ...base } = editing
   const source = d.source.split(/\s+/).filter(Boolean).join(' ')
-  const m: ModuleDef = { ...base, name: d.name.trim(), ...(d.category.trim() ? { category: d.category.trim() } : {}), ...(source ? { source } : {}), pins }
+  const { description, uses } = draftText(d)
+  const m: ModuleDef = { ...base, name: d.name.trim(), ...(d.category.trim() ? { category: d.category.trim() } : {}), ...(source ? { source } : {}), ...(description ? { description } : {}), ...(uses.length ? { uses } : {}), pins }
   const v = validateModule(m)
   return v.ok ? { ok: true, module: m, notes: [] } : { ok: false, errors: v.errors }
 }

@@ -1,0 +1,22 @@
+{
+  "ip5306-usbc-module": {
+    "description": "A small power bank board that charges one 18650 lithium cell from USB-C and boosts it to a 5 V output.",
+    "uses": ["portable 5 V power from an 18650", "battery backup for a microcontroller", "USB-C charging", "DIY power bank"]
+  },
+  "lcd-rpi-touch-display-2-5": {
+    "description": "The official 5 inch Raspberry Pi touch screen that connects over the DSI ribbon and takes 5 V on its power header.",
+    "uses": ["Raspberry Pi touch screen", "kiosk or control panel", "handheld Pi project"]
+  },
+  "lcd-rpi-touch-display-2-7": {
+    "description": "The official 7 inch Raspberry Pi touch screen that connects over the DSI ribbon and takes 5 V on its power header.",
+    "uses": ["Raspberry Pi touch screen", "kiosk or control panel", "home dashboard"]
+  },
+  "lcd-rpi-touch-display-7": {
+    "description": "The original 2015 7 inch Raspberry Pi touch screen, driven over DSI with touch on I2C.",
+    "uses": ["Raspberry Pi touch screen", "kiosk or control panel", "home dashboard"]
+  },
+  "servo-sg90": {
+    "description": "A small hobby servo that turns its horn to an angle set by a PWM pulse from 0.5 to 2.4 ms.",
+    "uses": ["robot arms and joints", "pan and tilt mounts", "steering on small RC models", "moving a latch or pointer"]
+  }
+}

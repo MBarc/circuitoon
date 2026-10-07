@@ -42,6 +42,10 @@ export interface PartSpec {
   pins: Partial<Record<Side, PinSpec[]>>
   /** Pins joined inside the part (all its GND pins). */
   internal?: string[][]
+  /** One sentence on what the part is, for the closest-match search. */
+  description?: string
+  /** Typical uses ("plant monitor"), for the closest-match search. */
+  uses?: string[]
 }
 
 export const DEFAULT_CATEGORY = 'Custom'
@@ -71,7 +75,7 @@ const PLATE_H = 16
 const PLATE_CHARS = 22
 const COLOR_RE = /^#[0-9a-f]{6}$/i
 const ID_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/
-const SPEC_KEYS = ['format', 'name', 'id', 'category', 'source', 'version', 'style', 'body', 'pins', 'internal']
+const SPEC_KEYS = ['format', 'name', 'id', 'category', 'source', 'description', 'uses', 'version', 'style', 'body', 'pins', 'internal']
 const PIN_KEYS = ['name', 'label', 'type', 'supply', 'caps', 'spacer']
 
 /** A name made kebab-case for an id: "My Sensor (v2)" is "my-sensor-v2". */
@@ -98,6 +102,8 @@ export function validateSpec(raw: unknown): SpecResult {
   else if (raw.name.length > NAME_MAX) errors.push(`name: at most ${NAME_MAX} characters`)
   if (raw.id !== undefined && (typeof raw.id !== 'string' || !ID_RE.test(raw.id) || raw.id.length > ID_MAX)) errors.push(`id: must be lowercase kebab-case, for example "my-sensor", at most ${ID_MAX} characters`)
   if (raw.category !== undefined && (typeof raw.category !== 'string' || raw.category.trim() === '' || raw.category.length > 60)) errors.push('category: must be a non-empty string, at most 60 characters')
+  if (raw.description !== undefined && typeof raw.description !== 'string') errors.push('description: must be a string (one sentence)')
+  if (raw.uses !== undefined && !(Array.isArray(raw.uses) && raw.uses.every((u) => typeof u === 'string'))) errors.push('uses: must be a list of strings')
   if (raw.source !== undefined && typeof raw.source !== 'string' && !(Array.isArray(raw.source) && raw.source.every((s) => typeof s === 'string')))
     errors.push('source: must be a string or a list of strings (URLs)')
   if (raw.version !== undefined && !(Number.isInteger(raw.version) && (raw.version as number) >= 1)) errors.push('version: must be a whole number, 1 or more')
@@ -374,6 +380,7 @@ export function buildPart(raw: unknown): BuildResult {
   if (g.crowded) notes.push('Pin labels on two sides meet in a corner at this body size; make the body larger or leave the size out.')
   const color = spec.body?.color ?? DEFAULT_COLORS[style]
   const source = Array.isArray(spec.source) ? spec.source.map((s) => s.trim()).filter(Boolean).join(' ') : spec.source?.trim()
+  const uses = (spec.uses ?? []).map((u) => u.trim()).filter(Boolean)
   const m: ModuleDef = {
     format: MODULE_FORMAT,
     id: customId(spec),
@@ -381,6 +388,8 @@ export function buildPart(raw: unknown): BuildResult {
     name: spec.name.trim(),
     category: spec.category?.trim() || DEFAULT_CATEGORY,
     ...(source ? { source } : {}),
+    ...(spec.description?.trim() ? { description: spec.description.trim() } : {}),
+    ...(uses.length ? { uses } : {}),
     custom: true,
     pins,
     ...(spec.internal?.length ? { internal: spec.internal } : {}),
@@ -431,6 +440,8 @@ export function specFromModule(m: ModuleDef): PartSpec {
     id: m.id,
     category: m.category ?? DEFAULT_CATEGORY,
     ...(m.source ? { source: m.source } : {}),
+    ...(m.description ? { description: m.description } : {}),
+    ...(m.uses?.length ? { uses: m.uses } : {}),
     ...(m.version && m.version > 1 ? { version: m.version } : {}),
     style,
     pins,
@@ -609,7 +620,7 @@ export function unmodeled(m: ModuleDef): string[] {
   const rebuilt = labelled(r.module)
   const own = labelled(m)
   const keys = new Set([...Object.keys(own), ...Object.keys(rebuilt)])
-  // The category and source are edited in the dialog; a missing category only gains the default.
-  for (const k of ['format', 'id', 'custom', 'version', 'name', 'category', 'source', 'internal']) keys.delete(k)
+  // The category, source, description and uses are edited in the dialog; a missing category only gains the default.
+  for (const k of ['format', 'id', 'custom', 'version', 'name', 'category', 'source', 'description', 'uses', 'internal']) keys.delete(k)
   return [...keys].filter((k) => JSON.stringify(own[k]) !== JSON.stringify(rebuilt[k])).map((k) => FIELD_WORDS[k] ?? k)
 }
