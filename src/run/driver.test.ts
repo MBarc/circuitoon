@@ -44,6 +44,8 @@ describe('circuitoon run on the virtual clock (spec 7, 10)', () => {
     expect([serial(busy), busy.boards[0].status]).toEqual(['done 1.0\n', 'done'])
     const poll = await run({ diagram: piButton("import time\nimport RPi.GPIO as GPIO\nGPIO.setmode(GPIO.BCM)\nGPIO.setup(27, GPIO.IN, pull_up_down=GPIO.PUD_UP)\nwhile GPIO.input(27):\n    pass\nprint('seen', round(time.monotonic(), 2))\n"), presses: [{ uid: 's1', atMs: 1500, forMs: 200 }] })
     expect(serial(poll)).toBe('seen 1.5\n')
+    const long = await run({ diagram: piButton("import time\nend = time.time() + 20\nwhile time.time() < end:\n    pass\nprint('done', round(time.monotonic(), 1))\n") })
+    expect([serial(long), long.boards[0].status, long.simulatedMs]).toEqual(['', 'stopped', 5000])
   }, 120_000)
   it('stops a script that never yields after the real-time limit', async () => {
     const r = await run({ diagram: piButton('while True:\n    pass\n'), realLimitMs: 2000 })

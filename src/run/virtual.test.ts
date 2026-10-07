@@ -73,9 +73,11 @@ describe('the virtual clock (spec 7, ruling R16)', () => {
         if (++blocks > 1) return rest(m, run)
         writeIn(run.memory, [], 0)
         writeLine(run.memory, 'stray')
+        // Never past the block's until: the first block may be sleep()'s own time call.
+        const t = Math.min(m.untilMs, 1000)
         setTimeout(() => {
           atGrant = blocks
-          grant(run.memory, 1000, 1016)
+          grant(run.memory, t, t + 16)
         }, 100)
       },
     })

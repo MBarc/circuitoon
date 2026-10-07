@@ -19,7 +19,7 @@ import { solve } from '../sim/session.ts'
 import { boardKindOf } from './boards.ts'
 import { type CoreBoard, NEVER_PAUSES, RunCore, type RunFinding } from './core.ts'
 import { BoardRun, type CodeWorkerLike } from './host.ts'
-import { H, INPUT, grant, writeLine } from './memory.ts'
+import { F, H, INPUT, grant, writeLine } from './memory.ts'
 import { spawnNodeCodeWorker } from './node/codeWorker.ts'
 import { LOST_POWER, NO_POWER, boardPower, underVoltage, underVoltageNote } from './power.ts'
 import type { RunStatus } from './protocol.ts'
@@ -146,6 +146,8 @@ export async function drive(o: DriveOptions): Promise<DriveResult> {
     })
     live.push(entry)
     core.add({ uid, ref: b.ref, memory: entry.run.memory, module: m! })
+    // Its first horizon, before any grant: time calls and pin reads sync there (the first 16 ms sample, a press or the end).
+    entry.run.memory.f64[F.horizonMs] = Math.min(16, events[0]?.atMs ?? Infinity, o.forMs)
     entry.run.start()
   }
 
@@ -256,6 +258,7 @@ export async function drive(o: DriveOptions): Promise<DriveResult> {
   }
   await Promise.all(live.map((e) => e.run.done))
   for (const e of live) e.b.status = res.neverPauses.includes(e.b.uid) ? 'error' : e.run.status
-  res.simulatedMs = T
+  // A board stepping 10 us at a time can sync a hair past the end.
+  res.simulatedMs = Math.min(T, o.forMs)
   return res
 }

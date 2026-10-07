@@ -64,6 +64,8 @@ export function virtualClock(m: BoardMemory, post: (msg: FromCode) => void, chec
     epochMs: m.f64[F.startMs],
     now() {
       t += QUANTUM_MS
+      // A time call past the horizon syncs like a pin read, so a busy-wait on time stops at the end.
+      if (t >= m.f64[F.horizonMs]) sync(t)
       return t
     },
     block: (untilMs) => sync(untilMs),
