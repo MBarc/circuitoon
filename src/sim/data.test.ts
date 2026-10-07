@@ -21,11 +21,12 @@ describe('sourced simulation data', () => {
   it('has been checked by two independent reviewers (spec 3.4)', () => {
     for (const p of patches()) expect(p.review.length, p.id).toBeGreaterThanOrEqual(2)
   })
-  it('words what the editor and the CLI show in plain terms: no solver names, no board-internal refs (spec 5.2)', () => {
-    for (const p of patches()) {
-      const minLoad = ((p.sim.power as { rails?: { minLoad?: { note: string } }[] } | undefined)?.rails ?? []).flatMap((r) => (r.minLoad ? [r.minLoad.note] : []))
-      for (const text of [...(p.unaccounted ?? []), ...minLoad]) expect(text, p.id).not.toMatch(/rInternal|\biq\b|solver|\((?:U|IC|D|R)\d+\)|\b(?:RN|RP)\d[A-D]\b/)
-    }
+  it('words what the editor and the CLI show in plain terms: no solver names, no board-internal refs, no review process (spec 5.2)', () => {
+    // Every note (rails, draws, limits, GPIO, servo, sources) and every unaccounted line: `circuitoon part --json` prints them all.
+    const notes = (o: unknown): string[] =>
+      Array.isArray(o) ? o.flatMap(notes) : o && typeof o === 'object' ? Object.entries(o).flatMap(([k, v]) => (k === 'note' && typeof v === 'string' ? [v] : notes(v))) : []
+    for (const p of patches())
+      for (const text of [...(p.unaccounted ?? []), ...notes(p.sim)]) expect(text, p.id).not.toMatch(/rInternal|\biq\b|solver|\((?:U|IC|D|R)\d+\)|\b(?:RN|RP)\d[A-D]\b|ruling|reviewers? disagreed/i)
   })
 })
 

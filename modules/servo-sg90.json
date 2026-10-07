@@ -55,7 +55,7 @@
               "unit": "A",
               "source": "https://protosupplies.com/product/servo-motor-micro-sg90/",
               "provenance": "estimate",
-              "note": "Stall current. DISPUTED, readings differ widely: ProtoSupplies (a distributor, not Tower Pro; unit listed as \"Generic SG90 (China)\") specifications table: \"Current (stall) 360mA (measured)\" on 5 V, sample size and test conditions not given; Circuit Rocks' SG90 page (https://docs.circuit.rocks/motors/sg90-servo/): \"Stall current ~550 mA\", no conditions; Tower Pro's SG90 Digital page (https://towerpro.com.tw/product/sg90-7/), an admin reply in its reviews: \"The operation current for our SG90 is about 0.5A - 2A\", not stated as a stall figure and not on the SG90 Analog page. 0.36 A is the lowest of these. Kept at or above servo.moving (0.175 A), as the solver needs.",
+              "note": "Stall current. DISPUTED, readings differ widely: ProtoSupplies (a distributor, not Tower Pro; unit listed as \"Generic SG90 (China)\") specifications table: \"Current (stall) 360mA (measured)\" on 5 V, sample size and test conditions not given; Circuit Rocks' SG90 page (https://docs.circuit.rocks/motors/sg90-servo/): \"Stall current ~550 mA\", no conditions; Tower Pro's SG90 Digital page (https://towerpro.com.tw/product/sg90-7/), an admin reply in its reviews: \"The operation current for our SG90 is about 0.5A - 2A\", not stated as a stall figure and not on the SG90 Analog page. 0.36 A is the lowest of these. Kept at or above the moving current (0.175 A), as the simulation needs.",
               "label": "stalled"
             }
           }

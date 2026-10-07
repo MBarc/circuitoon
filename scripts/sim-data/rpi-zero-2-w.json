@@ -398,7 +398,7 @@
             "unit": "V",
             "source": "https://www.diodes.com/assets/Datasheets/PAM2306.pdf",
             "provenance": "estimate",
-            "note": "The PAM2306 input range is 2.5 to 5.5 V (p. 4), but as a buck it cannot hold 3.3 V below about VOUT plus the P-MOSFET drop (100 % duty, p. 11; RDS(ON) 0.3 ohm typ at 100 mA, p. 4): 3.3 V + 0.2 A x 0.3 ohm = 3.36 V, rounded to 3.4 V. This solver holds vout across vinMin..vinMax, so vinMin is set where regulation ends, not the chip's 2.5 V."
+            "note": "The PAM2306 input range is 2.5 to 5.5 V (p. 4), but as a buck it cannot hold 3.3 V below about VOUT plus the P-MOSFET drop (100 % duty, p. 11; RDS(ON) 0.3 ohm typ at 100 mA, p. 4): 3.3 V + 0.2 A x 0.3 ohm = 3.36 V, rounded to 3.4 V. The simulation holds the output steady over the whole input range it allows, so the lowest input is set where regulation ends, not the chip's 2.5 V."
           },
           "vinMax": {
             "value": 5.5,
