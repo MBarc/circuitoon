@@ -34,11 +34,18 @@
     "check:usb-ui": "node scripts/check-usb-ui.mjs",
     "check:sim-ui": "node scripts/check-sim-ui.mjs",
     "check:isolation-ui": "node scripts/check-isolation-ui.mjs",
+    "check:code-ui": "node scripts/check-code-ui.mjs",
     "engine:build": "node scripts/engine-build.mjs",
     "engine:release": "node scripts/engine-release.mjs",
     "deploy": "bash scripts/deploy.sh"
   },
   "dependencies": {
+    "@codemirror/commands": "6.11.1",
+    "@codemirror/lang-python": "6.2.1",
+    "@codemirror/language": "6.12.4",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.13",
+    "@lezer/highlight": "1.2.5",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

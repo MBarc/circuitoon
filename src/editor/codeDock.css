@@ -1,0 +1,150 @@
+/* The code dock (firmware spec 6.1): under the sheet, in the editor's Sticker look: ink-edged tabs
+   like file folders, the yellow Run sticker, the sheet's paper for the code and a dark Serial
+   terminal. Token colours for the code are CSS so both themes follow the app's (classHighlighter's
+   tok-* classes). */
+.code-dock {
+  grid-area: dock; position: relative; z-index: 1;
+  display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 8px auto minmax(0, 1fr); min-height: 28px;
+  background: var(--panel); border-top: 1.5px solid var(--card-edge);
+  box-shadow: 0 -3px 0 color-mix(in srgb, var(--shadow) 8%, transparent);
+}
+.code-dock[data-dock-open="false"] { grid-template-rows: 0 26.5px; overflow: hidden; }
+/* The resize grip: a thin strip with a short ink pill in the middle. */
+.code-dock-handle { cursor: ns-resize; display: grid; place-items: center; touch-action: none; }
+.code-dock-handle::before { content: ""; width: 44px; height: 4px; border-radius: 2px; background: var(--rule); transition: background 0.12s ease; }
+.code-dock-handle:hover::before { background: var(--muted); }
+.code-dock-handle:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+.code-dock[data-dock-open="false"] .code-dock-handle { visibility: hidden; }
+
+/* The bar's ink rule is an inset shadow, so the selected tab (a child) can paint over it and open into the body. */
+.code-dock-bar { display: flex; align-items: flex-end; gap: 8px; padding: 0 10px; min-height: 26.5px; box-shadow: inset 0 -1.5px 0 var(--card-edge); }
+.code-dock[data-dock-open="false"] .code-dock-bar { align-items: center; box-shadow: none; }
+.code-dock-tabs { display: flex; gap: 4px; overflow-x: auto; flex: 1 1 auto; min-width: 0; scrollbar-width: none; align-self: stretch; align-items: flex-end; }
+.code-dock-tab {
+  display: inline-flex; align-items: center; gap: 7px; height: 26.5px; padding: 0 11px;
+  border: 1.5px solid var(--rule); border-bottom-color: var(--card-edge); border-radius: 8px 8px 0 0;
+  background: var(--bg); color: var(--text); font: 700 13px/1 "Atkinson Hyperlegible", system-ui, sans-serif; cursor: pointer; white-space: nowrap;
+}
+.code-dock-tab:hover { border-color: var(--muted); }
+.code-dock-tab[aria-selected="true"] { background: var(--panel); border-color: var(--card-edge); border-bottom-color: var(--panel); box-shadow: inset 0 3px 0 var(--yellow); }
+.code-dock[data-dock-open="false"] .code-dock-tab { height: 22px; margin-bottom: 0; border-bottom: 1.5px solid var(--rule); border-radius: 999px; padding: 0 10px; box-shadow: none; }
+.code-dock[data-dock-open="false"] .code-dock-tab[aria-selected="true"] { border-color: var(--card-edge); }
+.code-dock-tab:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+.code-tab-board, .code-tab-file { font-weight: 400; color: var(--muted); }
+.code-tab-file { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px; }
+
+/* The status dot: hollow when idle, the sticker colours when something is going on. */
+.code-dot { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--sticker-edge); background: transparent; flex: none; box-sizing: border-box; }
+.code-dot.starting { background: var(--yellow); animation: code-pulse 1s ease-in-out infinite alternate; }
+.code-dot.running { background: #3BBF7F; }
+.code-dot.error { background: #E0483E; }
+.code-dot.changed { background: conic-gradient(#3BBF7F 0 50%, var(--yellow) 50% 100%); }
+.code-dot.stopped, .code-dot.done { background: var(--muted); }
+@keyframes code-pulse { from { opacity: 1; } to { opacity: 0.35; } }
+
+.code-dock-all { display: flex; gap: 6px; align-self: center; }
+.code-dock-collapse {
+  align-self: center; display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border: 1.5px solid transparent; border-radius: 6px;
+  background: transparent; color: var(--muted); font: 700 13px/1 "Atkinson Hyperlegible", system-ui, sans-serif; cursor: pointer;
+}
+.code-dock-collapse:hover { color: var(--text); border-color: var(--rule); }
+.code-dock-collapse:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
+.code-dock-collapse svg { width: 12px; height: 8px; }
+
+.code-dock-body { display: grid; grid-template-columns: minmax(0, 3fr) minmax(240px, 2fr); gap: 12px; padding: 10px 12px 10px; min-height: 0; }
+.code-pane { display: flex; flex-direction: column; gap: 6px; min-height: 0; min-width: 0; }
+.code-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.code-toolbar-sep { width: 1px; align-self: stretch; background: var(--rule); margin: 2px 2px; }
+.tool.run-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-width: 76px; padding: 6px 12px;
+  background: var(--yellow); color: #23282F; border-color: #23282F; box-shadow: 2px 2px 0 var(--shadow);
+}
+.tool.run-button:hover:not(:disabled) { border-color: #23282F; box-shadow: 3px 3px 0 var(--shadow); }
+.tool.run-button:active:not(:disabled) { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var(--shadow); }
+.tool.run-button svg { width: 11px; height: 11px; fill: currentColor; }
+.tool.run-button.stop { background: var(--panel); color: var(--text); border-color: var(--card-edge); }
+.tool.run-button.stop svg { fill: #E0483E; }
+.tool.run-button:focus-visible, .code-toolbar .tool:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.code-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap; }
+.code-language { font-size: 12px; font-weight: 700; color: var(--muted); padding: 1px 8px; border: 1.5px dashed color-mix(in srgb, var(--muted) 55%, transparent); border-radius: 999px; white-space: nowrap; }
+.code-status { margin-left: auto; display: inline-flex; align-items: center; gap: 7px; padding: 3px 10px; border-radius: 999px; font-size: 13.5px; font-weight: 700; white-space: nowrap; }
+.code-status.running { background: color-mix(in srgb, #3BBF7F 18%, transparent); }
+.code-status.starting { background: color-mix(in srgb, var(--yellow) 18%, transparent); }
+.code-status.changed { background: color-mix(in srgb, var(--yellow) 32%, transparent); }
+.code-status.error { color: var(--error); background: color-mix(in srgb, #E0483E 12%, transparent); }
+.code-status progress { width: 64px; height: 8px; accent-color: var(--yellow); }
+.code-progress-pct { font-variant-numeric: tabular-nums; font-weight: 400; color: var(--muted); min-width: 3ch; }
+.code-message { margin: 0; font-size: 13.5px; font-weight: 700; color: var(--error); }
+
+/* The share-link question (spec 2.6): a sticker-edged note in the yellow of caution, like the load warnings. */
+.code-confirm {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 10px 8px 12px;
+  border: 1.5px solid var(--card-edge); border-left: 6px solid var(--yellow); border-radius: 8px; background: var(--bg); box-shadow: 2px 2px 0 var(--shadow);
+}
+.code-confirm p { margin: 0; flex: 1 1 260px; font-size: 14px; font-weight: 700; }
+.code-confirm-actions { display: flex; gap: 6px; }
+
+/* The code itself, on the sheet's paper in both themes (ink text, like the parts). */
+.code-editor { flex: 1 1 0; min-height: 0; overflow: hidden; border: 1.5px solid var(--card-edge); border-radius: 8px; background: var(--paper); color: #23282F; }
+.code-editor.loading { display: grid; place-items: center; }
+.code-editor.loading .hint { color: #56615B; }
+.code-editor .cm-editor { height: 100%; font: 14px/1.55 ui-monospace, "Cascadia Mono", Consolas, monospace; }
+.code-editor .cm-editor.cm-focused { outline: none; }
+.code-editor:focus-within { outline: 3px solid var(--focus); outline-offset: 1px; }
+.code-editor .cm-scroller { font-family: inherit; }
+.code-editor .cm-content { padding: 6px 0; caret-color: #23282F; }
+.code-editor .cm-cursor { border-left: 2px solid #23282F; }
+.code-editor .cm-gutters { background: color-mix(in srgb, var(--paper) 88%, #23282F); color: #6B746E; border-right: 1.5px solid #CCD5CC; }
+.code-editor .cm-lineNumbers .cm-gutterElement { padding: 0 8px 0 12px; }
+.code-editor .cm-activeLine { background: color-mix(in srgb, #F4B400 16%, transparent); }
+.code-editor .cm-activeLineGutter { background: color-mix(in srgb, #F4B400 30%, transparent); color: #23282F; }
+.code-editor .cm-selectionBackground, .code-editor .cm-focused .cm-selectionBackground { background: color-mix(in srgb, #3D6FD6 24%, transparent) !important; }
+.code-editor .cm-matchingBracket { background: color-mix(in srgb, #2F9E6E 26%, transparent); outline: 1px solid #2F9E6E; }
+.code-editor .tok-keyword { color: #8A3FB8; font-weight: 700; }
+.code-editor .tok-string, .code-editor .tok-string2 { color: #2C7A3A; }
+.code-editor .tok-number, .code-editor .tok-bool, .code-editor .tok-atom { color: #B3541E; }
+.code-editor .tok-comment { color: #6B746E; font-style: italic; }
+.code-editor .tok-variableName.tok-definition, .code-editor .tok-function { color: #1F5FB8; }
+.code-editor .tok-typeName, .code-editor .tok-className { color: #8A5A00; }
+.code-editor .tok-operator, .code-editor .tok-punctuation { color: #4A535C; }
+.hint.code-help { font-size: 12.5px; }
+
+/* Serial: a dark terminal in both themes, its header like the panel headings. */
+.serial { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 6px; min-height: 0; min-width: 0; }
+.serial-head { display: flex; align-items: center; justify-content: space-between; min-height: 30px; }
+.serial-head h3 { margin: 0; font: 600 16px/1.2 "Fredoka", system-ui, sans-serif; }
+.serial-log { overflow-y: auto; overscroll-behavior: contain; border: 1.5px solid var(--card-edge); border-radius: 8px; background: #1F2328; color: #E8EAED; padding: 8px 10px; font: 13px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace; }
+.serial-log:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
+.serial-line { white-space: pre-wrap; overflow-wrap: anywhere; }
+.serial-line.err { color: #FF8F87; }
+.serial-line.note { color: #FFD866; }
+.serial-line.echo { color: #9FD3FF; }
+.serial-empty { margin: 0; color: #A3A9B0; font-family: "Atkinson Hyperlegible", system-ui, sans-serif; }
+.serial-ref { font: inherit; color: #FFC2BD; background: color-mix(in srgb, #FF8F87 14%, transparent); border: 0; border-radius: 3px; padding: 0 2px; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.serial-ref:hover { background: color-mix(in srgb, #FF8F87 28%, transparent); }
+.serial-ref:focus-visible { outline: 2px solid #9FD3FF; outline-offset: 1px; }
+.serial-input { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 6px; align-items: center; }
+.serial-input label { grid-column: 1 / -1; font-size: 13px; font-weight: 700; }
+.serial-input input { font: 14px/1.2 ui-monospace, Consolas, monospace; color: var(--text); background: var(--bg); border: 1.5px solid var(--card-edge); border-radius: 6px; padding: 5px 8px; }
+.serial-input input:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
+
+.skip-link { position: absolute; left: -9999px; }
+.skip-link:focus { left: 12px; top: 8px; z-index: 50; background: var(--panel); color: var(--text); border: 1.5px solid var(--card-edge); border-radius: 8px; padding: 6px 10px; box-shadow: 2px 2px 0 var(--shadow); font-weight: 700; }
+
+/* Narrow screens: the sheet keeps a usable height and the editor page scrolls instead; the dock takes
+   its natural height (code above Serial), so its own resize grip is not needed. */
+@media (max-width: 900px) {
+  .editor:has(#code-dock) { overflow-y: auto; grid-template-rows: auto minmax(320px, 1fr) max-content max-content max-content; }
+  .code-dock[data-dock-open="true"] { height: auto !important; grid-template-rows: 0 auto auto; }
+  .code-dock-handle { visibility: hidden; }
+  .code-dock-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: 260px minmax(160px, auto); }
+  .code-tab-board { display: none; }
+  .code-status { margin-left: 0; }
+  .code-dock-all .tool { white-space: nowrap; }
+  .serial-log { min-height: 140px; }
+  .code-dock-collapse { padding: 5px 6px; }
+  .code-dock-collapse-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .code-dock *, .code-dock *::before { transition: none !important; animation: none !important; }
+}

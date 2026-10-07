@@ -15,6 +15,7 @@ import { LoadWarnings } from './LoadWarnings.tsx'
 import { MAINS_NOTICE, hasMains, withSheetNotes } from '../format/mains.ts'
 import { ThemeSwitch } from '../ThemeSwitch.tsx'
 import { SimStatus, simPhase } from './SimStatus.tsx'
+import { dockTabs } from './CodeDock.tsx'
 
 /**
  * The File menu: a button with a dropdown of the sheet's file actions. Arrow keys move, Home and End
@@ -105,7 +106,8 @@ function FileMenu({ items }: { items: { label: string; title?: string; haspopup?
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
 
 export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warnings?: string[]; onClose: () => void }) {
-  const { diagram, selection, snapObjects, simulate, simTool, sim } = useEditorState(store)
+  const state = useEditorState(store)
+  const { diagram, selection, snapObjects, simulate, simTool, sim } = state
   const fileRef = useRef<HTMLInputElement>(null)
   // The sheet the user agreed to replace when they chose Import, and the latest import request.
   const importBase = useRef<Diagram | null>(null)
@@ -231,6 +233,20 @@ export function Toolbar({ store, warnings, onClose }: { store: EditorStore; warn
 
   return (
     <header className="toolbar">
+      {dockTabs(state).length > 0 && (
+        // Focus moves by hand: following "#code-dock" would change the hash route and leave the editor.
+        <a
+          className="skip-link"
+          href="#code-dock"
+          onClick={(e) => {
+            e.preventDefault()
+            store.setDock({ open: true })
+            requestAnimationFrame(() => document.querySelector<HTMLElement>('#code-dock [role="tab"][aria-selected="true"]')?.focus())
+          }}
+        >
+          Skip to code
+        </a>
+      )}
       <button type="button" className="wordmark" onClick={() => okToDiscard() && onClose()} title="Back to the start screen">Circuitoon</button>
       <span className="title" title={diagram.title}>{diagram.title}</span>
       <ThemeSwitch />

@@ -2,8 +2,8 @@
   position: fixed; inset: 0;
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr) 270px;
-  grid-template-rows: auto minmax(0, 1fr);
-  grid-template-areas: "bar bar bar" "lib canvas inspector";
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas: "bar bar bar" "lib canvas inspector" "lib dock inspector";
   background: var(--bg);
   color: var(--text);
 }
@@ -293,7 +293,7 @@
 .swatch[aria-pressed="true"] { outline: 3px solid var(--focus); outline-offset: 1px; }
 
 @media (max-width: 900px) {
-  .editor { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto auto; grid-template-areas: "bar" "canvas" "inspector" "lib"; }
+  .editor { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto auto auto; grid-template-areas: "bar" "canvas" "dock" "inspector" "lib"; }
   .library, .inspector { max-height: 30vh; border: 0; border-top: 1px solid var(--rule); }
 }
 

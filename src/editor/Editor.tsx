@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import type { Diagram } from '../format/diagram.ts'
 import { EditorStore } from './store.ts'
 import { Canvas, type CanvasApi } from './Canvas.tsx'
+import { CodeDock } from './CodeDock.tsx'
 import { Inspector } from './Inspector.tsx'
 import { LibraryPanel } from './LibraryPanel.tsx'
 import { ProbesPanel } from './ProbesPanel.tsx'
@@ -105,6 +106,14 @@ function useEditorClipboard(store: EditorStore, canvas: { current: CanvasApi | n
 function useEditorKeys(store: EditorStore) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Ctrl+` toggles the code dock (firmware spec 6.4), from anywhere.
+      if ((e.ctrlKey || e.metaKey) && e.key === '`') {
+        e.preventDefault()
+        const open = !store.getState().dock.open
+        store.setDock({ open })
+        if (open) requestAnimationFrame(() => document.querySelector<HTMLElement>('#code-dock [role="tab"][aria-selected="true"]')?.focus())
+        return
+      }
       if ((e.target as HTMLElement).closest(TEXT_FIELD)) return
       const mod = e.ctrlKey || e.metaKey
       const key = e.key.toLowerCase()
@@ -341,6 +350,7 @@ export function Editor({ initial, warnings, linkCode, onClose, onDirty }: { init
       <Toolbar store={store} warnings={warnings} onClose={onClose} />
       <LibraryPanel onAdd={(id) => canvasApi.current?.addAtCenter(id)} parts={parts.handlers} />
       <Canvas store={store} onReady={(api) => (canvasApi.current = api)} />
+      <CodeDock store={store} />
       {simTool === 'probe' ? <ProbesPanel store={store} /> : <Inspector store={store} onEditPart={parts.editModule} onUpdatePart={parts.updateModule} />}
       {parts.ui}
     </div>
