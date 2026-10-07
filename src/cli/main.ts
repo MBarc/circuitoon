@@ -27,6 +27,7 @@ import { readFileSync } from 'node:fs'
 export const USAGE = `circuitoon <command> [options]
 
   parts [--search text] [--json]            built-in parts: pins, labels, types, supplies, hole groups
+                                            --search takes a name or a description in words ("a touch display for the rpi"): exact matches, then the closest
   part <id> [--json]                        one part in full
   layout <netlist.json> -o <sheet.json>     lay out a netlist; or layout --keep <partial.json> -o <sheet.json>
                                             [--labels none|auto|all]: which nets get net labels (default none: wires, labels only on nets marked "label": true)
