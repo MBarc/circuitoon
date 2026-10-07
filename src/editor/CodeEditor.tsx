@@ -4,7 +4,7 @@
 // moves focus for two seconds), as the dock's help text says. Changes from outside (undo on the
 // sheet, an upload) replace the text; `goto` moves the cursor to a line.
 import { useEffect, useRef } from 'react'
-import { EditorState } from '@codemirror/state'
+import { EditorState, Transaction } from '@codemirror/state'
 import { EditorView, drawSelection, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { bracketMatching, indentOnInput, syntaxHighlighting } from '@codemirror/language'
@@ -40,7 +40,8 @@ export default function CodeEditor({ value, onChange, label, goto }: { value: st
     const v = view.current
     if (!v || v.state.doc.toString() === value) return
     outside.current = true
-    v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: value } })
+    // Not an edit in the editor's own history: the sheet's undo owns it.
+    v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: value }, annotations: Transaction.addToHistory.of(false) })
     outside.current = false
   }, [value])
   useEffect(() => {

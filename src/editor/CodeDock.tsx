@@ -51,8 +51,19 @@ export function CodeDock({ store }: { store: EditorStore }) {
   const [asking, setAsking] = useState<'run' | 'runAll' | null>(null)
   const upload = useRef<HTMLInputElement>(null)
   const drag = useRef<{ y: number; h: number } | null>(null)
-  if (!tabs.length) return null
-  const uid = tabs.includes(s.dock.tab ?? '') ? s.dock.tab! : tabs[0]
+  const uid = tabs.includes(s.dock.tab ?? '') ? s.dock.tab! : (tabs[0] ?? null)
+  // A traceback jump, a refused upload and the link question belong to the board shown in this
+  // opening of the dock: switching tabs or collapsing drops them, so a remounted editor never
+  // grabs focus for an old jump (it would pull focus out of the tablist).
+  const view = `${uid}:${s.dock.open}`
+  const [shown, setShown] = useState(view)
+  if (shown !== view) {
+    setShown(view)
+    setGoto(null)
+    setRefused(null)
+    setAsking(null)
+  }
+  if (!uid) return null
   const part = s.diagram.parts.find((p) => p.uid === uid)!
   const stored = s.diagram.modules[part.module]
   const m = stored && withLibraryData(stored, libraryLookup)
@@ -67,7 +78,8 @@ export function CodeDock({ store }: { store: EditorStore }) {
     if (s.linkCode) return setAsking('run')
     runAction(store, 'run', uid)
   }
-  const height = s.dock.open ? s.dock.height : 28
+  // Clamped here too: a height saved in a taller window must not leave a short one without a sheet.
+  const height = s.dock.open ? clampHeight(s.dock.height) : 28
   return (
     <section id="code-dock" className="code-dock" data-dock-open={s.dock.open} style={{ height }} aria-label="Code">
       <div
@@ -81,7 +93,7 @@ export function CodeDock({ store }: { store: EditorStore }) {
         tabIndex={s.dock.open ? 0 : -1}
         onPointerDown={(e) => {
           if (!s.dock.open) return
-          drag.current = { y: e.clientY, h: s.dock.height }
+          drag.current = { y: e.clientY, h: height }
           e.currentTarget.setPointerCapture(e.pointerId)
         }}
         onPointerMove={(e) => drag.current && store.setDock({ height: clampHeight(drag.current.h + drag.current.y - e.clientY) })}
@@ -90,7 +102,7 @@ export function CodeDock({ store }: { store: EditorStore }) {
           const step = e.key === 'ArrowUp' ? 20 : e.key === 'ArrowDown' ? -20 : 0
           if (!step) return
           e.preventDefault()
-          store.setDock({ height: clampHeight(s.dock.height + step) })
+          store.setDock({ height: clampHeight(height + step) })
         }}
       />
       <div className="code-dock-bar">
@@ -163,15 +175,20 @@ export function CodeDock({ store }: { store: EditorStore }) {
               <span className={`code-status ${st.key}`} role="status" aria-live="polite">
                 <span className={`code-dot ${st.key}`} aria-hidden="true" />
                 {st.key === 'changed' ? 'Code changed: Reset to apply' : st.text}
-                {b?.progress ? (
-                  <>
-                    <progress max={b.progress.total} value={b.progress.loaded} aria-label="Python download" />
-                    <span className="code-progress-pct">{Math.round((100 * b.progress.loaded) / Math.max(1, b.progress.total))}%</span>
-                  </>
-                ) : (
-                  st.key === 'starting' && <progress aria-label="Starting" />
-                )}
               </span>
+              {/* Outside the live region, so download progress is not announced on every step. */}
+              {st.key === 'starting' && (
+                <span className="code-progress">
+                  {b?.progress ? (
+                    <>
+                      <progress max={b.progress.total} value={b.progress.loaded} aria-label="Python download" />
+                      <span className="code-progress-pct">{Math.round((100 * b.progress.loaded) / Math.max(1, b.progress.total))}%</span>
+                    </>
+                  ) : (
+                    <progress aria-label="Python download" />
+                  )}
+                </span>
+              )}
             </div>
             {asking && (
               <div className="code-confirm" role="alertdialog" aria-label="Run code from a link" aria-describedby="code-confirm-text">

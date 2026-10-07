@@ -31,8 +31,9 @@ export function piSheet(name, source, extra = { parts: [], wires: [] }) {
   const parts = [
     at('bt1', 'BT1', 'battery-holder-4xaa', 40, 260, { values: { voltage: { value: 5, unit: 'V' } } }),
     at('u1', 'U1', 'rpi-4-model-b', 260, 60, { code: { language: 'python-rpi', source, file: `${name}.py` } }),
-    at('r1', 'R1', 'resistor', 620, 120, { values: { resistance: { value: 330, unit: 'ohm' } } }),
-    at('d1', 'D1', 'led', 760, 120, { values: { color: 'red' } }),
+    // R1 and D1 sit under the Pi, so the LED is in view above the dock at 1600 x 1000.
+    at('r1', 'R1', 'resistor', 420, 345, { values: { resistance: { value: 330, unit: 'ohm' } } }),
+    at('d1', 'D1', 'led', 560, 335, { values: { color: 'red' } }),
     ...extra.parts,
   ]
   const connections = [w('w1', 'bt1', '+', 'u1', '5V'), w('w2', 'bt1', '-', 'u1', 'GND'), w('w3', 'u1', 'GPIO17', 'r1', '1'), w('w4', 'r1', '2', 'd1', 'A'), w('w5', 'd1', 'K', 'u1', 'GND 2'), ...extra.wires]
@@ -42,8 +43,8 @@ export function piSheet(name, source, extra = { parts: [], wires: [] }) {
   return path
 }
 const blinkFile = piSheet('blink', BLINK)
-const boomFile = piSheet('boom', BOOM)
-const twoFile = piSheet('two', BLINK, { parts: [at('u2', 'U2', 'rpi-4-model-b', 260, 420, { code: { language: 'python-rpi', source: "print('hello')\n", file: 'hello.py' } })], wires: [] })
+const boomFile = piSheet('boom', BOOM, { parts: [at('u2', 'U2', 'rpi-4-model-b', 900, 60, { code: { language: 'python-rpi', source: "print('hi')\n", file: 'hi.py' } })], wires: [] })
+const twoFile = piSheet('two', BLINK, { parts: [at('u2', 'U2', 'rpi-4-model-b', 700, 60, { code: { language: 'python-rpi', source: "print('hello')\n", file: 'hello.py' } })], wires: [] })
 const linkOf = (file) => JSON.parse(execFileSync(process.execPath, ['plugin/bin/circuitoon.mjs', 'link', file, '--json'], { encoding: 'utf8' }))
 
 const { base } = await startPreview(port)
@@ -139,6 +140,15 @@ for (const scheme of ['light', 'dark']) {
   await ref.click()
   check((await page.locator('.cm-activeLine').textContent())?.includes("raise RuntimeError('boom')"), `${scheme}: the link moves the cursor to line 4`)
   await shot('error')
+  // The jump belongs to U1's editor: moving along the tabs keeps focus on the tablist (C20).
+  await tab.focus()
+  await page.keyboard.press('ArrowRight')
+  await page.waitForTimeout(500)
+  const onTab = () => page.evaluate(() => document.activeElement?.getAttribute('data-dock-tab'))
+  check((await onTab()) === 'u2', `${scheme}: after a traceback jump, ArrowRight keeps focus on the tabs`)
+  await page.keyboard.press('ArrowLeft')
+  await page.waitForTimeout(500)
+  check((await onTab()) === 'u1', `${scheme}: and coming back to U1 does not jump into its editor again`)
 
   // 8. link: code that came in a link asks once before running (spec 2.6)
   const link = linkOf(blinkFile)
@@ -179,8 +189,22 @@ for (const scheme of ['light', 'dark']) {
   check((await page.locator('[data-dock-tab="u1"]').getAttribute('tabindex')) === '-1', `${scheme}: only the selected tab is in the Tab order`)
   await page.getByRole('button', { name: 'Run all', exact: true }).click()
   check((await confirm.count()) === 1, `${scheme}: Run all of linked code asks first`)
+  // Zoom the sheet out so both boards show above the dock.
+  await page.mouse.move(775, 300)
+  for (let i = 0; i < 5; i++) await page.mouse.wheel(0, 120)
   await shot('tabs')
   await confirm.getByRole('button', { name: 'Cancel' }).click()
+
+  // A tall dock saved in a tall window still leaves the sheet room in a short one (at most 70 %).
+  const grip = await page.locator('.code-dock-handle').boundingBox()
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + 4)
+  await page.mouse.down()
+  await page.mouse.move(grip.x + grip.width / 2, 40, { steps: 5 })
+  await page.mouse.up()
+  await page.setViewportSize({ width: 1600, height: 600 })
+  check((await page.locator('#code-dock').evaluate((el) => el.getBoundingClientRect().height)) <= 420.5, `${scheme}: the dock stays within 70 % of a shorter window`)
+  await page.locator('.code-dock-handle').focus()
+  for (let i = 0; i < 30; i++) await page.keyboard.press('ArrowDown')
 
   // narrow: 390 px, the dock under the sheet, then collapsed
   await page.setViewportSize({ width: 390, height: 844 })
