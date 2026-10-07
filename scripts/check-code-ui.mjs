@@ -8,6 +8,7 @@
 //   6. stopped: Stop restores the saved states, the file stays unchanged and undo is untouched.
 //   7. collapsed: the 28 px bar still shows each board's status; Ctrl+` toggles it; Escape then Tab
 //      leaves the editor.
+//   9. samples: the start screen's Raspberry Pi row; each sample opens, runs and glows (code-sample-*).
 //   8. link: code that came in a link asks once before running.
 //   tabs: two boards with code from a link: a tab each, arrow keys, Home and End move between them,
 //      and Run all asks first too.
@@ -564,6 +565,37 @@ for (const scheme of ['light', 'dark']) {
     }
     pagesSite.close()
     console.log(`first visit, 50 Mbit/s: ${colds.join(' ms, ')} ms`)
+  }
+
+  // 9. the Raspberry Pi samples (firmware spec 8): the start screen's row, then each sample opened and run.
+  await page.goto(base + '#/editor', { waitUntil: 'networkidle' })
+  await page.waitForSelector('.start-samples')
+  check(await isolated(page), `${scheme} ${width}: samples: the preview is cross-origin isolated`)
+  check((await page.locator('.start-samples h2').textContent()) === 'Raspberry Pi samples', `${scheme} ${width}: the samples row has its heading`)
+  check((await page.locator('.start-samples .start-card').count()) === 2, `${scheme} ${width}: two Raspberry Pi sample cards`)
+  check(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), `${scheme} ${width}: the start screen does not scroll sideways`)
+  await page.mouse.move(5, height - 5)
+  await page.screenshot({ path: join(out, `code-samples-start-${scheme}-${width}.png`), fullPage: true })
+  for (const [name, title, want] of [['blink', 'Blink on a Raspberry Pi', 'blink.py'], ['button', 'Button lights an LED on a Pi', 'button.py']]) {
+    if (name === 'button') {
+      await page.goto('about:blank')
+      await page.goto(base + '#/editor', { waitUntil: 'networkidle' })
+    }
+    await page.locator('.start-samples .start-card', { hasText: title }).click()
+    await page.waitForSelector('#code-dock')
+    check((await page.locator('[data-dock-tab="p2"]').textContent())?.includes(want), `${scheme} ${width}: the ${name} sample opens with ${want}`)
+    await fitNarrow()
+    await page.locator('[data-run="p2"]').click()
+    await page.waitForFunction(() => document.querySelector('[data-dock-tab="p2"]')?.getAttribute('data-status') === 'running', null, { timeout: 30000 })
+    if (name === 'blink') {
+      const seen = new Set()
+      for (let i = 0; i < 40 && seen.size < 2; i++) {
+        seen.add(await page.getAttribute('[data-sim-led="p4"]', 'data-sim-level').catch(() => null))
+        await page.waitForTimeout(150)
+      }
+      check(seen.size >= 2, `${scheme} ${width}: the blink sample's LED glow toggles (${[...seen].join(', ')})`)
+    }
+    await shot(`sample-${name}`)
   }
 
   check(!errors.length, `${scheme} ${width}: no page errors (${errors.join(' | ')})`)

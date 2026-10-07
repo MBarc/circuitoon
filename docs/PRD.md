@@ -48,6 +48,7 @@ Each release is usable on its own; V2 and V3 build on data V1 already stores.
 | V1 | Canvas editor, module JSON, built-in parts, art studio, JSON and PDF export, GitHub Pages hosting | - |
 | V2 | DC electrical simulation: voltages, currents, overcurrent detection | Pin types and part values captured in V1 JSON |
 | V3 | Animations driven by simulation state: LED on, off, burnt out; switches flipping | V2 simulation state, art studio layers |
+| Firmware | Code on the boards of a sheet, run against the live simulation. Slice 1 (shipped): Raspberry Pi Python. Later slices: Arduino on the Uno and Nano, MicroPython on the Pico, I2C and SPI devices, ESP32-C3 and S3 | V2 simulation, GPIO state in the sheet |
 
 - **Agent toolkit (first slice).** A `circuitoon` CLI and a `circuitoon-design` skill, shipped as a Claude Code plugin from this repo (`plugin/`): a netlist (`circuitoon-netlist/1`) is laid out on the grid (parts mounted on breadboards, strips and rails distributing nets), verified for electrical equivalence against the netlist it stores as `intent`, checked, rendered to PNG and SVG, and linked (`#/editor?d=`). `gate` runs all of it and passes only when nothing blocks. Spec: `docs/superpowers/specs/2026-09-27-agent-toolkit-slice-design.md`.
 
@@ -478,7 +479,7 @@ Spec: `docs/superpowers/specs/2026-10-05-live-simulation-design.md` (revision 5;
 - **In the editor.** Simulate (`S`) loads the engine with progress and solves on every connectivity or value change; a pure move never re-solves. LEDs glow by current on a log scale (dark red with a warning ring over an absolute maximum); clicking a switch flips and saves it, a button is held while pressed, clicking a GPIO pin cycles input, high and low. The Probe tool (`P`) places probes, and the Probes panel holds the readings, the Supplies table (each source, rail and domain: load against limit, typical and peak, headroom, provenance) and the incomplete and estimate notes. Readings are text, never colour alone, and are never saved.
 - **Findings, in two groups.** The wiring checker is unchanged; simulation findings (`sim-*`) are a separate group that never suppresses it. Codes: `sim-short` and `sim-source-conflict` (topological), `sim-over-abs-max`, `sim-over-limit`, `sim-brownout` (a warning "not powered in the current state" naming the open switch when one is the cause; only a note when nothing on the sheet supplies the part at all), `sim-dropout`, `sim-converter-off`, `sim-min-load`, `sim-outside-model`, `sim-floating-input`, `sim-no-convergence`, and the notes `sim-incomplete` and `sim-estimate`. A finding blocks only if it is an error at the typical corner decided on datasheet, user or topology values, or a reading more than twice a representative absolute maximum; otherwise it is a "Likely" warning listing its uncertain inputs.
 - **For agents.** `circuitoon sim <sheet|netlist> [--probe <ref[.pin]|net:NAME>]...` prints the outcome JSON (`circuitoon-sim/1`) with a summary on stderr; exit 0, 1 on a blocking finding (including a failed or unavailable solve whose topological findings block), 2 on bad input, 3 when the solve failed or the engine is unavailable and nothing blocks. `gate` runs the same simulation and writes `circuitoon-cli/gate/4` with a `sim` field (status, findings, budget, provenance counts); banners `GATE FAILED (simulation)` and `GATE INCOMPLETE (simulation did not converge; ...)` or `(simulation unavailable)`.
-- **Later:** transient analysis and waveforms, PWM, firmware co-simulation, current per drawn wire, hubs, and differential probes.
+- **Later:** transient analysis and waveforms, current per drawn wire, hubs, and differential probes.
 
 **V3: animation**
 
@@ -527,6 +528,14 @@ V1 is done when someone can build a wiring sheet for a real breadboard project f
 - [x] Hosting: GitHub Pages from the public repo `MBarc/circuitoon` (https://mbarc.github.io/circuitoon/).
 
 ## Changelog
+
+### Code on boards, slice 1 (plugin 0.11.0)
+
+- **Code on a board.** A Raspberry Pi 4, Pi 5 or Pi Zero 2 W part can carry a script in a `code` key (`language`, `source`, `file`, at most 256 KB). It saves with the sheet, travels in exports and links, and the checker warns when the language does not suit the board.
+- **Python in the browser.** The script runs in Pyodide inside a sandboxed worker with no network, on a virtual clock, with stand-ins for `RPi.GPIO` and a `gpiozero` subset. Code that arrives in a link asks before it first runs.
+- **PWM solves.** Pins the code drives with PWM are declared as a duty and frequency and solved as averaged levels (servos get their pulse width), so LEDs dim and servos turn on the sheet.
+- **The dock.** A code dock under the sheet holds one tab per coded board: Run, Stop, Reset, Upload, Download, a CodeMirror editor, and a Serial log that takes input. The Raspberry Pi row on the start screen has two samples.
+- **`circuitoon run`.** The same code runs from the CLI on a virtual clock with scripted button presses and input, printing Serial, a pin timeline and findings. The first run downloads Python and caches it; `--py-dir` runs offline.
 
 ### Live DC simulation (plugin 0.10.0)
 

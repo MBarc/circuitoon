@@ -101,6 +101,7 @@ If `gate.json` says `"ready": false`, readability warnings remain (overlapping w
 | `check <sheet.json>` | The wiring checker, plus verify when the sheet has a netlist, plus readability warnings. |
 | `gate <sheet.json> -o <dir>` | Everything: checks, renders, bill of materials, link and `gate.json`. Exits 0 only when nothing blocks. |
 | `sim <sheet.json\|netlist.json> [--probe <ref[.pin]\|net:NAME>]` | A DC simulation of the sheet in its current switch and GPIO states: voltages, currents, supply budgets and simulation findings (shorts, overcurrent, brownout). JSON on stdout, a short summary on stderr. `gate` runs it too. |
+| `run <sheet.json> [--board <ref>\|all] [--for 5s] [--press S1@1.5s[:0.2s]] [--input "line"] [--py-dir <dir>]` | Runs the Raspberry Pi Python on the sheet's boards on a virtual clock, with the live simulation. Prints Serial, a timeline of pin changes and the findings; exits 0 when the code ran and nothing blocks. The first run downloads Python (about 6 MB) and caches it, so it needs the network once. For offline use, point `--py-dir` at a folder with the Pyodide files (the `py/<version>` folder of a built site). |
 | `link <sheet.json>` | A link that opens the sheet in the editor. Past 64 KB of payload it writes the sheet file instead. |
 | `bom <sheet.json> [-o bom.csv]` | The bill of materials: parts, wires by cable, gauge and color, and connectors. |
 | `netlist <sheet.json>` | The `circuitoon-netlist/1` of any drawn sheet, read from what actually conducts on it. |
@@ -229,6 +230,30 @@ What you can do in it:
 - Take newer part data from the library with Update parts to current library, when a sheet was drawn with an older copy.
 - Make your own parts with New part (see below).
 
+### Code on boards
+
+A Raspberry Pi 4, Pi 5 or Pi Zero 2 W on the sheet can carry a Python script. Select the board and use Upload code in the Inspector, or Write code to type one in the dock under the sheet. Press Run and the script drives the board's pins, with Simulate solving the circuit around it. LEDs glow, probes read, and a press on a button on the sheet reaches the code as an input. `print()` output shows in Serial next to the code.
+
+There are two samples in the Raspberry Pi row on the start screen. "Blink on a Raspberry Pi" blinks an LED with `gpiozero`. "Button lights an LED on a Pi" reads a button on GPIO27 with the internal pull-up and lights the LED from `when_pressed`. The script is stored in the sheet (the part's `code` key), so it travels in exports and links. Code that arrives in a link asks before it runs the first time.
+
+What runs:
+
+- `RPi.GPIO` and `gpiozero`: digital input and output, pull-ups and pull-downs, edge callbacks, PWM, servos, `print()` and `input()`.
+- `gpiozero` classes `LED`, `Buzzer`, `Button`, `LineSensor`, `MotionSensor`, `PWMLED`, `RGBLED`, `Servo`, `AngularServo` and `Motor`.
+- Time is simulated. `time.sleep()` and `pause()` advance a virtual clock, so a ten second script does not take ten seconds.
+
+The limits:
+
+- No threads. `threading.Thread.start` raises an error that says so. Use `gpiozero` callbacks, or a loop with `time.sleep()`.
+- Callbacks do not run at the same time as your main code. A script that never sleeps or pauses starves its own callbacks, and Serial says so after two seconds.
+- No I2C or SPI devices yet. Calls such as `gpiozero.MCP3008` fail with an error that names the call.
+- A pin read can lag the circuit by one solve. Code reads the pin states from the last solved circuit.
+- `RPi.GPIO` does not work on a real Pi 5. The editor prints a warning when a Pi 5 script imports it; use `gpiozero` there.
+
+Python (Pyodide, about 6 MB over the wire) downloads on the first Run and is cached after that. It runs in a sandboxed worker with no network access, so a script cannot reach other sites.
+
+Agents run the same code with `circuitoon run`, covered below.
+
 ## Parts
 
 There are 173 built-in parts in 16 categories, drawn in a flat Sticker style: 30 microcontroller boards (ESP32 variants, Raspberry Pi Picos, the Arduino family from the Pro Mini and Nanos to the Uno, Mega and Due, a D1 mini), computers (Raspberry Pi 4, Raspberry Pi 5, Raspberry Pi Zero 2 W and a computer's USB port), USB hubs, sensors, displays, batteries, passives and connectors. Every board's USB connector is a USB port: cable it to a Pi, a computer or a hub, or plug a dongle straight in. The biggest category is mains, at 51: plugs and outlets for several countries, terminal blocks, Wago connectors, lamp holders, wall chargers and AC-DC modules.
@@ -290,7 +315,8 @@ Early development. The editor, the wiring checker, the part maker and the agent 
 
 - V2 (shipped): live DC simulation in the editor and in `circuitoon sim`, with voltages, currents, supply budgets and overcurrent.
 - V3: animation driven by that simulation. LEDs light up, switches flip.
-- Being explored: firmware for the boards on a sheet, and taking KiCad export past the netlist.
+- Firmware, first slice (shipped): Raspberry Pi Python runs on the boards in the editor and in `circuitoon run`. Next: Arduino code on the Uno and Nano, MicroPython on the Pico, I2C and SPI devices, ESP32-C3 and S3.
+- Being explored: taking KiCad export past the netlist.
 
 The bar from the start was a wiring sheet built by hand for the Spirit Typewriter, a project with 42 two-switch balls on three MCP23017 banks. That design now ships as [a worked example](plugin/skills/circuitoon-design/references/examples/spirit-typewriter/), split into four sheets and laid out by the CLI.
 
