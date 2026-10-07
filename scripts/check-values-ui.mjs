@@ -190,6 +190,9 @@ for (const scheme of ['light', 'dark']) {
   // Capacitor: 100 nF fresh; switch to uF, type a bare number, then a pF value overrides.
   await select('C1')
   await expectField('fresh C1', '100', 'nF', 'C1', 'C1  100 nF')
+  // The disc's marking is the capacitance as its 3-digit code, following the value.
+  const marked = async (code) => check((await caption('C1')).split(' ').includes(code), `${scheme}: C1 is marked ${code} (${await caption('C1')})`)
+  await marked('104')
   const capLabels = await unit.locator('option').allTextContents()
   check(JSON.stringify(capLabels) === JSON.stringify(['pF', 'nF', `${MICRO}F`]), `${scheme}: capacitance units are pF, nF, uF (got ${capLabels.join(', ')})`)
   check((await page.getByLabel('Capacitance unit').count()) === 1, `${scheme}: the dropdown is labelled "Capacitance unit"`)
@@ -198,8 +201,10 @@ for (const scheme of ['light', 'dark']) {
   await pick('nF')
   await enter('47')
   await expectField('C1 after typing 47 with nF picked', '47', 'nF', 'C1', 'C1  47 nF')
+  await marked('473')
   await enter('220p')
   await expectField('C1 after typing 220p', '220', 'pF', 'C1', 'C1  220 pF')
+  await marked('221')
   await enter('100n')
   await expectField('C1 after typing 100n', '100', 'nF', 'C1', 'C1  100 nF')
   await page.locator('.inspector').screenshot({ path: join(shots, `values-capacitor-${scheme}.png`) })
