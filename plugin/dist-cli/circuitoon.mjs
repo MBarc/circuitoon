@@ -89911,19 +89911,30 @@ function plainSpec(m) {
 	};
 	return spec;
 }
-var LOOK_TODO = `Find the maker's product photo, draw its art per the art guide, record the photo URL in "photo" (see the circuitoon-custom-part skill).`;
+var ART_GUIDE = "draw its art per the art guide (references/art.md in the circuitoon-custom-part skill)";
+var REBUILD = "rebuild the part with `module new`, embed it and lay out again.";
 /**
-* Whether a custom part looks like the real thing, the message without the part's name: null when
-* it does (or it is not custom). custom-part-look (the gate blocks): drawn as the generic box the
-* part maker generates, or no `photo`. custom-part-no-photo (a warning): `"photo": "none"` with art
-* of its own.
+* Whether a part made outside the library looks like the real thing, the message without the
+* part's name: null when it does. Callers pass only parts outside the library (the gate and check
+* every embedded part not in it, module new and check likewise). custom-part-look (the gate
+* blocks): drawn as the generic box the part maker generates, or no `photo`; the generated chip
+* counts as a real look, since a bare chip looks like that. custom-part-no-photo (a warning):
+* `"photo": "none"` with a real look.
 */
 function customLook(m) {
-	if (!isCustom(m)) return null;
-	const why = [...!m.art || sameArt(m.art, generatedArt(m)) ? ["it is drawn as the generic box"] : [], ...m.photo === void 0 ? ["it has no \"photo\""] : []];
-	if (why.length) return {
+	if (!m.art || m.art.pinLabels !== "tips" && sameArt(m.art, generatedArt(m))) {
+		if (m.photo === "none") return {
+			code: "custom-part-look",
+			message: `is drawn as the generic box: ${ART_GUIDE} from the maker's drawing or the typical part, ${REBUILD}`
+		};
+		return {
+			code: "custom-part-look",
+			message: `is drawn as the generic box${m.photo === void 0 ? " and has no `photo`" : ""}: find the maker's product photo, ${ART_GUIDE}, record the photo URL in \`photo\`, ${REBUILD}`
+		};
+	}
+	if (m.photo === void 0) return {
 		code: "custom-part-look",
-		message: `does not look like the real part yet: ${why.join(" and ")}. ${LOOK_TODO}`
+		message: "has no `photo`: record the product photo URL you drew it from in `photo`, or \"none\" if no photo of this part exists anywhere."
 	};
 	if (m.photo === "none") return {
 		code: "custom-part-no-photo",
@@ -89938,7 +89949,7 @@ var GROUND_NAME = /^(gnd\d*|vss|agnd|dgnd|pgnd|v-|-|0v)$/i;
 * What is wrong (errors) or doubtful (warnings) about a module: everything validateModule finds,
 * plus duplicate pin names, art that does not match its pins, impossible pin capabilities, power
 * pins without a type or supply, supplies that do not parse and a missing source; with `look`,
-* how a custom part looks (customLook), as a warning.
+* how a part made outside the library looks (customLook), as a warning; the caller says whether it is one.
 */
 function lintModule(raw, opts = {}) {
 	const errors = [];
@@ -99004,7 +99015,8 @@ function newCommand(args, io) {
 	return code;
 }
 function checkModuleFile(raw, path) {
-	const lint = lintModule(raw, { look: true });
+	const id = raw?.id;
+	const lint = lintModule(raw, { look: !(typeof id === "string" && Object.hasOwn(modulesById, id)) });
 	const v = validateModule(raw);
 	const m = v.ok ? v.module : null;
 	const lay = m ? layoutModule(m) : null;
