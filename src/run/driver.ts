@@ -10,7 +10,6 @@ import { RUNNABLE, languagesOf } from '../format/code.ts'
 import type { ModuleDef } from '../format/module.ts'
 import { simOf, withLibraryData } from '../format/simModel.ts'
 import { type RunPinState, type RunPins, contactPosition, isActive, switchGroups } from '../format/simState.ts'
-import { libraryLookup } from '../agent/catalog.ts'
 import type { ModuleLookup } from '../agent/netlist.ts'
 import type { Engine } from '../sim/engine/engine.ts'
 import type { Circuit } from '../sim/model.ts'
@@ -23,7 +22,6 @@ import { F, H, INPUT, grant, writeLine } from './memory.ts'
 import { spawnNodeCodeWorker } from './node/codeWorker.ts'
 import { LOST_POWER, NO_POWER, boardPower, underVoltage, underVoltageNote } from './power.ts'
 import type { RunStatus } from './protocol.ts'
-import { PY_FILES } from './pyFiles.ts'
 
 export interface Press { uid: string; atMs: number; forMs: number }
 export interface DriveOptions {
@@ -37,7 +35,9 @@ export interface DriveOptions {
   spawn?: () => CodeWorkerLike
   /** Real time a board may run without yielding (spec 7: 5 s). */
   realLimitMs?: number
-  library?: ModuleLookup
+  /** The built-in parts (libraryLookup) and our Python files (PY_FILES), passed in so this file loads in plain Node (the run's child process). */
+  library: ModuleLookup
+  files: Record<string, string>
 }
 export interface SerialEntry { t: number; stream: 'out' | 'err' | 'note'; text: string }
 export interface DriveBoard { uid: string; ref: string; status: RunStatus | 'not-started'; serial: SerialEntry[] }
@@ -73,7 +73,7 @@ function flipped(d: Diagram, uid: string): Diagram {
 }
 
 export async function drive(o: DriveOptions): Promise<DriveResult> {
-  const library = o.library ?? libraryLookup
+  const library = o.library
   const realLimit = o.realLimitMs ?? 5000
   const res: DriveResult = { boards: [], timeline: [], findings: [], simulatedMs: 0, solves: [], neverPauses: [], lostPower: [], incomplete: [] }
   let sheet = o.diagram
@@ -132,7 +132,7 @@ export async function drive(o: DriveOptions): Promise<DriveResult> {
     }
     const entry: Live = { b, module: m!, blocked: null, t: 0, heard: performance.now(), ended: false, noted: false, run: null as unknown as BoardRun }
     entry.run = new BoardRun({
-      board: kind!, source: part!.code!.source, file: part!.code!.file ?? 'main.py', mode: 'virtual', py: o.py, files: PY_FILES, spawn: o.spawn ?? spawnNodeCodeWorker,
+      board: kind!, source: part!.code!.source, file: part!.code!.file ?? 'main.py', mode: 'virtual', py: o.py, files: o.files, spawn: o.spawn ?? spawnNodeCodeWorker,
       on: (msg) => {
         if (msg.type === 'block') (entry.blocked = { nowMs: msg.nowMs, untilMs: msg.untilMs }), (entry.t = msg.nowMs), (entry.heard = performance.now())
         else if (msg.type === 'ready') entry.heard = performance.now()

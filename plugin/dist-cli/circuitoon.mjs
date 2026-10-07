@@ -1,9 +1,9 @@
 import { createRequire } from "node:module";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { constants, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { createHash } from "node:crypto";
-import { spawnSync } from "node:child_process";
-import { tmpdir } from "node:os";
+import { createHash, randomUUID } from "node:crypto";
+import { fork, spawnSync } from "node:child_process";
+import { homedir, tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Worker, isMainThread, parentPort, workerData } from "node:worker_threads";
 //#region \0rolldown/runtime.js
@@ -11,7 +11,11 @@ var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).expor
 var __require = /* #__PURE__ */ (() => createRequire(import.meta.url))();
 //#endregion
 //#region src/cli/args.ts
-var LIST_FLAGS = /* @__PURE__ */ new Set(["--probe"]);
+var LIST_FLAGS = /* @__PURE__ */ new Set([
+	"--probe",
+	"--input",
+	"--press"
+]);
 var VALUE_FLAGS = /* @__PURE__ */ new Set([
 	"--out",
 	"--svg",
@@ -21,7 +25,10 @@ var VALUE_FLAGS = /* @__PURE__ */ new Set([
 	"--keep",
 	"--labels",
 	"--tiles",
-	"--spec"
+	"--spec",
+	"--board",
+	"--for",
+	"--py-dir"
 ]);
 var BOOL_FLAGS = /* @__PURE__ */ new Set([
 	"--json",
@@ -1047,6 +1054,7 @@ var KNOWN_LANGUAGES = [
 	"arduino-avr",
 	"micropython"
 ];
+var RUNNABLE = ["python-rpi"];
 var LANGUAGE_NAMES = {
 	"python-rpi": "Raspberry Pi Python",
 	"arduino-avr": "Arduino C++",
@@ -92166,7 +92174,7 @@ async function createCore(factory, wasmBinary) {
 }
 //#endregion
 //#region src/sim/engine/workerLoop.ts
-var why = (e) => e instanceof Error ? e.message : String(e);
+var why$1 = (e) => e instanceof Error ? e.message : String(e);
 function serve(post, listen, load) {
 	const loading = load((loaded, total) => post({
 		type: "progress",
@@ -92208,7 +92216,7 @@ function serve(post, listen, load) {
 						heap = 0;
 						runs.push({
 							ok: false,
-							error: `the simulation engine stopped: ${why(e)}`,
+							error: `the simulation engine stopped: ${why$1(e)}`,
 							dead: true,
 							ms: performance.now() - t0
 						});
@@ -92225,7 +92233,7 @@ function serve(post, listen, load) {
 		} catch (e) {
 			post({
 				type: "fatal",
-				error: why(e)
+				error: why$1(e)
 			});
 		}
 	});
@@ -94514,7 +94522,7 @@ async function solve(d, engine, revision, opts = {}) {
 }
 //#endregion
 //#region src/cli/simCmd.ts
-var USAGE$1 = "sim: usage: circuitoon sim <sheet.json|netlist.json> [--probe <ref[.pin]|net:NAME>]...";
+var USAGE$2 = "sim: usage: circuitoon sim <sheet.json|netlist.json> [--probe <ref[.pin]|net:NAME>]...";
 var plural$1 = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
 /**
 * One --probe: "REF.PIN", "REF" or "net:NAME" on the sheet (refs as the netlist names them). A net
@@ -94654,7 +94662,7 @@ function summary(o, refOf = /* @__PURE__ */ new Map()) {
 }
 async function simCommand(args, io, opts = {}) {
 	const [input, ...rest] = args.positionals;
-	if (!input) throw new CliError(USAGE$1, EXIT.input);
+	if (!input) throw new CliError(USAGE$2, EXIT.input);
 	if (rest.length) throw new CliError(`sim: give one sheet or netlist file, not ${args.positionals.length}`, EXIT.input);
 	const raw = readJson(io, input);
 	let d;
@@ -96731,6 +96739,1692 @@ function moduleCommand(args, io) {
 	throw new CliError(sub ? `module: unknown subcommand "${sub}"; ${MODULE_USAGE.slice(8)}` : MODULE_USAGE, EXIT.input);
 }
 //#endregion
+//#region src/run/boards.ts
+var BOARD_KINDS = {
+	"rpi-4-model-b": "pi4",
+	"rpi-5": "pi5",
+	"rpi-zero-2-w": "zero2w"
+};
+var boardKindOf = (m) => m && Object.hasOwn(BOARD_KINDS, m.id) ? BOARD_KINDS[m.id] : null;
+var gpioPin = (bcm) => `GPIO${bcm}`;
+var pyManifest_default = {
+	version: "314.0.7",
+	python: "3.14.2",
+	source: "https://github.com/pyodide/pyodide/releases/tag/314.0.7",
+	files: [
+		{
+			"name": "pyodide.mjs",
+			"sha256": "6f1d60f7bf529beb300f0f47983c921d3982363640ba20af0e38efdddbc66109",
+			"bytes": 17931
+		},
+		{
+			"name": "pyodide.asm.mjs",
+			"sha256": "f7cdc8ece80678ceb712f8e65ebe6d3a83203a180c399865f49612a051693635",
+			"bytes": 1250344
+		},
+		{
+			"name": "pyodide.asm.wasm",
+			"sha256": "cc36e3cab04fdfc9a63ff13eb52eae2b911bf46c025cc7b281f394bd3de1d5e6",
+			"bytes": 9598218
+		},
+		{
+			"name": "python_stdlib.zip",
+			"sha256": "fa1957e5777068fc4f7437f96d860ae2fbe9c19732ba06c84e004ec16dd7dd7a",
+			"bytes": 2545637
+		},
+		{
+			"name": "pyodide-lock.json",
+			"sha256": "5dc2fc119108bc148c7457dc86e7675b5c87e1cafd420b9c34c1eaef7b36c010",
+			"bytes": 119077
+		}
+	]
+};
+var NO_LONGER_PUBLISHED = "This plugin's Python runtime is no longer published; update the plugin";
+/** The user's cache directory for Circuitoon (CIRCUITOON_CACHE overrides). */
+function cacheRoot(env = process.env) {
+	if (env.CIRCUITOON_CACHE) return env.CIRCUITOON_CACHE;
+	if (process.platform === "win32") return join(env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"), "circuitoon", "cache");
+	if (process.platform === "darwin") return join(homedir(), "Library", "Caches", "circuitoon");
+	return join(env.XDG_CACHE_HOME ?? join(homedir(), ".cache"), "circuitoon");
+}
+var sha = (b) => createHash("sha256").update(b).digest("hex");
+var good = (dir, f) => existsSync(join(dir, f.name)) && sha(readFileSync(join(dir, f.name))) === f.sha256;
+var ready = (dir) => ({
+	dir,
+	indexURL: dir.endsWith(sep) || dir.endsWith("/") ? dir : `${dir}${sep}`,
+	lock: readFileSync(join(dir, "pyodide-lock.json"), "utf8")
+});
+async function ensurePy(o = {}) {
+	if (o.pyDir) {
+		const bad = pyManifest_default.files.filter((f) => !good(o.pyDir, f)).map((f) => f.name);
+		if (bad.length) throw new Error(`--py-dir ${o.pyDir} is not Pyodide ${pyManifest_default.version}: ${bad.join(", ")} missing or different`);
+		return ready(o.pyDir);
+	}
+	const dir = join(o.cacheDir ?? cacheRoot(), "py", pyManifest_default.version);
+	mkdirSync(dir, { recursive: true });
+	const get = o.fetch ?? fetch;
+	for (const f of pyManifest_default.files) {
+		if (good(dir, f)) continue;
+		const url = `${o.base ?? "https://mbarc.github.io/circuitoon/py/"}${pyManifest_default.version}/${f.name}`;
+		let res;
+		try {
+			res = await get(url);
+		} catch (e) {
+			throw new Error(`could not download ${url} (${e instanceof Error ? e.message : String(e)}); the first run needs the network, or pass --py-dir`);
+		}
+		if (res.status === 404) throw new Error(NO_LONGER_PUBLISHED);
+		if (!res.ok) throw new Error(`could not download ${url} (HTTP ${res.status}); the first run needs the network, or pass --py-dir`);
+		const bytes = new Uint8Array(await res.arrayBuffer());
+		if (sha(bytes) !== f.sha256) throw new Error(`${f.name} does not match this plugin's Pyodide ${pyManifest_default.version} (its sha256 differs); try again later`);
+		const tmp = join(dir, `${f.name}.${process.pid}.${randomUUID()}.part`);
+		try {
+			writeFileSync(tmp, bytes);
+			try {
+				renameSync(tmp, join(dir, f.name));
+			} catch (e) {
+				if (!good(dir, f)) throw e;
+			}
+		} finally {
+			rmSync(tmp, { force: true });
+		}
+	}
+	const bad = pyManifest_default.files.find((f) => !good(dir, f));
+	if (bad) throw new Error(`${bad.name} does not match this plugin's Pyodide ${pyManifest_default.version} (its sha256 differs); try again later`);
+	return ready(dir);
+}
+/** inputLow and inputHigh from the board's data; without them, 30 and 70 percent of its GPIO domain (a generic CMOS estimate). */
+function thresholdsOf(m) {
+	const sim = simOf(m);
+	const g = sim?.gpio;
+	const nominal = sim?.power?.domains.find((d) => d.name === g?.domain)?.nominal ?? 3.3;
+	return {
+		low: g?.inputLow?.value ?? .3 * nominal,
+		high: g?.inputHigh?.value ?? .7 * nominal
+	};
+}
+/** A small, seeded PRNG (mulberry32): the same run reads the same floating levels. */
+function mulberry32(seed) {
+	let a = seed >>> 0;
+	return () => {
+		a = a + 1831565813 >>> 0;
+		let t = a;
+		t = Math.imul(t ^ t >>> 15, t | 1);
+		t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+		return ((t ^ t >>> 14) >>> 0) / 4294967296;
+	};
+}
+function seedOf(text) {
+	let h = 2166136261;
+	for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+	return h >>> 0;
+}
+var LevelTracker = class {
+	rows = /* @__PURE__ */ new Map();
+	since = /* @__PURE__ */ new Map();
+	warned = /* @__PURE__ */ new Set();
+	rand;
+	seed;
+	constructor(seed) {
+		this.seed = seed;
+		this.rand = mulberry32(seedOf(seed));
+	}
+	/** One solved reading of one input pin at run time `nowMs`. */
+	update(pin, r, th, nowMs) {
+		const prev = this.rows.get(pin);
+		let level = prev?.level ?? 0;
+		let status = "value";
+		let volts = NaN;
+		let finding = null;
+		if (!r || r.kind === "floating") {
+			status = "floating";
+			level = this.rand() < .5 ? 0 : 1;
+			this.since.delete(pin);
+			if (!this.warned.has(`f|${pin}`)) {
+				this.warned.add(`f|${pin}`);
+				finding = "floating-read";
+			}
+		} else if (r.kind === "undefined") {
+			status = "undefined";
+			this.since.delete(pin);
+		} else {
+			volts = r.value;
+			if (volts >= th.high) level = 1;
+			else if (volts <= th.low) level = 0;
+			if (volts > th.low && volts < th.high) {
+				if (!this.since.has(pin)) this.since.set(pin, nowMs);
+			} else this.since.delete(pin);
+		}
+		const row = {
+			level,
+			status,
+			volts,
+			rising: (prev?.rising ?? 0) + (prev && level === 1 && prev.level === 0 ? 1 : 0),
+			falling: (prev?.falling ?? 0) + (prev && level === 0 && prev.level === 1 ? 1 : 0)
+		};
+		this.rows.set(pin, row);
+		return {
+			row,
+			finding
+		};
+	}
+	/** Pins that have now dwelt between the thresholds for more than 100 ms: each named once per run. */
+	check(nowMs) {
+		const out = [];
+		for (const [pin, t] of this.since) if (nowMs - t > 100 && !this.warned.has(`u|${pin}`)) {
+			this.warned.add(`u|${pin}`);
+			out.push(pin);
+		}
+		return out;
+	}
+	/** A pin's last row (its voltage names the undefined-level warning). */
+	get(pin) {
+		return this.rows.get(pin);
+	}
+	/** A new run: levels, edges and warnings start over, and the PRNG restarts. */
+	reset() {
+		this.rows.clear();
+		this.since.clear();
+		this.warned.clear();
+		this.rand = mulberry32(seedOf(this.seed));
+	}
+};
+var MODE = {
+	unused: 0,
+	input: 1,
+	pullup: 2,
+	pulldown: 3,
+	output: 4
+};
+var IN_STATUS = {
+	none: 0,
+	value: 1,
+	floating: 2,
+	undefined: 3
+};
+var INPUT = {
+	idle: 0,
+	waiting: 1,
+	ready: 2
+};
+/**
+* Header Int32 slots. `interrupt` is Pyodide's interrupt buffer (2 = SIGINT). `grant` counts the
+* virtual-time driver's grants (ruling R16): a virtual wait moves on only when it changes, never on
+* another wake.
+*/
+var H = {
+	wake: 0,
+	interrupt: 1,
+	outSeq: 2,
+	inSeq: 3,
+	solvedThrough: 4,
+	codeSeq: 5,
+	inputState: 6,
+	inputLen: 7,
+	pending: 8,
+	grant: 9
+};
+/** Header Float64 slots: the virtual clock and the driver's horizon (ms of run time), the last yield (epoch ms, real time) and the run's start (epoch ms). */
+var F = {
+	clockMs: 8,
+	horizonMs: 9,
+	lastYieldMs: 10,
+	startMs: 11
+};
+var OUT_I = 32;
+var OUT_W = 8;
+var OUT_F = 128;
+var IN_I = 512;
+var IN_W = 4;
+var IN_F = 320;
+var LINE_AT = 4096;
+var LINE_MAX = 4096;
+var SAB_BYTES = 8192;
+var STATUS_OF = Object.keys(IN_STATUS);
+function boardMemory(sab = new SharedArrayBuffer(SAB_BYTES)) {
+	return {
+		sab,
+		i32: new Int32Array(sab),
+		f64: new Float64Array(sab),
+		line: new Uint8Array(sab, LINE_AT, LINE_MAX)
+	};
+}
+/** The writer's half of a seqlock: odd while `fn` runs, even after. One writer per table. */
+function writeLocked(m, seq, fn) {
+	Atomics.add(m.i32, seq, 1);
+	try {
+		fn();
+	} finally {
+		Atomics.add(m.i32, seq, 1);
+	}
+}
+/** The reader's half: retries until the sequence is the same even value before and after `fn`. */
+function readLocked(m, seq, fn) {
+	for (;;) {
+		const a = Atomics.load(m.i32, seq);
+		if (a & 1) continue;
+		const v = fn();
+		if (Atomics.compareExchange(m.i32, seq, a, a) === a) return v;
+	}
+}
+function readOut(m, bcm) {
+	const i = OUT_I + bcm * OUT_W;
+	const f = OUT_F + bcm * 2;
+	const v = m.i32;
+	return {
+		mode: Atomics.load(v, i),
+		latch: Atomics.load(v, i + 1) ? 1 : 0,
+		pwmActive: Atomics.load(v, i + 2) !== 0,
+		duty: m.f64[f],
+		freq: m.f64[f + 1],
+		rising: Atomics.load(v, i + 3) >>> 0,
+		falling: Atomics.load(v, i + 4) >>> 0,
+		highUs: Atomics.load(v, i + 5) >>> 0,
+		changedUs: Atomics.load(v, i + 6) >>> 0
+	};
+}
+function setOut(m, bcm, p) {
+	const i = OUT_I + bcm * OUT_W;
+	const f = OUT_F + bcm * 2;
+	const v = m.i32;
+	if (p.mode !== void 0) Atomics.store(v, i, p.mode);
+	if (p.latch !== void 0) Atomics.store(v, i + 1, p.latch);
+	if (p.pwmActive !== void 0) Atomics.store(v, i + 2, p.pwmActive ? 1 : 0);
+	if (p.rising !== void 0) Atomics.store(v, i + 3, p.rising | 0);
+	if (p.falling !== void 0) Atomics.store(v, i + 4, p.falling | 0);
+	if (p.highUs !== void 0) Atomics.store(v, i + 5, p.highUs | 0);
+	if (p.changedUs !== void 0) Atomics.store(v, i + 6, p.changedUs | 0);
+	if (p.duty !== void 0) m.f64[f] = p.duty;
+	if (p.freq !== void 0) m.f64[f + 1] = p.freq;
+}
+function readIn(m, bcm) {
+	const i = IN_I + bcm * IN_W;
+	const v = m.i32;
+	return {
+		level: Atomics.load(v, i) ? 1 : 0,
+		rising: Atomics.load(v, i + 1) >>> 0,
+		falling: Atomics.load(v, i + 2) >>> 0,
+		status: STATUS_OF[Atomics.load(v, i + 3)] ?? "none",
+		volts: m.f64[IN_F + bcm]
+	};
+}
+function setIn(m, bcm, p) {
+	const i = IN_I + bcm * IN_W;
+	const v = m.i32;
+	Atomics.store(v, i, p.level);
+	Atomics.store(v, i + 1, p.rising | 0);
+	Atomics.store(v, i + 2, p.falling | 0);
+	Atomics.store(v, i + 3, IN_STATUS[p.status]);
+	m.f64[IN_F + bcm] = p.volts;
+}
+/** Every pin's row and the code sequence that numbers them, from one read under the seqlock (setup bumps it inside the same write). */
+function readAllOut(m) {
+	return readLocked(m, H.outSeq, () => ({
+		rows: Array.from({ length: 28 }, (_, b) => readOut(m, b)),
+		codeSeq: Atomics.load(m.i32, H.codeSeq)
+	}));
+}
+/** The editor's write (spec 4.4): the rows it has, "solved through code sequence N", then a wake. */
+function writeIn(m, rows, solvedThrough) {
+	writeLocked(m, H.inSeq, () => rows.forEach((r, bcm) => r && setIn(m, bcm, r)));
+	Atomics.store(m.i32, H.solvedThrough, solvedThrough);
+	wake(m);
+}
+/** Wakes every wait (spec 5.2): a new result, a line of input, Stop. */
+function wake(m) {
+	Atomics.add(m.i32, H.wake, 1);
+	Atomics.notify(m.i32, H.wake);
+}
+/** The virtual-time driver lets a waiting board go (ruling R16): to run time `clockMs`, syncing again at a pin read past `horizonMs`. */
+function grant(m, clockMs, horizonMs) {
+	m.f64[F.clockMs] = clockMs;
+	m.f64[F.horizonMs] = horizonMs;
+	Atomics.add(m.i32, H.grant, 1);
+	wake(m);
+}
+/** Stop (spec 5.4): KeyboardInterrupt at the next check, and a wake so a wait checks now. */
+function interrupt(m) {
+	Atomics.store(m.i32, H.interrupt, 2);
+	wake(m);
+}
+/** A line for input() (spec 5.3), cut to the buffer. */
+function writeLine(m, text) {
+	const bytes = new TextEncoder().encode(text).slice(0, LINE_MAX);
+	m.line.set(bytes);
+	Atomics.store(m.i32, H.inputLen, bytes.length);
+	Atomics.store(m.i32, H.inputState, INPUT.ready);
+	wake(m);
+}
+function takeLine(m) {
+	const text = new TextDecoder().decode(m.line.slice(0, Atomics.load(m.i32, H.inputLen)));
+	Atomics.store(m.i32, H.inputState, INPUT.idle);
+	return text;
+}
+//#endregion
+//#region src/run/power.ts
+/** Raspberry Pi's under-voltage warning threshold, volts (ruling R8). Source: https://raw.githubusercontent.com/raspberrypi/documentation/master/documentation/asciidoc/computers/raspberry-pi/power-supplies.adoc */
+var PI_UNDER_VOLTAGE = 4.63;
+var NO_POWER = (ref) => `${ref} has no power: connect 5V and GND`;
+var LOST_POWER = (ref) => `${ref} lost power`;
+var underVoltageNote = (ref, volts) => `${ref}'s 5V input is at ${Number(volts.toFixed(2))} V, below the ${PI_UNDER_VOLTAGE} V where a real Raspberry Pi warns of under-voltage.`;
+function boardPower(c, r, uid) {
+	const rows = r.budget.filter((b) => b.kind === "domain" && b.part === uid);
+	const volts = (domain) => {
+		const v = rows.find((b) => b.id === `${uid}.domain.${domain}`)?.volts.typical;
+		return v?.kind === "value" ? v.value : null;
+	};
+	const loads = c.devices.filter((d) => d.kind === "load" && d.part === uid);
+	let lowest = null;
+	let powered = loads.length > 0;
+	for (const l of loads) {
+		const v = volts(l.domain);
+		if (!(v !== null && v >= l.minVolts.value)) powered = false;
+		if ((v === null ? -Infinity : v - l.minVolts.value) < (lowest ? lowest.volts === null ? -Infinity : lowest.volts - lowest.minVolts : Infinity)) lowest = {
+			domain: l.domain,
+			volts: v,
+			minVolts: l.minVolts.value
+		};
+	}
+	return {
+		powered,
+		inputVolts: volts("5V"),
+		lowest
+	};
+}
+var underVoltage = (p) => p.inputVolts !== null && p.inputVolts < 4.63;
+var DUTY_STEP = 1 / 64;
+var INPUT_STATE = {
+	[MODE.input]: "input",
+	[MODE.pullup]: "input-pullup",
+	[MODE.pulldown]: "input-pulldown"
+};
+function quantize(prev, duty) {
+	const q = Math.round(duty / DUTY_STEP) * DUTY_STEP;
+	return prev === null || Math.abs(duty - prev) >= .015625 ? q : prev;
+}
+var asState = (d) => d <= 0 ? "low" : d >= 1 ? "high" : { pwm: d };
+var BoardSampler = class {
+	history = /* @__PURE__ */ new Map();
+	duty = /* @__PURE__ */ new Map();
+	/** The board's pins at run time `nowMs` (its own clock). Unused pins are left out: their saved states apply. */
+	sample(m, nowMs) {
+		const { rows, codeSeq: seq } = readAllOut(m);
+		const nowUs = Math.round(nowMs * 1e3) >>> 0;
+		const pins = {};
+		const detail = {};
+		for (let bcm = 0; bcm < 28; bcm++) {
+			const r = rows[bcm];
+			const name = gpioPin(bcm);
+			if (r.mode !== MODE.output) {
+				this.history.delete(bcm);
+				this.duty.delete(bcm);
+				if (r.mode !== MODE.unused) detail[name] = {
+					state: pins[name] = INPUT_STATE[r.mode],
+					duty: null,
+					freqHz: null
+				};
+				continue;
+			}
+			if (r.pwmActive) {
+				this.history.delete(bcm);
+				const d = quantize(this.duty.get(bcm) ?? null, r.duty);
+				this.duty.set(bcm, d);
+				detail[name] = {
+					state: pins[name] = asState(d),
+					duty: r.duty,
+					freqHz: r.freq
+				};
+				continue;
+			}
+			const high = r.highUs + (r.latch ? Math.max(0, nowUs - r.changedUs | 0) : 0) >>> 0;
+			const hist = this.history.get(bcm) ?? [];
+			hist.push({
+				tMs: nowMs,
+				rising: r.rising,
+				falling: r.falling,
+				highUs: high
+			});
+			while (hist.length > 2 && hist[1].tMs <= nowMs - 100) hist.shift();
+			this.history.set(bcm, hist);
+			const base = hist[0].tMs <= nowMs - 100 ? hist[0] : null;
+			const latch = r.latch ? "high" : "low";
+			if (!base) {
+				detail[name] = {
+					state: pins[name] = latch,
+					duty: null,
+					freqHz: null
+				};
+				continue;
+			}
+			const span = nowMs - base.tMs;
+			const edges = (r.rising - base.rising >>> 0) + (r.falling - base.falling >>> 0);
+			if (edges < 100 * span / 1e3 - 1e-9) {
+				this.duty.delete(bcm);
+				detail[name] = {
+					state: pins[name] = latch,
+					duty: null,
+					freqHz: null
+				};
+				continue;
+			}
+			const raw = Math.min(1, Math.max(0, (high - base.highUs | 0) / 1e3 / span));
+			const d = quantize(this.duty.get(bcm) ?? null, raw);
+			this.duty.set(bcm, d);
+			detail[name] = {
+				state: pins[name] = asState(d),
+				duty: raw,
+				freqHz: edges / 2 / (span / 1e3)
+			};
+		}
+		return {
+			pins,
+			detail,
+			seq
+		};
+	}
+	/** A new run. */
+	reset() {
+		this.history.clear();
+		this.duty.clear();
+	}
+};
+//#endregion
+//#region src/run/servo.ts
+var SIGNAL_PULSE_S = [4e-4, .0026];
+var SIGNAL_HZ = [40, 330];
+function servoLimitsOf(m) {
+	const s = simOf(m)?.servo;
+	return s ? {
+		pulseMin: s.pulseMin.value,
+		pulseMax: s.pulseMax.value,
+		slewSecPer60: s.slew.value
+	} : null;
+}
+var round = (x, digits) => Number(x.toFixed(digits));
+function servoTarget(duty, freqHz, s) {
+	const pulse = duty / freqHz;
+	if (freqHz < SIGNAL_HZ[0] || freqHz > SIGNAL_HZ[1] || pulse < SIGNAL_PULSE_S[0] || pulse > SIGNAL_PULSE_S[1]) return { why: `a ${round(pulse * 1e3, 2)} ms pulse at ${round(freqHz, 1)} Hz` };
+	const a = (pulse - s.pulseMin) / (s.pulseMax - s.pulseMin) * 180;
+	return { angle: Math.min(180, Math.max(0, a)) };
+}
+function slewToward(angle, target, dtMs, s) {
+	const step = 60 / s.slewSecPer60 * Math.max(0, dtMs) / 1e3;
+	return Math.abs(target - angle) <= step ? target : angle + Math.sign(target - angle) * step;
+}
+//#endregion
+//#region src/run/core.ts
+/** Spec 5.2's words, shown once when a board has not yielded for 2 s (editor) or 5 s (CLI) while something waits. */
+var NEVER_PAUSES = (ref) => `${ref}'s code never pauses, so blink() and button callbacks can't run. Add time.sleep() in your loop.`;
+var RunCore = class {
+	entries = /* @__PURE__ */ new Map();
+	last = "";
+	servoState = /* @__PURE__ */ new Map();
+	warnedServos = /* @__PURE__ */ new Set();
+	moving = [];
+	add(b) {
+		this.entries.set(b.uid, {
+			b,
+			sampler: new BoardSampler(),
+			levels: new LevelTracker(b.uid),
+			th: thresholdsOf(b.module),
+			detail: {},
+			sampled: /* @__PURE__ */ new Map()
+		});
+		this.last = "";
+	}
+	remove(uid) {
+		this.entries.delete(uid);
+		this.last = "";
+	}
+	get boards() {
+		return [...this.entries.values()].map((e) => e.b);
+	}
+	/**
+	* Samples every board (spec 2.3). `changed` only when a quantised state or a servo's moving flag
+	* moved since the last sample, so store.run is written only then; `seq` is each board's code
+	* sequence for the solve's "solved through".
+	*/
+	sample(at) {
+		const pins = {};
+		const seq = {};
+		const findings = [];
+		for (const e of this.entries.values()) {
+			const now = at(e.b);
+			const s = e.sampler.sample(e.b.memory, now);
+			pins[e.b.uid] = s.pins;
+			seq[e.b.uid] = s.seq;
+			e.detail = s.detail;
+			e.sampled.set(s.seq, s.pins);
+			for (const pin of e.levels.check(now)) findings.push({
+				code: "undefined-level",
+				severity: "warning",
+				parts: [e.b.uid],
+				pins: [{
+					part: e.b.uid,
+					pin
+				}],
+				key: `undefined-level|${e.b.uid}|${pin}`,
+				message: `${e.b.ref} ${pin} reads ${e.levels.get(pin).volts.toFixed(1)} V, between the low and high thresholds`
+			});
+		}
+		const key = JSON.stringify([pins, this.moving]);
+		const changed = key !== this.last;
+		this.last = key;
+		return {
+			pins,
+			seq,
+			changed,
+			findings
+		};
+	}
+	/**
+	* A solve back into the boards (spec 4.4): input pins' levels and edges, solved through `seq`; and
+	* each board's power (spec 4.5). Only pins whose mode is still the one sampled for this solve are
+	* written; a pin set up while it was in flight waits for the next. A failed solve still marks the
+	* boards solved through `seq`, so no read waits on it.
+	*/
+	apply(o, c, seq, at) {
+		const findings = [];
+		const power = {};
+		const ok = o.status === "ok" && c !== null;
+		for (const e of this.entries.values()) {
+			const sq = seq[e.b.uid];
+			const sampled = sq === void 0 ? void 0 : e.sampled.get(sq);
+			if (sq !== void 0) {
+				for (const k of e.sampled.keys()) if (k < sq) e.sampled.delete(k);
+			}
+			if (!ok) {
+				if (sq !== void 0) writeIn(e.b.memory, [], sq);
+				continue;
+			}
+			power[e.b.uid] = boardPower(c, o.result, e.b.uid);
+			if (sq === void 0 || !sampled) continue;
+			const now = at(e.b);
+			const nets = o.result.corners.typical.nets;
+			const rows = Array.from({ length: 28 }, () => null);
+			readAllOut(e.b.memory).rows.forEach((r, bcm) => {
+				const pin = gpioPin(bcm);
+				const state = INPUT_STATE[r.mode];
+				if (state === void 0 || sampled[pin] !== state) return;
+				const net = c.pinNet[nodeKey(e.b.uid, pin)];
+				const u = e.levels.update(pin, net === void 0 ? void 0 : nets[net], e.th, now);
+				rows[bcm] = u.row;
+				if (u.finding === "floating-read") findings.push({
+					code: "floating-read",
+					severity: "warning",
+					parts: [e.b.uid],
+					pins: [{
+						part: e.b.uid,
+						pin
+					}],
+					key: `floating-read|${e.b.uid}|${pin}`,
+					message: `${e.b.ref} ${pin} is read by the code but nothing drives it: it floats, so each read is random. Turn on a pull-up or pull-down in the code, or wire it to a signal.`
+				});
+			});
+			writeIn(e.b.memory, rows, sq);
+		}
+		return {
+			findings,
+			power
+		};
+	}
+	/** The output on a net that a servo could follow: its declared or bit-banged duty and frequency (ruling R23). */
+	driverOn(c, net) {
+		for (const e of this.entries.values()) for (const [pin, s] of Object.entries(e.detail)) if (s.duty !== null && s.freqHz && c.pinNet[nodeKey(e.b.uid, pin)] === net) return s;
+		return null;
+	}
+	/**
+	* Every servo's angle at `nowMs` (spec 3.4): toward the target its signal commands, at its slew
+	* rate. `moving` (the servos still slewing) is part of the run state: the next sample reports a
+	* change when it changes, so the moving draw is keyed (spec 2.3).
+	*/
+	servos(d, c, nowMs, library) {
+		const views = {};
+		const moving = [];
+		const findings = [];
+		if (!c) return {
+			views,
+			moving,
+			findings
+		};
+		for (const p of d.parts) {
+			const stored = d.modules[p.module];
+			const m = stored && withLibraryData(stored, library);
+			const lim = servoLimitsOf(m);
+			if (!lim) continue;
+			const net = c.pinNet[nodeKey(p.uid, simOf(m).servo.signal)];
+			const drive = net === void 0 ? null : this.driverOn(c, net);
+			const st = this.servoState.get(p.uid);
+			let target = st?.target ?? null;
+			if (drive) {
+				const t = servoTarget(drive.duty, drive.freqHz, lim);
+				if ("angle" in t) target = t.angle;
+				else if (!this.warnedServos.has(p.uid)) {
+					this.warnedServos.add(p.uid);
+					findings.push({
+						code: "servo-signal",
+						severity: "warning",
+						parts: [p.uid],
+						pins: [],
+						key: `servo-signal|${p.uid}`,
+						message: `${p.designator}'s signal is ${t.why}, which a servo does not follow (0.4 to 2.6 ms pulses at 40 to 330 Hz): it holds its last angle.`
+					});
+				}
+			}
+			if (target === null) continue;
+			const angle = st ? slewToward(st.angle, target, nowMs - st.t, lim) : target;
+			this.servoState.set(p.uid, {
+				angle,
+				target,
+				t: nowMs
+			});
+			const view = {
+				angle,
+				target,
+				moving: Math.abs(angle - target) > 1e-6
+			};
+			views[p.uid] = view;
+			if (view.moving) moving.push(p.uid);
+		}
+		this.moving = moving;
+		return {
+			views,
+			moving,
+			findings
+		};
+	}
+};
+//#endregion
+//#region src/run/host.ts
+/** time.time() at run time 0 under the virtual clock: fixed, so runs repeat exactly. */
+var VIRTUAL_EPOCH_MS = Date.UTC(2026, 0, 1);
+var BoardRun = class {
+	memory;
+	status = "starting";
+	done;
+	o;
+	worker = null;
+	ended;
+	stopping = null;
+	constructor(o) {
+		this.o = o;
+		this.memory = boardMemory();
+		this.done = new Promise((r) => this.ended = r);
+	}
+	start() {
+		this.memory.f64[F.startMs] = this.o.mode === "virtual" ? VIRTUAL_EPOCH_MS : performance.timeOrigin + performance.now();
+		const w = this.worker = this.o.spawn();
+		w.onMessage((m) => {
+			if (m.type === "ready") this.status = "running";
+			if (m.type === "exit") this.finish(m.status);
+			if (m.type === "fatal") this.finish("error");
+			this.o.on(m);
+		});
+		w.onError((why) => {
+			if (this.status !== "starting" && this.status !== "running") return;
+			this.o.on({
+				type: "fatal",
+				error: why
+			});
+			this.finish("error");
+		});
+		w.post({
+			type: "start",
+			sab: this.memory.sab,
+			files: this.o.files,
+			source: this.o.source,
+			file: this.o.file,
+			board: this.o.board,
+			mode: this.o.mode,
+			py: this.o.py
+		});
+	}
+	finish(status) {
+		if (this.status === "starting" || this.status === "running") this.status = status;
+		this.worker?.terminate();
+		this.ended();
+	}
+	/**
+	* Stop (spec 5.4): KeyboardInterrupt now; terminated if not finished after 1 s. Once: a second
+	* Stop gets the first one's result and never interrupts the script's except or finally cleanup.
+	*/
+	async stop() {
+		if (this.stopping) return this.stopping;
+		const w = this.worker;
+		if (!w) return "ended";
+		if (this.status !== "starting" && this.status !== "running") {
+			w.terminate();
+			return "ended";
+		}
+		this.stopping = (async () => {
+			interrupt(this.memory);
+			const how = await Promise.race([this.done.then(() => "stopped"), new Promise((r) => setTimeout(() => r("terminated"), this.o.stopGraceMs ?? 1e3))]);
+			w.terminate();
+			if (how === "terminated") this.finish("stopped");
+			return how;
+		})();
+		return this.stopping;
+	}
+};
+//#endregion
+//#region src/run/limits.ts
+/** The globals Pyodide itself needs in `jsglobals` (spec 2.6: nothing else); found at the checkpoint. */
+var PY_JSGLOBALS = [];
+//#endregion
+//#region src/run/bridge.ts
+var nowAbs = () => performance.timeOrigin + performance.now();
+/** The editor's clock (spec 5.2): Atomics.wait on the wake word for at most 50 ms at a time, then checkInterrupt. */
+function realClock(m, checkInterrupt) {
+	const start = m.f64[F.startMs];
+	return {
+		epochMs: start,
+		now: () => nowAbs() - start,
+		block(untilMs) {
+			const seen = Atomics.load(m.i32, H.wake);
+			const left = untilMs - (nowAbs() - start);
+			if (left > 0) Atomics.wait(m.i32, H.wake, seen, Math.min(50, left));
+			checkInterrupt();
+		},
+		poll() {}
+	};
+}
+/** Every time call and pin read on the virtual clock advances the board by this much (spec 7). */
+var QUANTUM_MS = .01;
+/**
+* The CLI's clock (spec 7, ruling R16): the board keeps its own time, stepping 10 us per call; a wait
+* posts where it is and until when, and waits for the driver's grant (memory.ts grant: F.clockMs, where
+* the board may move to; F.horizonMs, when a pin read must sync next; then H.grant bumped and a wake).
+* Other wakes (an input write, a line, before the grant) are ignored unless Stop is set, so the board
+* never moves on a clock the driver has not finished writing. A read after setup syncs too, so its
+* solve comes at the same instant even inside the horizon.
+*/
+function virtualClock(m, post, checkInterrupt) {
+	let t = 0;
+	const sync = (untilMs) => {
+		const g = Atomics.load(m.i32, H.grant);
+		post({
+			type: "block",
+			nowMs: t,
+			untilMs
+		});
+		for (;;) {
+			const seen = Atomics.load(m.i32, H.wake);
+			if (Atomics.load(m.i32, H.grant) !== g || Atomics.load(m.i32, H.interrupt)) break;
+			Atomics.wait(m.i32, H.wake, seen);
+		}
+		t = Math.max(t, m.f64[F.clockMs]);
+		checkInterrupt();
+	};
+	return {
+		epochMs: m.f64[F.startMs],
+		now() {
+			t += QUANTUM_MS;
+			if (t >= m.f64[F.horizonMs]) sync(t);
+			return t;
+		},
+		block: (untilMs) => sync(untilMs),
+		poll() {
+			if (t >= m.f64[F.horizonMs] || Atomics.load(m.i32, H.codeSeq) > Atomics.load(m.i32, H.solvedThrough)) sync(t);
+		}
+	};
+}
+/** A number as Python prints it, for error messages. */
+var py = (x) => typeof x !== "number" ? String(x) : Number.isNaN(x) ? "nan" : x === Infinity ? "inf" : x === -Infinity ? "-inf" : String(x);
+/**
+* The JS functions Python's stand-ins call (spec 5.1). Pins are BCM numbers 0..27. User code can call
+* them directly (import circuitoon_hw), so every value bound for the shared memory the editor reads is
+* checked here: `fail` raises a Python ValueError (the worker passes pyValueError); without it a
+* RangeError is thrown.
+*/
+function makeHw(m, clock, o) {
+	const check = (ok, message) => {
+		if (ok) return;
+		if (o.fail) o.fail(message());
+		throw new RangeError(message());
+	};
+	const pin = (bcm) => check(Number.isInteger(bcm) && bcm >= 0 && bcm < 28, () => `there is no GPIO${py(bcm)}`);
+	const nowUs = () => Math.round(clock.now() * 1e3) >>> 0;
+	return {
+		/** A mode or pull change (spec 2.2): bumps the code sequence; leaving output drops the latch and the PWM descriptor. */
+		setup(bcm, mode) {
+			pin(bcm);
+			check(Number.isInteger(mode) && mode >= MODE.unused && mode <= MODE.output, () => `pin mode must be a whole number from 0 to 4, not ${py(mode)}`);
+			writeLocked(m, H.outSeq, () => {
+				setOut(m, bcm, {
+					mode,
+					...mode !== MODE.output ? {
+						latch: 0,
+						pwmActive: false
+					} : {}
+				});
+				Atomics.add(m.i32, H.codeSeq, 1);
+			});
+		},
+		/** A plain write: the latch, and the bit-bang counters (edges, high time) the sampler reads. */
+		output(bcm, value) {
+			pin(bcm);
+			const v = value ? 1 : 0;
+			const t = nowUs();
+			writeLocked(m, H.outSeq, () => {
+				const was = readOut(m, bcm);
+				if (was.latch === v) return;
+				setOut(m, bcm, v ? {
+					latch: 1,
+					changedUs: t,
+					rising: was.rising + 1
+				} : {
+					latch: 0,
+					changedUs: t,
+					falling: was.falling + 1,
+					highUs: was.highUs + (t - was.changedUs >>> 0)
+				});
+			});
+		},
+		/**
+		* A pin read (spec 4.4): an output reads its own latch; an input waits (at most 200 ms of run
+		* time) for a result solved through the latest mode change, then reads the editor's level, or its
+		* pull level before any result.
+		*/
+		read(bcm) {
+			pin(bcm);
+			clock.poll();
+			const own = readLocked(m, H.outSeq, () => readOut(m, bcm));
+			if (own.mode === MODE.output) return own.latch;
+			const want = Atomics.load(m.i32, H.codeSeq);
+			const t0 = clock.now();
+			while (Atomics.load(m.i32, H.solvedThrough) < want && clock.now() - t0 < 200) clock.block(t0 + 200);
+			const r = readLocked(m, H.inSeq, () => readIn(m, bcm));
+			if (r.status !== "none") return r.level;
+			return own.mode === MODE.pullup ? 1 : 0;
+		},
+		/** The declared PWM descriptor (spec 2.2): nothing toggles the pin. */
+		pwm(bcm, active, duty, freq) {
+			pin(bcm);
+			check(Number.isFinite(duty), () => `PWM duty cycle must be a number, not ${py(duty)}`);
+			check(Number.isFinite(freq) && freq > 0, () => `PWM frequency must be a number greater than 0, not ${py(freq)}`);
+			writeLocked(m, H.outSeq, () => setOut(m, bcm, {
+				pwmActive: !!active,
+				duty: Math.min(1, Math.max(0, duty)),
+				freq
+			}));
+		},
+		rising: (bcm) => readLocked(m, H.inSeq, () => readIn(m, bcm).rising),
+		falling: (bcm) => readLocked(m, H.inSeq, () => readIn(m, bcm).falling),
+		volts(bcm) {
+			const r = readLocked(m, H.inSeq, () => readIn(m, bcm));
+			return r.status === "value" ? r.volts : null;
+		},
+		monotonic: () => clock.now() / 1e3,
+		epoch: () => (clock.epochMs + clock.now()) / 1e3,
+		/** Python's scheduler: wait until run time `untilS` seconds (negative or infinite: until woken). */
+		block(untilS) {
+			check(!Number.isNaN(untilS), () => `wait time must be a number, not ${py(untilS)}`);
+			clock.block(untilS < 0 ? Infinity : untilS * 1e3);
+		},
+		/** A yield point: real time of the last one (the never-pauses check), whether timers or callbacks wait, and an output flush. */
+		yielded(pending) {
+			m.f64[F.lastYieldMs] = nowAbs();
+			Atomics.store(m.i32, H.pending, pending ? 1 : 0);
+			o.flush();
+		},
+		/** A timer, callback or poller now waits (the never-pauses check reads it with the last yield). */
+		pending(on) {
+			Atomics.store(m.i32, H.pending, on ? 1 : 0);
+		},
+		input_begin(prompt) {
+			Atomics.store(m.i32, H.inputState, INPUT.waiting);
+			o.onPrompt(String(prompt));
+		},
+		input_ready: () => Atomics.load(m.i32, H.inputState) === INPUT.ready,
+		input_take: () => takeLine(m),
+		board: () => o.board
+	};
+}
+//#endregion
+//#region src/run/worker/sandbox.ts
+var SANDBOXED = [
+	"fetch",
+	"XMLHttpRequest",
+	"WebSocket",
+	"EventSource",
+	"importScripts",
+	"indexedDB",
+	"caches",
+	"BroadcastChannel",
+	"Worker"
+];
+function sandbox(scope) {
+	const removed = [];
+	for (let o = scope; o; o = Object.getPrototypeOf(o)) for (const name of SANDBOXED) {
+		if (!Object.getOwnPropertyDescriptor(o, name)) continue;
+		if (Reflect.deleteProperty(o, name)) removed.push(name);
+		else {
+			Object.defineProperty(scope, name, {
+				value: void 0,
+				configurable: false,
+				writable: false
+			});
+			removed.push(name);
+		}
+	}
+	return removed;
+}
+/**
+* No code from strings (firmware spec 2.6): a JS function's constructor (Function, and its async and
+* generator relatives) would evaluate text in the worker's global scope. In the browser the CSP
+* refuses it; in Node nothing does, so every one of them throws. Call once Pyodide has loaded.
+*/
+function noCodeGeneration() {
+	const refuse = function() {
+		throw new EvalError("Code generation is disabled in the simulator");
+	};
+	for (const f of [
+		function() {},
+		async function() {},
+		function* () {},
+		async function* () {}
+	]) Object.defineProperty(Object.getPrototypeOf(f), "constructor", {
+		value: refuse,
+		writable: false,
+		configurable: false
+	});
+}
+//#endregion
+//#region src/run/worker/serve.ts
+var PY_ROOT = "/lib/circuitoon";
+function installFiles(py, files) {
+	for (const [path, text] of Object.entries(files)) {
+		const full = `${PY_ROOT}/${path}`;
+		py.FS.mkdirTree(full.slice(0, full.lastIndexOf("/")));
+		py.FS.writeFile(full, text);
+	}
+	py.runPython(`import sys\nif '${PY_ROOT}' not in sys.path: sys.path.insert(0, '${PY_ROOT}')`);
+}
+function runMain(py, source, file) {
+	const g = py.toPy({
+		SRC: source,
+		FILE: file
+	});
+	try {
+		return py.runPython("import _circuitoon\n_circuitoon.main(SRC, FILE)", { globals: g });
+	} catch (e) {
+		if (e.type === "KeyboardInterrupt") return "stopped";
+		throw e;
+	}
+}
+/** makeHw's `fail`: raises a Python ValueError with `message` (a Python exception thrown through JS arrives in Python as itself). */
+function pyValueError(py) {
+	return py.runPython("def _circuitoon_value_error(message):\n    raise ValueError(message)\n_circuitoon_value_error");
+}
+var why = (e) => e instanceof Error ? e.message : String(e);
+/** Serial output (spec 5.3): lines collected and posted at most every 16 ms, and at every yield point. */
+function outBuffer(post) {
+	let buf = null;
+	let last = 0;
+	const flush = () => {
+		if (buf) post({
+			type: "out",
+			...buf
+		});
+		buf = null;
+		last = performance.now();
+	};
+	return {
+		flush,
+		push(stream, line) {
+			if (buf && buf.stream !== stream) flush();
+			buf = {
+				stream,
+				text: (buf?.text ?? "") + line + "\n"
+			};
+			if (performance.now() - last >= 16) flush();
+		}
+	};
+}
+/**
+* The code worker (firmware spec 2.6, 5.2 to 5.4), shared by the browser and Node workers: on
+* 'start', load Pyodide (the caller's loader), remove the network and storage from the scope, write
+* our Python files, register circuitoon_hw, run the script, and say how it ended. One run per worker:
+* Reset starts a fresh one (spec 5.4).
+*/
+function serveCode(post, listen, loadPy) {
+	listen((m) => {
+		if (m.type !== "start") return;
+		(async () => {
+			let py;
+			try {
+				py = await loadPy(m.py.indexURL, m.py.lock);
+			} catch (e) {
+				return post({
+					type: "fatal",
+					error: why(e)
+				});
+			}
+			const sandboxed = sandbox(globalThis);
+			const mem = boardMemory(m.sab);
+			const check = () => py.checkInterrupt();
+			const clock = m.mode === "virtual" ? virtualClock(mem, post, check) : realClock(mem, check);
+			const out = outBuffer(post);
+			const hw = makeHw(mem, clock, {
+				board: m.board,
+				onPrompt: (text) => post({
+					type: "prompt",
+					text
+				}),
+				flush: out.flush,
+				fail: pyValueError(py)
+			});
+			py.setStdout({ batched: (s) => out.push("out", s) });
+			py.setStderr({ batched: (s) => out.push("err", s) });
+			py.setStdin({ stdin: () => {
+				Atomics.store(mem.i32, H.inputState, INPUT.waiting);
+				post({
+					type: "prompt",
+					text: ""
+				});
+				while (Atomics.load(mem.i32, H.inputState) !== INPUT.ready) clock.block(Infinity);
+				return `${takeLine(mem)}\n`;
+			} });
+			py.setInterruptBuffer(new Int32Array(m.sab, H.interrupt * 4, 1));
+			installFiles(py, m.files);
+			py.registerJsModule("circuitoon_hw", hw);
+			py.unregisterJsModule("pyodide_js");
+			py.runPython("import sys\nsys.modules.pop('pyodide_js', None)");
+			for (const name of [
+				"mountNodeFS",
+				"useNodeSockFS",
+				"mountNativeFS"
+			]) Reflect.deleteProperty(py, name);
+			delete py.FS.filesystems.NODEFS;
+			noCodeGeneration();
+			mem.f64[F.lastYieldMs] = performance.timeOrigin + performance.now();
+			post({
+				type: "ready",
+				sandboxed
+			});
+			let status;
+			try {
+				status = runMain(py, m.source, m.file);
+			} catch (e) {
+				out.push("err", why(e));
+				status = "error";
+			}
+			out.flush();
+			post({
+				type: "exit",
+				status
+			});
+		})();
+	});
+}
+//#endregion
+//#region src/run/node/codeWorker.ts
+function spawnNodeCodeWorker() {
+	const w = new Worker(fileURLToPath(import.meta.url), { workerData: { circuitoonCode: true } });
+	return {
+		post: (m) => w.postMessage(m),
+		onMessage: (cb) => void w.on("message", (m) => cb(m)),
+		onError: (cb) => {
+			w.on("error", (e) => cb(e instanceof Error ? e.message : String(e)));
+			w.on("exit", (code) => code !== 0 && cb(`the code worker exited (${code})`));
+		},
+		terminate: () => void w.terminate()
+	};
+}
+if (!isMainThread && workerData?.circuitoonCode) serveCode((m) => parentPort.postMessage(m), (cb) => void parentPort.on("message", cb), async (indexURL, lock) => {
+	const proc = process;
+	const binding = proc.binding;
+	proc.binding = (name) => name === "constants" ? { fs: constants } : binding.call(process, name);
+	const mod = await import(pathToFileURL(join(indexURL, "pyodide.mjs")).href);
+	const g = globalThis;
+	return mod.loadPyodide({
+		indexURL,
+		lockFileContents: lock,
+		jsglobals: Object.fromEntries(PY_JSGLOBALS.map((n) => [n, g[n]]))
+	});
+});
+//#endregion
+//#region src/run/driver.ts
+var stateText = (s) => typeof s === "string" ? s : `pwm ${Number((s.pwm * 100).toFixed(1))}%`;
+/** A latching switch flipped (ruling R17: a press on a latching switch flips it at its time). */
+function flipped(d, uid) {
+	return {
+		...d,
+		parts: d.parts.map((p) => {
+			if (p.uid !== uid) return p;
+			const m = d.modules[p.module];
+			const g = switchGroups(m).find((x) => x.kind === "switch" && !x.momentary);
+			if (!g) return p;
+			const on = isActive(contactPosition(p, m, g));
+			return {
+				...p,
+				values: {
+					...p.values,
+					[`contact.${g.id}`]: g.changeover ? on ? "nc" : "no" : on ? "open" : "closed"
+				}
+			};
+		})
+	};
+}
+async function drive(o) {
+	const library = o.library;
+	const realLimit = o.realLimitMs ?? 5e3;
+	const res = {
+		boards: [],
+		timeline: [],
+		findings: [],
+		simulatedMs: 0,
+		solves: [],
+		neverPauses: [],
+		lostPower: [],
+		incomplete: []
+	};
+	let sheet = o.diagram;
+	let held = null;
+	const events = [];
+	for (const p of o.presses) {
+		const part = sheet.parts.find((x) => x.uid === p.uid);
+		const group = switchGroups(sheet.modules[part.module]).find((g) => g.momentary);
+		if (group) events.push({
+			atMs: p.atMs,
+			apply: () => held = {
+				part: p.uid,
+				group: group.id
+			}
+		}, {
+			atMs: p.atMs + p.forMs,
+			apply: () => held = null
+		});
+		else events.push({
+			atMs: p.atMs,
+			apply: () => sheet = flipped(sheet, p.uid)
+		});
+	}
+	events.sort((a, b) => a.atMs - b.atMs);
+	const seen = /* @__PURE__ */ new Set();
+	const addFindings = (list) => {
+		for (const f of list) {
+			const key = `${f.code}|${f.message}`;
+			if (!seen.has(key)) seen.add(key), res.findings.push(f);
+		}
+	};
+	let revision = 0;
+	let last = null;
+	let pins = {};
+	let seq = {};
+	let moving = [];
+	const solveAt = async (t) => {
+		last = await solve(sheet, o.engine, ++revision, {
+			library,
+			held,
+			runPins: pins,
+			moving,
+			runSeq: seq
+		});
+		res.solves.push({
+			t,
+			outcome: last.outcome
+		});
+		addFindings(last.outcome.status === "ok" ? last.outcome.result.findings : last.outcome.status === "failed" ? [last.outcome.finding, ...last.outcome.findings] : last.outcome.findings);
+		return last;
+	};
+	let notify = () => {};
+	const first = await solveAt(0);
+	const live = [];
+	const core = new RunCore();
+	for (const uid of o.boards) {
+		const part = sheet.parts.find((p) => p.uid === uid);
+		const b = {
+			uid,
+			ref: part?.designator ?? uid,
+			status: "not-started",
+			serial: []
+		};
+		res.boards.push(b);
+		const stored = part && sheet.modules[part.module];
+		const m = stored && withLibraryData(stored, library);
+		const kind = boardKindOf(m);
+		const why = !part || !m || !kind ? `${b.ref} is not a board that runs code` : !part.code ? `${b.ref} has no code` : !RUNNABLE.includes(part.code.language) || !languagesOf(m).includes(part.code.language) ? `${b.ref} cannot run its code (${part.code.language})` : !simOf(m)?.power ? `${b.ref} has no simulation data` : first.outcome.status !== "ok" || !boardPower(first.circuit, first.outcome.result, uid).powered ? NO_POWER(b.ref) : null;
+		if (why) {
+			res.incomplete.push({
+				uid,
+				why
+			});
+			continue;
+		}
+		const entry = {
+			b,
+			module: m,
+			blocked: null,
+			t: 0,
+			heard: performance.now(),
+			ended: false,
+			noted: false,
+			run: null
+		};
+		entry.run = new BoardRun({
+			board: kind,
+			source: part.code.source,
+			file: part.code.file ?? "main.py",
+			mode: "virtual",
+			py: o.py,
+			files: o.files,
+			spawn: o.spawn ?? spawnNodeCodeWorker,
+			on: (msg) => {
+				if (msg.type === "block") entry.blocked = {
+					nowMs: msg.nowMs,
+					untilMs: msg.untilMs
+				}, entry.t = msg.nowMs, entry.heard = performance.now();
+				else if (msg.type === "ready") entry.heard = performance.now();
+				else if (msg.type === "out") b.serial.push({
+					t: entry.t,
+					stream: msg.stream,
+					text: msg.text
+				});
+				else if (msg.type === "exit" || msg.type === "fatal") {
+					if (msg.type === "fatal") b.serial.push({
+						t: entry.t,
+						stream: "err",
+						text: `${msg.error}\n`
+					});
+					entry.ended = true;
+				}
+				notify();
+			}
+		});
+		live.push(entry);
+		core.add({
+			uid,
+			ref: b.ref,
+			memory: entry.run.memory,
+			module: m
+		});
+		entry.run.memory.f64[F.horizonMs] = Math.min(16, events[0]?.atMs ?? Infinity, o.forMs);
+		entry.run.start();
+	}
+	/** Resolves when every live board waits or has ended; stops a board that never pauses. */
+	const settle = () => new Promise((resolve) => {
+		const check = () => {
+			const now = performance.now();
+			for (const e of live) if (!e.ended && !e.blocked && e.run.status !== "starting" && now - e.heard > realLimit) {
+				e.ended = true;
+				e.b.serial.push({
+					t: e.t,
+					stream: "note",
+					text: `${NEVER_PAUSES(e.b.ref)}\n`
+				});
+				res.neverPauses.push(e.b.uid);
+				e.run.stop();
+			}
+			if (live.every((e) => e.ended || e.blocked)) {
+				clearInterval(timer);
+				notify = () => {};
+				resolve();
+			}
+		};
+		const timer = setInterval(check, 100);
+		notify = check;
+		check();
+	});
+	let T = 0;
+	const at = (b) => Math.max(T, live.find((e) => e.b.uid === b.uid)?.t ?? 0);
+	let pending = true;
+	let idle = 0;
+	const shown = /* @__PURE__ */ new Map();
+	for (;;) {
+		await settle();
+		for (const e of live) if (e.ended && core.boards.some((b) => b.uid === e.b.uid)) core.remove(e.b.uid);
+		const running = live.filter((e) => !e.ended);
+		if (!running.length) break;
+		T = Math.max(T, Math.min(...running.map((e) => e.blocked.nowMs)));
+		const s = core.sample(at);
+		addFindings(s.findings);
+		pins = s.pins;
+		seq = s.seq;
+		for (const [uid, byPin] of Object.entries(pins)) for (const [pin, st] of Object.entries(byPin)) {
+			const text = stateText(st);
+			if (shown.get(`${uid}|${pin}`) !== text) {
+				res.timeline.push({
+					t: T,
+					uid,
+					pin,
+					state: text
+				});
+				shown.set(`${uid}|${pin}`, text);
+			}
+		}
+		const sv = core.servos(sheet, last?.circuit ?? null, T, library);
+		addFindings(sv.findings);
+		const moved = JSON.stringify(sv.moving) !== JSON.stringify(moving);
+		moving = sv.moving;
+		let woke = false;
+		if (s.changed || pending || moved) {
+			pending = false;
+			woke = true;
+			const r = await solveAt(T);
+			const a = core.apply(r.outcome, r.circuit, seq, at);
+			addFindings(a.findings);
+			for (const e of running) {
+				const p = a.power[e.b.uid];
+				if (!p || e.ended) continue;
+				if (!p.powered) {
+					e.b.serial.push({
+						t: T,
+						stream: "note",
+						text: `${LOST_POWER(e.b.ref)}\n`
+					});
+					res.lostPower.push(e.b.uid);
+					e.ended = true;
+					await e.run.stop();
+				} else if (underVoltage(p) && !e.noted) {
+					e.noted = true;
+					e.b.serial.push({
+						t: T,
+						stream: "note",
+						text: `${underVoltageNote(e.b.ref, p.inputVolts)}\n`
+					});
+				}
+			}
+		}
+		for (const e of running) if (!e.ended && Atomics.load(e.run.memory.i32, H.inputState) === INPUT.waiting && o.inputs.length) {
+			writeLine(e.run.memory, o.inputs.shift());
+			woke = true;
+		}
+		if (T >= o.forMs) {
+			await Promise.all(running.filter((e) => !e.ended).map((e) => e.run.stop()));
+			break;
+		}
+		if (!woke) {
+			T = Math.max(T, Math.min(...running.filter((e) => !e.ended).map((e) => e.blocked.untilMs), events[0]?.atMs ?? Infinity, o.forMs));
+			while (events.length && events[0].atMs <= T) {
+				events.shift().apply();
+				pending = true;
+			}
+			if (pending || T >= o.forMs) continue;
+		}
+		if (++idle > 1e5) throw new Error(`the run made no progress at ${T} ms`);
+		if (!woke) idle = 0;
+		const horizon = Math.min(T + 16, events[0]?.atMs ?? Infinity, o.forMs);
+		for (const e of running) {
+			if (e.ended) continue;
+			e.blocked = null;
+			e.t = Math.max(e.t, T);
+			e.heard = performance.now();
+			grant(e.run.memory, T, horizon);
+		}
+	}
+	await Promise.all(live.map((e) => e.run.done));
+	for (const e of live) e.b.status = res.neverPauses.includes(e.b.uid) ? "error" : e.run.status;
+	res.simulatedMs = Math.min(T, o.forMs);
+	return res;
+}
+//#endregion
+//#region src/run/node/runProcess.ts
+var CHILD = "--circuitoon-run-child";
+/** Node 22.13 and newer: the permission model without the experimental flag. */
+var PERMISSION = process.allowedNodeEnvironmentFlags.has("--permission");
+var can = (f) => {
+	try {
+		f();
+		return true;
+	} catch {
+		return false;
+	}
+};
+function probeSandbox(paths) {
+	const p = process.permission;
+	return {
+		permission: !!p,
+		codeFromStrings: can(() => new Function("return 1")),
+		read: paths.map((path) => can(() => statSync(path).isDirectory() ? readdirSync(path) : readFileSync(path))),
+		write: p ? p.has("fs.write") : true,
+		childProcess: p ? p.has("child") : true,
+		addons: p ? p.has("addon") : true
+	};
+}
+/** Why the child is not confined as it should be, or null. */
+function hole(p) {
+	if (p.codeFromStrings) return "it can build code from strings";
+	if (!PERMISSION) return null;
+	if (!p.permission) return "the permission model is off";
+	if (p.write || p.childProcess || p.addons) return "it can write files, start processes or load addons";
+	return null;
+}
+/** Runs `job` in the confined child; `readPaths` are the extra folders it may read (Pyodide's). */
+async function runIsolated(job, readPaths) {
+	const file = fileURLToPath(import.meta.url);
+	const source = file.endsWith(".ts");
+	const here = dirname(file);
+	const read = [
+		source ? resolve(here, "..", "..") : here,
+		engineDir(),
+		...readPaths
+	].filter((p) => !!p);
+	const execArgv = [
+		"--disallow-code-generation-from-strings",
+		"--disable-warning=SecurityWarning",
+		...PERMISSION ? [
+			"--permission",
+			"--allow-worker",
+			...read.map((p) => `--allow-fs-read=${p}`)
+		] : [],
+		...source ? [`--import=${pathToFileURL(join(here, "sourceHooks.ts")).href}`] : []
+	];
+	const { NODE_OPTIONS: _, ...env } = process.env;
+	const child = fork(file, [CHILD], {
+		execArgv,
+		env,
+		serialization: "advanced",
+		stdio: [
+			"ignore",
+			"ignore",
+			"pipe",
+			"ipc"
+		]
+	});
+	let err = "";
+	child.stderr.on("data", (b) => err += b.toString());
+	try {
+		const reply = await new Promise((ok, fail) => {
+			child.once("message", (m) => ok(m));
+			child.once("error", fail);
+			child.once("exit", (code) => fail(/* @__PURE__ */ new Error(`the run's process ended early (exit ${code})${err.trim() ? `: ${err.trim()}` : ""}`)));
+			child.send(job);
+		});
+		const why = hole(reply.probe);
+		if (why) throw new Error(`the run's sandbox did not hold (${why}); not running the code`);
+		if (!reply.ok) throw new Error(reply.error);
+		return {
+			result: reply.result,
+			probe: reply.probe
+		};
+	} finally {
+		child.kill();
+	}
+}
+if (isMainThread && process.argv.includes(CHILD) && process.send) {
+	process.on("disconnect", () => process.exit(0));
+	process.once("message", (job) => {
+		const { modules, probe, ...o } = job;
+		const sandbox = probeSandbox(probe ?? []);
+		const send = (r) => process.send(r, () => process.exit(0));
+		if (hole(sandbox)) return send({
+			ok: false,
+			error: "not confined",
+			probe: sandbox
+		});
+		const engine = makeEngine(createNodeEngineHost());
+		drive({
+			...o,
+			engine,
+			library: (id) => Object.hasOwn(modules, id) ? modules[id] : void 0
+		}).then(({ solves: _, ...result }) => send({
+			ok: true,
+			result,
+			probe: sandbox
+		})).catch((e) => send({
+			ok: false,
+			error: e instanceof Error ? e.message : String(e),
+			probe: sandbox
+		})).finally(() => engine.dispose());
+	});
+}
+var PY_FILES = Object.fromEntries(Object.entries(/* @__PURE__ */ Object.assign({
+	"./py/RPi/GPIO.py": "\"\"\"RPi.GPIO for Circuitoon's simulated Raspberry Pi (firmware spec 5.1).\n\nThe RPi.GPIO 0.7 calls on the board's simulated pins: outputs read their own latch, inputs read the\nlevel the simulation solved, edges come from the editor's edge counters and their callbacks run at\nyield points (Circuitoon's scheduler, not a thread). PWM declares its duty and frequency; nothing\ntoggles the pin to fake it.\n\"\"\"\nimport sys\nimport warnings\n\nimport _circuitoon as _rt\nimport circuitoon_hw as _hw\nfrom _circuitoon import BOARD_TO_BCM as _BOARD_TO_BCM\n\nVERSION = '0.7.1'\nRPI_REVISION = 3\nBOARD = 10\nBCM = 11\nOUT = 0\nIN = 1\nLOW = 0\nHIGH = 1\nPUD_OFF = 20\nPUD_DOWN = 21\nPUD_UP = 22\nRISING = 31\nFALLING = 32\nBOTH = 33\nUNKNOWN = -1\nSERIAL = 40\nSPI = 41\nI2C = 42\nHARD_PWM = 43\n\n_INFO = {\n    'pi4': {'TYPE': 'Pi 4 Model B', 'PROCESSOR': 'BCM2711'},\n    'pi5': {'TYPE': 'Pi 5', 'PROCESSOR': 'BCM2712'},\n    'zero2w': {'TYPE': 'Zero 2 W', 'PROCESSOR': 'BCM2710A1'},\n}\n_board = _hw.board()\n# Revision, maker and RAM depend on the unit, which the simulator does not know.\nRPI_INFO = dict(P1_REVISION=3, REVISION='unknown', MANUFACTURER='unknown', RAM='unknown', **_INFO[_board])\nif _board == 'pi5':\n    sys.stderr.write('RPi.GPIO does not work on a real Pi 5; use gpiozero, or install rpi-lgpio\\n')\n\n_PULL_MODE = {PUD_OFF: 1, PUD_UP: 2, PUD_DOWN: 3}\n_mode = None\n_warn = True\n_dir = {}\n_pwm = {}\n_detect = {}\n\n\ndef _bcm(channel):\n    if _mode is None:\n        raise RuntimeError('Please set pin numbering mode using GPIO.setmode(GPIO.BOARD) or GPIO.setmode(GPIO.BCM)')\n    if not isinstance(channel, int) or isinstance(channel, bool):\n        raise ValueError('Channel must be an integer or list/tuple of integers')\n    if _mode == BOARD:\n        if channel not in _BOARD_TO_BCM:\n            raise ValueError('The channel sent is invalid on a Raspberry Pi')\n        bcm = _BOARD_TO_BCM[channel]\n    else:\n        bcm = channel\n    if bcm in (0, 1):\n        raise ValueError(f'GPIO{bcm} is reserved for the HAT ID EEPROM and is not simulated')\n    if not 2 <= bcm <= 27:\n        raise ValueError('The channel sent is invalid on a Raspberry Pi')\n    return bcm\n\n\ndef _channels(channel):\n    return list(channel) if isinstance(channel, (list, tuple)) else [channel]\n\n\ndef setmode(mode):\n    global _mode\n    if mode not in (BOARD, BCM):\n        raise ValueError('An invalid mode was passed to setmode()')\n    if _mode is not None and mode != _mode:\n        raise ValueError('A different mode has already been set!')\n    _mode = mode\n\n\ndef getmode():\n    return _mode\n\n\ndef setwarnings(flag):\n    global _warn\n    _warn = bool(flag)\n\n\ndef setup(channel, direction, pull_up_down=PUD_OFF, initial=-1):\n    if direction not in (IN, OUT):\n        raise ValueError('An invalid direction was passed to setup()')\n    if pull_up_down not in _PULL_MODE:\n        raise ValueError('Invalid value for pull_up_down - should be either PUD_OFF, PUD_UP or PUD_DOWN')\n    if direction == OUT and pull_up_down != PUD_OFF:\n        raise ValueError('pull_up_down parameter is not valid for outputs')\n    if direction == IN and initial != -1:\n        raise ValueError('initial parameter is not valid for inputs')\n    for ch in _channels(channel):\n        bcm = _bcm(ch)\n        if _warn and bcm in _dir:\n            warnings.warn('This channel is already in use, continuing anyway.  Use GPIO.setwarnings(False) to disable warnings.', RuntimeWarning, stacklevel=2)\n        if direction == OUT:\n            _hw.setup(bcm, 4)\n            if initial != -1:\n                _hw.output(bcm, 1 if initial else 0)\n        else:\n            _hw.setup(bcm, _PULL_MODE[pull_up_down])\n        _dir[bcm] = direction\n\n\ndef output(channel, value):\n    chans = _channels(channel)\n    values = list(value) if isinstance(value, (list, tuple)) else [value] * len(chans)\n    if len(values) != len(chans):\n        raise RuntimeError('Number of channels != number of values')\n    for ch, v in zip(chans, values):\n        bcm = _bcm(ch)\n        if _dir.get(bcm) != OUT:\n            raise RuntimeError('The GPIO channel has not been set up as an OUTPUT')\n        _hw.output(bcm, 1 if v else 0)\n\n\ndef input(channel):\n    bcm = _bcm(channel)\n    if bcm not in _dir:\n        raise RuntimeError('You must setup() the GPIO channel first')\n    _rt.yield_point()\n    return _hw.read(bcm)\n\n\ndef cleanup(channel=None):\n    global _mode\n    chans = list(_dir) if channel is None else [_bcm(c) for c in _channels(channel)]\n    for bcm in chans:\n        if bcm in _detect:\n            _detect.pop(bcm).close()\n        if bcm in _pwm:\n            _pwm[bcm].stop()\n        _hw.setup(bcm, 0)\n        _dir.pop(bcm, None)\n    if channel is None:\n        _mode = None\n\n\ndef gpio_function(channel):\n    return _dir.get(_bcm(channel), IN)\n\n\ndef _counts(bcm):\n    return _hw.rising(bcm) & 0xFFFFFFFF, _hw.falling(bcm) & 0xFFFFFFFF\n\n\nclass _Detect:\n    \"\"\"Edge detection on an input (spec 4.4): the editor's edge counters, polled at yield points.\"\"\"\n\n    def __init__(self, bcm, channel, edge, bouncetime):\n        self.bcm, self.channel, self.edge = bcm, channel, edge\n        self.bounce = (bouncetime or 0) / 1000.0\n        self.callbacks = []\n        self.flag = False\n        self.seen = _counts(bcm)\n        self.last = None\n\n    def edges(self):\n        r, f = _counts(self.bcm)\n        n = 0\n        if self.edge in (RISING, BOTH):\n            n += (r - self.seen[0]) & 0xFFFFFFFF\n        if self.edge in (FALLING, BOTH):\n            n += (f - self.seen[1]) & 0xFFFFFFFF\n        self.seen = (r, f)\n        return n\n\n    def poll(self):\n        n = self.edges()\n        if not n:\n            return\n        t = _rt.now()\n        if self.bounce and self.last is not None and t - self.last < self.bounce:\n            return\n        self.last = t\n        self.flag = True\n        for _ in range(n):\n            for cb in list(self.callbacks):\n                _rt.queue(lambda cb=cb: cb(self.channel))\n\n    def close(self):\n        _rt.remove_poller(self.poll)\n\n\ndef add_event_detect(channel, edge, callback=None, bouncetime=None):\n    bcm = _bcm(channel)\n    if _dir.get(bcm) != IN:\n        raise RuntimeError('You must setup() the GPIO channel as an input first')\n    if edge not in (RISING, FALLING, BOTH):\n        raise ValueError('The edge must be set to RISING, FALLING or BOTH')\n    if bcm in _detect:\n        raise RuntimeError('Conflicting edge detection already enabled for this GPIO channel')\n    d = _detect[bcm] = _Detect(bcm, channel, edge, bouncetime)\n    if callback is not None:\n        d.callbacks.append(callback)\n    _rt.add_poller(d.poll)\n\n\ndef add_event_callback(channel, callback):\n    bcm = _bcm(channel)\n    if bcm not in _detect:\n        raise RuntimeError('Add event detection using add_event_detect first before adding a callback')\n    _detect[bcm].callbacks.append(callback)\n\n\ndef remove_event_detect(channel):\n    bcm = _bcm(channel)\n    if bcm in _detect:\n        _detect.pop(bcm).close()\n\n\ndef event_detected(channel):\n    d = _detect.get(_bcm(channel))\n    if d is None:\n        return False\n    _rt.yield_point()\n    hit, d.flag = d.flag, False\n    return hit\n\n\ndef wait_for_edge(channel, edge, bouncetime=None, timeout=None):\n    bcm = _bcm(channel)\n    if _dir.get(bcm) != IN:\n        raise RuntimeError('You must setup() the GPIO channel as an input first')\n    if bcm in _detect:\n        raise RuntimeError('Conflicting edge detection events already exist for this GPIO channel')\n    if edge not in (RISING, FALLING, BOTH):\n        raise ValueError('The edge must be set to RISING, FALLING or BOTH')\n    d = _Detect(bcm, channel, edge, bouncetime)\n    got = _rt.wait(None if timeout is None else timeout / 1000.0, until=lambda: d.edges() > 0)\n    return channel if got else None\n\n\nclass PWM:\n    \"\"\"Software PWM as RPi.GPIO 0.7 offers it; here it declares duty and frequency (spec 2.2).\"\"\"\n\n    def __init__(self, channel, frequency):\n        bcm = _bcm(channel)\n        if _dir.get(bcm) != OUT:\n            raise RuntimeError('You must setup() the GPIO channel as an output first')\n        if bcm in _pwm:\n            raise RuntimeError('A PWM object already exists for this GPIO channel')\n        if frequency <= 0.0:\n            raise ValueError('frequency must be greater than 0.0')\n        self._bcm, self._freq, self._dc, self._running = bcm, float(frequency), 0.0, False\n        _pwm[bcm] = self\n\n    def _write(self):\n        _hw.pwm(self._bcm, self._running, self._dc / 100.0, self._freq)\n\n    @staticmethod\n    def _check(dutycycle):\n        if not 0.0 <= dutycycle <= 100.0:\n            raise ValueError('dutycycle must have a value from 0.0 to 100.0')\n\n    def start(self, dutycycle):\n        self._check(dutycycle)\n        self._dc, self._running = float(dutycycle), True\n        self._write()\n\n    def ChangeDutyCycle(self, dutycycle):\n        self._check(dutycycle)\n        self._dc = float(dutycycle)\n        self._write()\n\n    def ChangeFrequency(self, frequency):\n        if frequency <= 0.0:\n            raise ValueError('frequency must be greater than 0.0')\n        self._freq = float(frequency)\n        self._write()\n\n    def stop(self):\n        self._running = False\n        self._write()\n        _pwm.pop(self._bcm, None)\n",
+	"./py/RPi/__init__.py": "\"\"\"RPi: Circuitoon's stand-in package (see GPIO.py).\"\"\"\n",
+	"./py/_circuitoon.py": "\"\"\"Circuitoon's run-time for scripts on a simulated Raspberry Pi (firmware spec 5.2).\n\nOne scheduler for every wait (time.sleep, input, gpiozero's pause and wait_for_*, RPi.GPIO's\nwait_for_edge and the waits inside our modules): due timers and queued callbacks run at yield points\n(the waits and every pin read), never inside a callback, so it is not re-entrant. Time comes from the\nrun's clock. JS only blocks (circuitoon_hw.block) and reports what woke it.\n\"\"\"\nimport builtins\nimport heapq\nimport linecache\nimport sys\nimport threading\nimport time\nimport traceback\n\nimport circuitoon_hw as hw\n\n# Modules that need devices or libraries the simulator does not have (spec 5.1). The gate scans\n# scripts for the same names: src/run/unsupported.ts reads this dict (one entry per line).\nUNSUPPORTED = {\n    'smbus': 'smbus needs I2C devices, coming in a later update',\n    'smbus2': 'smbus2 needs I2C devices, coming in a later update',\n    'spidev': 'spidev needs SPI devices, coming in a later update',\n    'serial': 'serial (pyserial) needs a serial port, coming in a later update',\n    'pigpio': 'pigpio is not simulated; use gpiozero or RPi.GPIO',\n    'lgpio': 'lgpio is not simulated; use gpiozero or RPi.GPIO',\n    'picamera2': 'picamera2 needs a camera, which is not simulated',\n}\nTHREADS = \"Threads aren't supported in the simulator yet; use gpiozero callbacks or a loop with time.sleep()\"\nNPINS = 28\n# The 40-pin header: BOARD pin number to BCM GPIO number (RPi.GPIO and gpiozero both read it).\nBOARD_TO_BCM = {3: 2, 5: 3, 7: 4, 8: 14, 10: 15, 11: 17, 12: 18, 13: 27, 15: 22, 16: 23, 18: 24, 19: 10,\n                21: 9, 22: 25, 23: 11, 24: 8, 26: 7, 27: 0, 28: 1, 29: 5, 31: 6, 32: 12, 33: 13, 35: 19,\n                36: 16, 37: 26, 38: 20, 40: 21}\n\n_timers = []\n_queue = []\n_pollers = []\n_seq = 0\n_in_callback = False\n_file = 'main.py'\n\n\nclass Timer:\n    \"\"\"A scheduled call; cancel() stops it; `period` repeats it.\"\"\"\n    __slots__ = ('due', 'seq', 'fn', 'period', 'alive')\n\n    def __init__(self, due, fn, period):\n        global _seq\n        _seq += 1\n        self.due, self.seq, self.fn, self.period, self.alive = due, _seq, fn, period, True\n\n    def __lt__(self, other):\n        return (self.due, self.seq) < (other.due, other.seq)\n\n    def cancel(self):\n        self.alive = False\n\n\ndef reset():\n    \"\"\"Forgets every timer, queued callback and poller.\"\"\"\n    global _in_callback\n    _timers.clear()\n    _queue.clear()\n    _pollers.clear()\n    _in_callback = False\n\n\ndef now():\n    \"\"\"Seconds of run time.\"\"\"\n    return hw.monotonic()\n\n\ndef call_later(delay, fn, period=None):\n    timer = Timer(now() + max(0.0, delay), fn, period)\n    heapq.heappush(_timers, timer)\n    hw.pending(True)\n    return timer\n\n\ndef queue(fn):\n    \"\"\"Runs fn at the next yield point, outside any callback.\"\"\"\n    _queue.append(fn)\n    hw.pending(True)\n\n\ndef add_poller(fn):\n    if fn not in _pollers:\n        _pollers.append(fn)\n    hw.pending(True)\n\n\ndef remove_poller(fn):\n    if fn in _pollers:\n        _pollers.remove(fn)\n\n\ndef format_error(e):\n    \"\"\"A traceback listing only the user's own frames (plan ruling R11).\"\"\"\n    te = traceback.TracebackException.from_exception(e)\n    te.stack = traceback.StackSummary.from_list([f for f in te.stack if f.filename == _file])\n    return ''.join(te.format())\n\n\ndef _run(fn):\n    global _in_callback\n    _in_callback = True\n    try:\n        fn()\n    except Exception as e:  # plan ruling R10: printed, and the script goes on\n        sys.stderr.write(format_error(e))\n    finally:\n        _in_callback = False\n\n\ndef dispatch():\n    \"\"\"Polls for edges, then runs queued callbacks and the timers due now. Inside a callback it does nothing.\"\"\"\n    if _in_callback:\n        return\n    for poll in list(_pollers):\n        _run(poll)\n    while _queue:\n        _run(_queue.pop(0))\n    t = now()\n    due = []\n    while _timers and (not _timers[0].alive or _timers[0].due <= t):\n        timer = heapq.heappop(_timers)\n        if timer.alive:\n            due.append(timer)\n    for timer in due:\n        if timer.period is not None:\n            # Behind schedule: the next run is now, never a burst of catch-up runs.\n            timer.due = max(timer.due + timer.period, t)\n            heapq.heappush(_timers, timer)\n        if timer.alive:\n            _run(timer.fn)\n        while _queue:\n            _run(_queue.pop(0))\n\n\ndef _pending():\n    return bool(_queue or _pollers or any(timer.alive for timer in _timers))\n\n\ndef yield_point():\n    \"\"\"A yield point (every pin read and every wait): timers and callbacks may run here.\"\"\"\n    dispatch()\n    hw.yielded(_pending())\n\n\ndef wait(seconds=None, until=None):\n    \"\"\"The one blocking primitive (spec 5.2): runs timers and callbacks until until() is true\n    (returns True) or `seconds` have passed (returns False). None waits forever. Inside a callback it\n    only waits.\"\"\"\n    end = None if seconds is None else now() + max(0.0, seconds)\n    while True:\n        yield_point()\n        if until is not None and until():\n            return True\n        t = now()\n        if end is not None and t >= end:\n            return False\n        nxt = end\n        if not _in_callback:\n            while _timers and not _timers[0].alive:\n                heapq.heappop(_timers)\n            if _timers and (nxt is None or _timers[0].due < nxt):\n                nxt = _timers[0].due\n        hw.block(-1.0 if nxt is None else nxt)\n\n\ndef _sleep(seconds):\n    if seconds < 0:\n        raise ValueError('sleep length must be non-negative')\n    wait(seconds)\n\n\ndef _input(prompt=''):\n    \"\"\"input() (spec 5.3, plan ruling R12): the prompt labels the input box; callbacks run while it waits.\"\"\"\n    hw.input_begin(str(prompt))\n    wait(until=hw.input_ready)\n    return hw.input_take()\n\n\ndef _no_threads(*args, **kwargs):\n    raise RuntimeError(THREADS)\n\n\nclass _Unsupported:\n    \"\"\"Refuses modules the simulator does not have, in plain words (spec 5.1).\"\"\"\n\n    def find_spec(self, name, path=None, target=None):\n        root = name.split('.')[0]\n        if root in UNSUPPORTED:\n            raise ImportError(UNSUPPORTED[root], name=name)\n        return None\n\n\ndef install():\n    \"\"\"Points time, input, signal.pause and threads at the scheduler, and refuses unsupported modules.\"\"\"\n    import _thread\n    import signal\n    # gpiozero's own examples end with `from signal import pause; pause()`.\n    signal.pause = lambda: wait()\n    time.sleep = _sleep\n    time.time = hw.epoch\n    time.monotonic = hw.monotonic\n    time.perf_counter = hw.monotonic\n    time.time_ns = lambda: int(hw.epoch() * 1e9)\n    time.monotonic_ns = lambda: int(hw.monotonic() * 1e9)\n    time.perf_counter_ns = time.monotonic_ns\n    builtins.input = _input\n    threading.Thread.start = _no_threads\n    _thread.start_new_thread = _no_threads\n    sys.meta_path[:] = [f for f in sys.meta_path if type(f).__name__ != '_Unsupported']\n    sys.meta_path.insert(0, _Unsupported())\n\n\ndef shutdown():\n    \"\"\"The end of a run: no timers left, every pin back to unused, so the saved states apply again.\"\"\"\n    reset()\n    for bcm in range(NPINS):\n        hw.setup(bcm, 0)\n\n\ndef main(source, filename):\n    \"\"\"Runs the user's script. Returns 'done', 'stopped' (Stop: KeyboardInterrupt) or 'error'.\"\"\"\n    global _file\n    _file = filename\n    reset()\n    install()\n    linecache.cache[filename] = (len(source), None, source.splitlines(True), filename)\n    g = {'__name__': '__main__', '__file__': filename, '__builtins__': builtins}\n    status = 'done'\n    try:\n        exec(compile(source, filename, 'exec'), g)\n    except KeyboardInterrupt:\n        status = 'stopped'\n    except SystemExit as e:\n        if e.code not in (None, 0):\n            status = 'error'\n            if not isinstance(e.code, int):\n                sys.stderr.write(f'{e.code}\\n')\n    except BaseException as e:\n        sys.stderr.write(format_error(e))\n        status = 'error'\n    finally:\n        shutdown()\n    return status\n",
+	"./py/gpiozero/__init__.py": "\"\"\"gpiozero for Circuitoon's simulated Raspberry Pi (firmware spec 5.1).\r\n\r\nA subset with gpiozero's names and signatures. Callbacks, blink and pulse run from Circuitoon's\r\nscheduler (_circuitoon) at yield points: they are not threads, so a callback that sleeps holds\r\neverything else until it returns (About the simulator says so). Input devices are not smoothed.\r\n\"\"\"\r\nimport inspect\r\n\r\nimport _circuitoon as _rt\r\nimport circuitoon_hw as _hw\r\nfrom _circuitoon import BOARD_TO_BCM as _BOARD_TO_BCM\r\n\r\n# `from gpiozero import *` takes exactly these.\r\n__all__ = ['GPIOZeroError', 'DeviceClosed', 'GPIOPinInUse', 'PinInvalidPin', 'PinInvalidState', 'OutputDeviceBadValue',\r\n           'Device', 'OutputDevice', 'DigitalOutputDevice', 'LED', 'Buzzer', 'InputDevice', 'DigitalInputDevice', 'Button',\r\n           'LineSensor', 'MotionSensor', 'PWMOutputDevice', 'PWMLED', 'RGBLED', 'Servo', 'AngularServo', 'Motor', 'pause']\r\n\r\n# Names gpiozero has that need devices not simulated yet (spec 5.1); one entry per line, read by\r\n# src/run/unsupported.ts for the gate's static scan.\r\nUNSUPPORTED_NAMES = {\r\n    'MCP3001': 'needs SPI devices, coming in a later update',\r\n    'MCP3002': 'needs SPI devices, coming in a later update',\r\n    'MCP3004': 'needs SPI devices, coming in a later update',\r\n    'MCP3008': 'needs SPI devices, coming in a later update',\r\n    'MCP3201': 'needs SPI devices, coming in a later update',\r\n    'MCP3202': 'needs SPI devices, coming in a later update',\r\n    'MCP3204': 'needs SPI devices, coming in a later update',\r\n    'MCP3208': 'needs SPI devices, coming in a later update',\r\n    'MCP3301': 'needs SPI devices, coming in a later update',\r\n    'MCP3302': 'needs SPI devices, coming in a later update',\r\n    'MCP3304': 'needs SPI devices, coming in a later update',\r\n}\r\n_M32 = 0xFFFFFFFF\r\n_FPS = 25\r\n_used = {}\r\n\r\n\r\ndef __getattr__(name):\r\n    if name in UNSUPPORTED_NAMES:\r\n        raise NotImplementedError(f'gpiozero.{name} {UNSUPPORTED_NAMES[name]}')\r\n    if name.startswith('__'):\r\n        raise AttributeError(name)\r\n    raise NotImplementedError(f'gpiozero.{name} is not in the simulator yet')\r\n\r\n\r\nclass GPIOZeroError(Exception):\r\n    pass\r\n\r\n\r\nclass DeviceClosed(GPIOZeroError):\r\n    pass\r\n\r\n\r\nclass GPIOPinInUse(GPIOZeroError):\r\n    pass\r\n\r\n\r\nclass PinInvalidPin(GPIOZeroError, ValueError):\r\n    pass\r\n\r\n\r\nclass PinInvalidState(GPIOZeroError, ValueError):\r\n    pass\r\n\r\n\r\nclass OutputDeviceBadValue(GPIOZeroError, ValueError):\r\n    pass\r\n\r\n\r\ndef _bcm_of(spec):\r\n    \"\"\"A pin as gpiozero names it: 17, '17', 'GPIO17', 'BCM17', 'BOARD11' or 'J8:11'.\"\"\"\r\n    bcm = -1\r\n    if isinstance(spec, int) and not isinstance(spec, bool):\r\n        bcm = spec\r\n    elif isinstance(spec, str):\r\n        s = spec.strip().upper()\r\n        for prefix, board in (('GPIO', False), ('BCM', False), ('BOARD', True), ('J8:', True), ('', False)):\r\n            if s.startswith(prefix) and s[len(prefix):].isdigit():\r\n                n = int(s[len(prefix):])\r\n                bcm = _BOARD_TO_BCM.get(n, -1) if board else n\r\n                break\r\n    if bcm in (0, 1):\r\n        raise PinInvalidPin(f'GPIO{bcm} is reserved for the HAT ID EEPROM and is not simulated')\r\n    if not 2 <= bcm <= 27:\r\n        raise PinInvalidPin(f'{spec!r} is not a valid pin on a Raspberry Pi header')\r\n    return bcm\r\n\r\n\r\ndef _call(fn, device):\r\n    \"\"\"Calls a gpiozero callback: with the device when it takes one argument, else with none.\"\"\"\r\n    try:\r\n        params = [p for p in inspect.signature(fn).parameters.values() if p.default is p.empty and p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]\r\n    except (TypeError, ValueError):\r\n        params = []\r\n    if params:\r\n        fn(device)\r\n    else:\r\n        fn()\r\n\r\n\r\nclass _Pin:\r\n    def __init__(self, bcm):\r\n        self.number = bcm\r\n\r\n    def __repr__(self):\r\n        return f'GPIO{self.number}'\r\n\r\n    __str__ = __repr__\r\n\r\n\r\nclass Device:\r\n    \"\"\"A device on one or more pins; close() frees them (back to unused).\"\"\"\r\n\r\n    def __init__(self, *pins, pin_factory=None):\r\n        bcms = [_bcm_of(p) for p in pins]\r\n        for b in bcms:\r\n            if b in _used:\r\n                raise GPIOPinInUse(f'pin GPIO{b} is already in use by {_used[b]!r}')\r\n        self._pins = bcms\r\n        self._closed = False\r\n        for b in bcms:\r\n            _used[b] = self\r\n\r\n    def _release(self):\r\n        \"\"\"Stops what the device runs on its own (timers, pollers).\"\"\"\r\n\r\n    def close(self):\r\n        if self._closed:\r\n            return\r\n        self._closed = True\r\n        self._release()\r\n        for b in self._pins:\r\n            _used.pop(b, None)\r\n            _hw.setup(b, 0)\r\n\r\n    @property\r\n    def closed(self):\r\n        return self._closed\r\n\r\n    def _check(self):\r\n        if self._closed:\r\n            raise DeviceClosed(f'{type(self).__name__} is closed or uninitialized')\r\n\r\n    @property\r\n    def pin(self):\r\n        return _Pin(self._pins[0]) if self._pins else None\r\n\r\n    @property\r\n    def is_active(self):\r\n        return bool(self.value)\r\n\r\n    def __enter__(self):\r\n        return self\r\n\r\n    def __exit__(self, *exc):\r\n        self.close()\r\n\r\n    def __repr__(self):\r\n        where = f' on pin GPIO{self._pins[0]}' if len(self._pins) == 1 else ''\r\n        return f'<gpiozero.{type(self).__name__} object{where}{\", closed\" if self._closed else \"\"}>'\r\n\r\n\r\nclass _Sequence:\r\n    \"\"\"Steps a device through (value, seconds) pairs, n times or forever, from timers (blink, pulse).\"\"\"\r\n\r\n    def __init__(self, device, steps, n, after):\r\n        self.device, self.steps, self.left, self.after = device, steps, n, after\r\n        self.i = 0\r\n        self.done = False\r\n        self.timer = None\r\n        if not any(secs > 0 for _, secs in steps):\r\n            self._finish()\r\n        else:\r\n            self._step()\r\n\r\n    def _finish(self):\r\n        self.done = True\r\n        self.device._write(self.after)\r\n\r\n    def _step(self):\r\n        while not self.done:\r\n            if self.i == len(self.steps):\r\n                self.i = 0\r\n                if self.left is not None:\r\n                    self.left -= 1\r\n                    if self.left <= 0:\r\n                        return self._finish()\r\n            value, secs = self.steps[self.i]\r\n            self.i += 1\r\n            self.device._write(value)\r\n            if secs > 0:\r\n                self.timer = _rt.call_later(secs, self._step)\r\n                return\r\n\r\n    def cancel(self):\r\n        self.done = True\r\n        if self.timer is not None:\r\n            self.timer.cancel()\r\n\r\n\r\ndef _mix(a, b, t):\r\n    if isinstance(a, tuple):\r\n        return tuple(x + (y - x) * t for x, y in zip(a, b))\r\n    return a + (b - a) * t\r\n\r\n\r\ndef _fade_steps(on_time, off_time, fade_in, fade_out, lo, hi):\r\n    \"\"\"gpiozero's blink sequence: fade in at 25 steps a second, on, fade out, off.\"\"\"\r\n    steps = []\r\n    if fade_in > 0:\r\n        k = int(_FPS * fade_in)\r\n        steps += [(_mix(lo, hi, i / k), 1 / _FPS) for i in range(k)]\r\n    steps.append((hi, on_time))\r\n    if fade_out > 0:\r\n        k = int(_FPS * fade_out)\r\n        steps += [(_mix(hi, lo, i / k), 1 / _FPS) for i in range(k)]\r\n    steps.append((lo, off_time))\r\n    return steps\r\n\r\n\r\nclass OutputDevice(Device):\r\n    def __init__(self, pin=None, *, active_high=True, initial_value=False, pin_factory=None):\r\n        super().__init__(pin)\r\n        self._bcm = self._pins[0]\r\n        self.active_high = active_high\r\n        self._seq = None\r\n        _hw.setup(self._bcm, 4)\r\n        if initial_value is not None:\r\n            self._write(1 if initial_value else 0)\r\n\r\n    def _write(self, value):\r\n        self._check()\r\n        _hw.output(self._bcm, 1 if bool(value) == self.active_high else 0)\r\n\r\n    def _stop_seq(self):\r\n        if self._seq is not None:\r\n            self._seq.cancel()\r\n            self._seq = None\r\n\r\n    def _release(self):\r\n        self._stop_seq()\r\n\r\n    def _run_seq(self, steps, n, background, after):\r\n        self._stop_seq()\r\n        seq = self._seq = _Sequence(self, steps, n, after)\r\n        if not background:\r\n            _rt.wait(until=lambda: seq.done)\r\n\r\n    def on(self):\r\n        self._stop_seq()\r\n        self._write(1)\r\n\r\n    def off(self):\r\n        self._stop_seq()\r\n        self._write(0)\r\n\r\n    def toggle(self):\r\n        self._stop_seq()\r\n        self._write(0 if self.value else 1)\r\n\r\n    @property\r\n    def value(self):\r\n        self._check()\r\n        _rt.yield_point()\r\n        return 1 if _hw.read(self._bcm) == (1 if self.active_high else 0) else 0\r\n\r\n    @value.setter\r\n    def value(self, v):\r\n        self._stop_seq()\r\n        self._write(v)\r\n\r\n\r\nclass DigitalOutputDevice(OutputDevice):\r\n    def blink(self, on_time=1, off_time=1, n=None, background=True):\r\n        self._run_seq([(1, on_time), (0, off_time)], n, background, 0)\r\n\r\n\r\nclass LED(DigitalOutputDevice):\r\n    is_lit = Device.is_active\r\n\r\n\r\nclass Buzzer(DigitalOutputDevice):\r\n    def beep(self, on_time=1, off_time=1, n=None, background=True):\r\n        self.blink(on_time, off_time, n, background)\r\n\r\n\r\nclass InputDevice(Device):\r\n    def __init__(self, pin=None, *, pull_up=False, active_state=None, pin_factory=None):\r\n        super().__init__(pin)\r\n        self._bcm = self._pins[0]\r\n        if pull_up is None:\r\n            if active_state is None:\r\n                raise PinInvalidState(f'Pin GPIO{self._bcm} is defined as floating, but \"active_state\" is not defined')\r\n            self._active_high, mode = bool(active_state), 1\r\n        else:\r\n            if active_state is not None:\r\n                raise PinInvalidState(f'Pin GPIO{self._bcm} is not floating, but \"active_state\" is not None')\r\n            self._active_high, mode = not pull_up, (2 if pull_up else 3)\r\n        self.pull_up = pull_up\r\n        _hw.setup(self._bcm, mode)\r\n\r\n    @property\r\n    def value(self):\r\n        self._check()\r\n        _rt.yield_point()\r\n        return 1 if _hw.read(self._bcm) == (1 if self._active_high else 0) else 0\r\n\r\n\r\nclass DigitalInputDevice(InputDevice):\r\n    \"\"\"Activation and deactivation from the editor's edge counters (spec 4.4), so a press that\r\n    happens while the code sleeps still fires.\"\"\"\r\n\r\n    def __init__(self, pin=None, *, pull_up=False, active_state=None, bounce_time=None, pin_factory=None):\r\n        super().__init__(pin, pull_up=pull_up, active_state=active_state)\r\n        self._bounce = bounce_time or 0\r\n        self._seen = (_hw.rising(self._bcm) & _M32, _hw.falling(self._bcm) & _M32)\r\n        self._last = None\r\n        self._active_since = None\r\n        self._hold = None\r\n        self.when_activated = None\r\n        self.when_deactivated = None\r\n        _rt.add_poller(self._poll)\r\n\r\n    def _release(self):\r\n        _rt.remove_poller(self._poll)\r\n        if self._hold is not None:\r\n            self._hold.cancel()\r\n\r\n    def _poll(self):\r\n        r, f = _hw.rising(self._bcm) & _M32, _hw.falling(self._bcm) & _M32\r\n        ups, downs = (r - self._seen[0]) & _M32, (f - self._seen[1]) & _M32\r\n        self._seen = (r, f)\r\n        if not ups and not downs:\r\n            return\r\n        t = _rt.now()\r\n        if self._bounce and self._last is not None and t - self._last < self._bounce:\r\n            return\r\n        self._last = t\r\n        acts, deacts = (ups, downs) if self._active_high else (downs, ups)\r\n        level_now = _hw.read(self._bcm) == (1 if self._active_high else 0)\r\n        # Alternate the events so the last one matches the level now.\r\n        events = []\r\n        for _ in range(acts + deacts):\r\n            events.append(not events[-1] if events else None)\r\n        if events:\r\n            events[-1] = level_now\r\n            for i in range(len(events) - 2, -1, -1):\r\n                events[i] = not events[i + 1]\r\n        for active in events:\r\n            _rt.queue(lambda active=active: self._edge(active))\r\n\r\n    def _edge(self, active):\r\n        if active:\r\n            self._active_since = _rt.now()\r\n            self._activated()\r\n            if self.when_activated:\r\n                _call(self.when_activated, self)\r\n        else:\r\n            self._active_since = None\r\n            self._deactivated()\r\n            if self.when_deactivated:\r\n                _call(self.when_deactivated, self)\r\n\r\n    def _activated(self):\r\n        pass\r\n\r\n    def _deactivated(self):\r\n        pass\r\n\r\n    @property\r\n    def active_time(self):\r\n        return None if self._active_since is None else _rt.now() - self._active_since\r\n\r\n    def wait_for_active(self, timeout=None):\r\n        return _rt.wait(timeout, until=lambda: self.is_active)\r\n\r\n    def wait_for_inactive(self, timeout=None):\r\n        return _rt.wait(timeout, until=lambda: not self.is_active)\r\n\r\n\r\nclass Button(DigitalInputDevice):\r\n    def __init__(self, pin=None, *, pull_up=True, active_state=None, bounce_time=None, hold_time=1, hold_repeat=False, pin_factory=None):\r\n        super().__init__(pin, pull_up=pull_up, active_state=active_state, bounce_time=bounce_time)\r\n        self.hold_time = hold_time\r\n        self.hold_repeat = hold_repeat\r\n        self.when_held = None\r\n        self._held = False\r\n\r\n    def _activated(self):\r\n        self._held = False\r\n        self._hold = _rt.call_later(self.hold_time, self._held_now, self.hold_time if self.hold_repeat else None)\r\n\r\n    def _deactivated(self):\r\n        self._held = False\r\n        if self._hold is not None:\r\n            self._hold.cancel()\r\n            self._hold = None\r\n\r\n    def _held_now(self):\r\n        if not self.is_active:\r\n            return\r\n        self._held = True\r\n        if self.when_held:\r\n            _call(self.when_held, self)\r\n\r\n    @property\r\n    def is_held(self):\r\n        return self._held\r\n\r\n    @property\r\n    def held_time(self):\r\n        return self.active_time if self._held else None\r\n\r\n    is_pressed = Device.is_active\r\n    when_pressed = property(lambda self: self.when_activated, lambda self, fn: setattr(self, 'when_activated', fn))\r\n    when_released = property(lambda self: self.when_deactivated, lambda self, fn: setattr(self, 'when_deactivated', fn))\r\n    wait_for_press = DigitalInputDevice.wait_for_active\r\n    wait_for_release = DigitalInputDevice.wait_for_inactive\r\n\r\n\r\nclass LineSensor(DigitalInputDevice):\r\n    \"\"\"As gpiozero 2.0: the line is detected while the input is inactive.\"\"\"\r\n\r\n    @property\r\n    def line_detected(self):\r\n        return not self.is_active\r\n\r\n    when_line = property(lambda self: self.when_deactivated, lambda self, fn: setattr(self, 'when_deactivated', fn))\r\n    when_no_line = property(lambda self: self.when_activated, lambda self, fn: setattr(self, 'when_activated', fn))\r\n    wait_for_line = DigitalInputDevice.wait_for_inactive\r\n    wait_for_no_line = DigitalInputDevice.wait_for_active\r\n\r\n\r\nclass MotionSensor(DigitalInputDevice):\r\n    @property\r\n    def motion_detected(self):\r\n        return self.is_active\r\n\r\n    when_motion = property(lambda self: self.when_activated, lambda self, fn: setattr(self, 'when_activated', fn))\r\n    when_no_motion = property(lambda self: self.when_deactivated, lambda self, fn: setattr(self, 'when_deactivated', fn))\r\n    wait_for_motion = DigitalInputDevice.wait_for_active\r\n    wait_for_no_motion = DigitalInputDevice.wait_for_inactive\r\n\r\n\r\nclass PWMOutputDevice(OutputDevice):\r\n    \"\"\"Declares duty and frequency (spec 2.2); value is the duty, 0 to 1.\"\"\"\r\n\r\n    def __init__(self, pin=None, *, active_high=True, initial_value=0, frequency=100, pin_factory=None):\r\n        if not 0 <= float(initial_value) <= 1:\r\n            raise OutputDeviceBadValue('PWM value must be between 0 and 1')\r\n        self._duty = 0.0\r\n        self._freq = float(frequency)\r\n        super().__init__(pin, active_high=active_high, initial_value=None)\r\n        self._write(initial_value)\r\n\r\n    def _write(self, value):\r\n        self._check()\r\n        v = float(value)\r\n        if not 0 <= v <= 1:\r\n            raise OutputDeviceBadValue('PWM value must be between 0 and 1')\r\n        self._duty = v\r\n        _hw.pwm(self._bcm, True, v if self.active_high else 1 - v, self._freq)\r\n\r\n    @property\r\n    def value(self):\r\n        self._check()\r\n        return self._duty\r\n\r\n    @value.setter\r\n    def value(self, v):\r\n        self._stop_seq()\r\n        self._write(v)\r\n\r\n    def toggle(self):\r\n        self._stop_seq()\r\n        self._write(1 - self._duty)\r\n\r\n    @property\r\n    def frequency(self):\r\n        return self._freq\r\n\r\n    @frequency.setter\r\n    def frequency(self, f):\r\n        self._freq = float(f)\r\n        self._write(self._duty)\r\n\r\n    def blink(self, on_time=1, off_time=1, fade_in_time=0, fade_out_time=0, n=None, background=True):\r\n        self._run_seq(_fade_steps(on_time, off_time, fade_in_time, fade_out_time, 0, 1), n, background, 0)\r\n\r\n    def pulse(self, fade_in_time=1, fade_out_time=1, n=None, background=True):\r\n        self.blink(0, 0, fade_in_time, fade_out_time, n, background)\r\n\r\n\r\nclass PWMLED(PWMOutputDevice):\r\n    is_lit = Device.is_active\r\n\r\n\r\nclass RGBLED(Device):\r\n    def __init__(self, red=None, green=None, blue=None, *, active_high=True, initial_value=(0, 0, 0), pwm=True, pin_factory=None):\r\n        cls = PWMLED if pwm else LED\r\n        super().__init__()\r\n        self._pwm = pwm\r\n        self._seq = None\r\n        self._leds = []\r\n        try:\r\n            for p in (red, green, blue):\r\n                self._leds.append(cls(p, active_high=active_high))\r\n            self._write(initial_value)\r\n        except BaseException:\r\n            for led in self._leds:\r\n                led.close()\r\n            raise\r\n\r\n    def _write(self, color):\r\n        self._check()\r\n        if len(color) != 3:\r\n            raise OutputDeviceBadValue('RGBLED color must be a 3-tuple')\r\n        for led, v in zip(self._leds, color):\r\n            if not self._pwm and v not in (0, 1):\r\n                raise OutputDeviceBadValue('RGBLED with pwm=False takes only 0 or 1 per channel')\r\n            led._write(v)\r\n\r\n    def _stop_seq(self):\r\n        if self._seq is not None:\r\n            self._seq.cancel()\r\n            self._seq = None\r\n\r\n    def _release(self):\r\n        self._stop_seq()\r\n        for led in self._leds:\r\n            led.close()\r\n\r\n    @property\r\n    def value(self):\r\n        self._check()\r\n        return tuple(float(led._duty) if self._pwm else float(led.value) for led in self._leds)\r\n\r\n    @value.setter\r\n    def value(self, color):\r\n        self._stop_seq()\r\n        self._write(color)\r\n\r\n    color = value\r\n\r\n    red = property(lambda self: self.value[0], lambda self, v: setattr(self, 'value', (v,) + self.value[1:]))\r\n    green = property(lambda self: self.value[1], lambda self, v: setattr(self, 'value', self.value[:1] + (v,) + self.value[2:]))\r\n    blue = property(lambda self: self.value[2], lambda self, v: setattr(self, 'value', self.value[:2] + (v,)))\r\n\r\n    @property\r\n    def is_active(self):\r\n        return self.value != (0, 0, 0)\r\n\r\n    is_lit = is_active\r\n\r\n    def on(self):\r\n        self.value = (1, 1, 1)\r\n\r\n    def off(self):\r\n        self.value = (0, 0, 0)\r\n\r\n    def toggle(self):\r\n        self.value = tuple(1 - v for v in self.value)\r\n\r\n    def blink(self, on_time=1, off_time=1, fade_in_time=0, fade_out_time=0, on_color=(1, 1, 1), off_color=(0, 0, 0), n=None, background=True):\r\n        self._stop_seq()\r\n        seq = self._seq = _Sequence(self, _fade_steps(on_time, off_time, fade_in_time, fade_out_time, tuple(off_color), tuple(on_color)), n, tuple(off_color))\r\n        if not background:\r\n            _rt.wait(until=lambda: seq.done)\r\n\r\n    def pulse(self, fade_in_time=1, fade_out_time=1, on_color=(1, 1, 1), off_color=(0, 0, 0), n=None, background=True):\r\n        self.blink(0, 0, fade_in_time, fade_out_time, on_color, off_color, n, background)\r\n\r\n\r\nclass Servo(Device):\r\n    \"\"\"value -1 to 1 maps to min_pulse_width to max_pulse_width in a frame (spec 5.1); None detaches.\"\"\"\r\n\r\n    def __init__(self, pin=None, *, initial_value=0.0, min_pulse_width=1 / 1000, max_pulse_width=2 / 1000, frame_width=20 / 1000, pin_factory=None):\r\n        if min_pulse_width >= max_pulse_width:\r\n            raise ValueError('min_pulse_width must be less than max_pulse_width')\r\n        if max_pulse_width >= frame_width:\r\n            raise ValueError('max_pulse_width must be less than frame_width')\r\n        if initial_value is not None and not -1 <= float(initial_value) <= 1:\r\n            raise OutputDeviceBadValue('Servo value must be between -1 and 1, or None')\r\n        super().__init__(pin)\r\n        self._bcm = self._pins[0]\r\n        self._min_pw, self._max_pw, self._frame = min_pulse_width, max_pulse_width, frame_width\r\n        self._value = None\r\n        _hw.setup(self._bcm, 4)\r\n        self.value = initial_value\r\n\r\n    @property\r\n    def frame_width(self):\r\n        return self._frame\r\n\r\n    @property\r\n    def min_pulse_width(self):\r\n        return self._min_pw\r\n\r\n    @property\r\n    def max_pulse_width(self):\r\n        return self._max_pw\r\n\r\n    @property\r\n    def pulse_width(self):\r\n        return None if self._value is None else self._min_pw + (self._value + 1) / 2 * (self._max_pw - self._min_pw)\r\n\r\n    @property\r\n    def value(self):\r\n        return self._value\r\n\r\n    @value.setter\r\n    def value(self, v):\r\n        self._check()\r\n        if v is None:\r\n            self._value = None\r\n            _hw.pwm(self._bcm, False, 0, 1 / self._frame)\r\n            return\r\n        v = float(v)\r\n        if not -1 <= v <= 1:\r\n            raise OutputDeviceBadValue('Servo value must be between -1 and 1, or None')\r\n        self._value = v\r\n        _hw.pwm(self._bcm, True, self.pulse_width / self._frame, 1 / self._frame)\r\n\r\n    @property\r\n    def is_active(self):\r\n        return self._value is not None\r\n\r\n    def min(self):\r\n        self.value = -1\r\n\r\n    def mid(self):\r\n        self.value = 0\r\n\r\n    def max(self):\r\n        self.value = 1\r\n\r\n    def detach(self):\r\n        self.value = None\r\n\r\n\r\nclass AngularServo(Servo):\r\n    def __init__(self, pin=None, *, initial_angle=0.0, min_angle=-90, max_angle=90, min_pulse_width=1 / 1000, max_pulse_width=2 / 1000, frame_width=20 / 1000, pin_factory=None):\r\n        self._min_angle, self._max_angle = min_angle, max_angle\r\n        super().__init__(pin, initial_value=None if initial_angle is None else self._to_value(initial_angle), min_pulse_width=min_pulse_width, max_pulse_width=max_pulse_width, frame_width=frame_width)\r\n\r\n    def _to_value(self, angle):\r\n        return (angle - self._min_angle) / (self._max_angle - self._min_angle) * 2 - 1\r\n\r\n    @property\r\n    def min_angle(self):\r\n        return self._min_angle\r\n\r\n    @property\r\n    def max_angle(self):\r\n        return self._max_angle\r\n\r\n    @property\r\n    def angle(self):\r\n        v = self.value\r\n        return None if v is None else self._min_angle + (v + 1) / 2 * (self._max_angle - self._min_angle)\r\n\r\n    @angle.setter\r\n    def angle(self, a):\r\n        self.value = None if a is None else self._to_value(a)\r\n\r\n\r\nclass Motor(Device):\r\n    \"\"\"A motor on two pins (spec 5.1): forward on one, backward on the other.\"\"\"\r\n\r\n    def __init__(self, forward=None, backward=None, *, enable=None, pwm=True, pin_factory=None):\r\n        if enable is not None:\r\n            raise NotImplementedError(\"Motor's enable pin is not simulated yet; wire it high and leave enable out\")\r\n        cls = PWMOutputDevice if pwm else DigitalOutputDevice\r\n        self._fwd = cls(forward)\r\n        try:\r\n            self._bwd = cls(backward)\r\n        except BaseException:\r\n            self._fwd.close()\r\n            raise\r\n        super().__init__()\r\n        self._pwm = pwm\r\n\r\n    def _set(self, dev, speed):\r\n        if not 0 <= speed <= 1:\r\n            raise ValueError('speed must be between 0 and 1')\r\n        if self._pwm:\r\n            dev.value = speed\r\n        elif speed in (0, 1):\r\n            dev.value = speed\r\n        else:\r\n            raise ValueError('a Motor with pwm=False runs only at speed 0 or 1')\r\n\r\n    def forward(self, speed=1):\r\n        self._set(self._bwd, 0)\r\n        self._set(self._fwd, speed)\r\n\r\n    def backward(self, speed=1):\r\n        self._set(self._fwd, 0)\r\n        self._set(self._bwd, speed)\r\n\r\n    def stop(self):\r\n        self._set(self._fwd, 0)\r\n        self._set(self._bwd, 0)\r\n\r\n    def reverse(self):\r\n        self.value = -self.value\r\n\r\n    @property\r\n    def value(self):\r\n        return float(self._fwd.value) - float(self._bwd.value)\r\n\r\n    @value.setter\r\n    def value(self, v):\r\n        if v > 0:\r\n            self.forward(v)\r\n        elif v < 0:\r\n            self.backward(-v)\r\n        else:\r\n            self.stop()\r\n\r\n    @property\r\n    def is_active(self):\r\n        return self.value != 0\r\n\r\n    def _release(self):\r\n        self._fwd.close()\r\n        self._bwd.close()\r\n\r\n\r\ndef pause():\r\n    \"\"\"Waits forever, running callbacks (spec 5.2).\"\"\"\r\n    _rt.wait()\r\n"
+})).map(([k, v]) => [k.slice(5), v]));
+//#endregion
+//#region src/cli/runCmd.ts
+var RUN_FORMAT = "circuitoon-cli/run/1";
+var USAGE$1 = "run: usage: circuitoon run <sheet.json> [--board <ref>|all] [--for 5s] [--input \"line\"]... [--press S1@1.5s[:0.2s]]... [--json] [--py-dir <dir>]";
+function parseDuration(s) {
+	const m = /^(\d+(?:\.\d+)?)(ms|s)?$/.exec(s.trim());
+	return m ? Math.round(Number(m[1]) * (m[2] === "ms" ? 1 : 1e3)) : null;
+}
+function parsePress(spec) {
+	const m = /^([A-Za-z][A-Za-z0-9_]*)@([^:]+)(?::(.+))?$/.exec(spec);
+	const at = m ? parseDuration(m[2]) : null;
+	const len = m?.[3] === void 0 ? 200 : parseDuration(m[3]);
+	return m && at !== null && len !== null ? {
+		ref: m[1],
+		atMs: at,
+		forMs: len
+	} : null;
+}
+var secs = (ms) => `${(ms / 1e3).toFixed(3)} s`;
+async function runCommand(args, io, opts = {}) {
+	const [input, ...rest] = args.positionals;
+	if (!input || rest.length) throw new CliError(USAGE$1, EXIT.input);
+	const json = args.flags.has("--json");
+	const forArg = flag(args, "--for");
+	const forMs = forArg === void 0 ? 5e3 : parseDuration(forArg);
+	if (forMs === null || forMs <= 0 || forMs > 6e5) throw new CliError(`run: --for ${forArg}: give a time from 1ms to 600s, such as 5s`, EXIT.input);
+	const { diagram: d, warnings } = loadSheet(io, input);
+	for (const w of warnings) io.stderr(`warning: ${w}\n`);
+	const byRef = new Map(d.parts.map((p) => [p.designator, p]));
+	const presses = [];
+	for (const spec of args.lists?.get("--press") ?? []) {
+		const p = parsePress(spec);
+		if (!p) throw new CliError(`run: --press ${spec}: write it as REF@TIME[:LENGTH], such as S1@1.5s:0.2s`, EXIT.input);
+		const part = byRef.get(p.ref);
+		if (!part) throw new CliError(`run: --press ${spec}: there is no ${p.ref} on the sheet`, EXIT.input);
+		const groups = switchGroups(d.modules[part.module]);
+		if (!groups.some((g) => g.kind === "switch")) throw new CliError(`run: --press ${spec}: ${p.ref} is not a switch or button`, EXIT.input);
+		const button = groups.some((g) => g.momentary);
+		if (button && p.forMs <= 0) throw new CliError(`run: --press ${spec}: a button press needs a length, such as ${p.ref}@${spec.split("@")[1].split(":")[0]}:0.2s`, EXIT.input);
+		presses.push({
+			uid: part.uid,
+			atMs: p.atMs,
+			forMs: button ? p.forMs : 0
+		});
+	}
+	const held = presses.filter((p) => p.forMs > 0).sort((a, b) => a.atMs - b.atMs);
+	for (let i = 1; i < held.length; i++) if (held[i].atMs < held[i - 1].atMs + held[i - 1].forMs) throw new CliError("run: two --press button presses overlap; one button is held at a time", EXIT.input);
+	const coded = d.parts.filter((p) => p.code);
+	const board = flag(args, "--board") ?? "all";
+	let boards;
+	if (board === "all") boards = coded.map((p) => p.uid);
+	else {
+		const p = byRef.get(board);
+		if (!p?.code) throw new CliError(`run: --board ${board}: no board ${board} with code on the sheet`, EXIT.input);
+		boards = [p.uid];
+	}
+	if (!boards.length) {
+		const names = d.parts.filter((p) => boardKindOf(d.modules[p.module])).map((p) => p.designator);
+		if (json) printJson(io, {
+			format: RUN_FORMAT,
+			ok: false,
+			exit: EXIT.environment,
+			simulatedSeconds: 0,
+			boards: [],
+			timeline: [],
+			findings: [],
+			incomplete: names.map((ref) => ({
+				ref,
+				why: `${ref} has no code`
+			})),
+			neverPauses: [],
+			lostPower: []
+		});
+		io.stderr(`${names.length ? names.map((n) => `${n} has no code`).join("\n") : "The sheet has no board with code"}\n`);
+		return EXIT.environment;
+	}
+	let py;
+	try {
+		const pyDir = flag(args, "--py-dir");
+		py = await ensurePy({
+			...pyDir ? { pyDir: pathIn(io, pyDir) } : { cacheDir: cacheRoot(io.env) },
+			...opts.fetch ? { fetch: opts.fetch } : {}
+		});
+	} catch (e) {
+		throw new CliError(e instanceof Error ? e.message : String(e), EXIT.environment);
+	}
+	const modules = {};
+	for (const id of Object.keys(d.modules)) {
+		const m = libraryLookup(id);
+		if (m) modules[id] = m;
+	}
+	const { result: r } = await runIsolated({
+		diagram: d,
+		boards,
+		forMs,
+		inputs: [...args.lists?.get("--input") ?? []],
+		presses,
+		py: {
+			indexURL: py.indexURL,
+			lock: py.lock
+		},
+		files: PY_FILES,
+		modules,
+		...opts.realLimitMs ? { realLimitMs: opts.realLimitMs } : {}
+	}, [py.dir]);
+	const refOf = (uid) => d.parts.find((p) => p.uid === uid)?.designator ?? uid;
+	const blocking = r.findings.some((f) => f.severity === "error");
+	const code = r.boards.some((b) => b.status === "error") || r.lostPower.length > 0 || r.neverPauses.length > 0 || blocking ? EXIT.blocked : r.incomplete.length ? EXIT.environment : EXIT.ok;
+	if (json) {
+		printJson(io, {
+			format: RUN_FORMAT,
+			ok: code === EXIT.ok,
+			exit: code,
+			simulatedSeconds: r.simulatedMs / 1e3,
+			boards: r.boards.map((b) => ({
+				ref: b.ref,
+				status: b.status,
+				serial: b.serial.map((s) => ({
+					t: s.t / 1e3,
+					stream: s.stream,
+					text: s.text
+				}))
+			})),
+			timeline: r.timeline.map((e) => ({
+				t: e.t / 1e3,
+				ref: refOf(e.uid),
+				pin: e.pin,
+				state: e.state
+			})),
+			findings: r.findings,
+			incomplete: r.incomplete.map((x) => ({
+				ref: refOf(x.uid),
+				why: x.why
+			})),
+			neverPauses: r.neverPauses.map(refOf),
+			lostPower: r.lostPower.map(refOf)
+		});
+		return code;
+	}
+	const lines = [];
+	for (const b of r.boards) {
+		lines.push(`${b.ref}: ${b.status === "not-started" ? "did not start" : b.status} (${secs(r.simulatedMs)} simulated)`);
+		for (const s of b.serial) for (const t of s.text.replace(/\n$/, "").split("\n")) lines.push(`  [${secs(s.t)}] ${s.stream === "err" ? "error: " : s.stream === "note" ? "note: " : ""}${t}`);
+	}
+	for (const x of r.incomplete) lines.push(x.why);
+	if (r.timeline.length) lines.push("Pins:", ...r.timeline.map((e) => `  ${secs(e.t).padStart(9)}  ${refOf(e.uid)} ${e.pin} ${e.state}`));
+	if (r.findings.length) lines.push("Findings:", ...r.findings.map((f) => `  ${f.severity}: ${f.message}`));
+	io.stdout(`${lines.join("\n")}\n`);
+	return code;
+}
+//#endregion
 //#region src/cli/main.ts
 var USAGE = `circuitoon <command> [options]
 
@@ -96758,6 +98452,9 @@ var USAGE = `circuitoon <command> [options]
   sim <sheet.json|netlist.json> [--probe <ref[.pin]|net:NAME>]...
                                             solve the sheet as a DC circuit in its saved switch and GPIO state:
                                             the outcome JSON on stdout (simulation findings only), a summary on stderr
+  run <sheet.json> [--board <ref>|all] [--for 5s] [--input "line"]... [--press S1@1.5s[:0.2s]]... [--json] [--py-dir <dir>]
+                                            run the boards' code (Raspberry Pi Python) on a virtual clock with the live simulation:
+                                            Serial, a pin timeline and the findings; Python downloads once from the Circuitoon site
   module new [--spec <spec.json>] [-o <part.json>] [--json]
                                             a custom part from a part spec (or the spec on standard input), with Sticker art
   module check <part.json> [--json]         lint a part: duplicate pins, art against pins, impossible caps, untyped power pins
@@ -96782,6 +98479,7 @@ var COMMANDS = {
 	update: updateCommand,
 	gate: gateCommand,
 	sim: simCommand,
+	run: runCommand,
 	module: moduleCommand
 };
 var CODE_OF = {

@@ -21,6 +21,7 @@ import { kicadCommand } from './kicadCmd.ts'
 import { updateCommand } from './updateCmd.ts'
 import { moduleCommand } from './moduleCmd.ts'
 import { simCommand } from './simCmd.ts'
+import { runCommand } from './runCmd.ts'
 import { readFileSync } from 'node:fs'
 
 export const USAGE = `circuitoon <command> [options]
@@ -49,6 +50,9 @@ export const USAGE = `circuitoon <command> [options]
   sim <sheet.json|netlist.json> [--probe <ref[.pin]|net:NAME>]...
                                             solve the sheet as a DC circuit in its saved switch and GPIO state:
                                             the outcome JSON on stdout (simulation findings only), a summary on stderr
+  run <sheet.json> [--board <ref>|all] [--for 5s] [--input "line"]... [--press S1@1.5s[:0.2s]]... [--json] [--py-dir <dir>]
+                                            run the boards' code (Raspberry Pi Python) on a virtual clock with the live simulation:
+                                            Serial, a pin timeline and the findings; Python downloads once from the Circuitoon site
   module new [--spec <spec.json>] [-o <part.json>] [--json]
                                             a custom part from a part spec (or the spec on standard input), with Sticker art
   module check <part.json> [--json]         lint a part: duplicate pins, art against pins, impossible caps, untyped power pins
@@ -60,7 +64,7 @@ a simulation that failed or could not run (sim and gate, when nothing else block
 `
 
 export type Command = (args: Args, io: Io) => number | Promise<number>
-export const COMMANDS: Record<string, Command> = { parts: partsCommand, part: partCommand, layout: layoutCommand, render: renderCommand, link: linkCommand, bom: bomCommand, netlist: netlistCommand, kicad: kicadCommand, verify: verifyCommand, check: checkCommand, explain: explainCommand, update: updateCommand, gate: gateCommand, sim: simCommand, module: moduleCommand }
+export const COMMANDS: Record<string, Command> = { parts: partsCommand, part: partCommand, layout: layoutCommand, render: renderCommand, link: linkCommand, bom: bomCommand, netlist: netlistCommand, kicad: kicadCommand, verify: verifyCommand, check: checkCommand, explain: explainCommand, update: updateCommand, gate: gateCommand, sim: simCommand, run: runCommand, module: moduleCommand }
 
 type ErrorCode = 'usage' | 'input' | 'blocked' | 'environment' | 'internal'
 const CODE_OF: Record<number, ErrorCode> = { [EXIT.blocked]: 'blocked', [EXIT.input]: 'input', [EXIT.environment]: 'environment' }

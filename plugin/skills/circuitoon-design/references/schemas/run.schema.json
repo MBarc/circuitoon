@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "circuitoon-cli/run/1",
+  "type": "object",
+  "required": ["format", "ok", "exit", "simulatedSeconds", "boards", "timeline", "findings", "incomplete", "neverPauses", "lostPower"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": "circuitoon-cli/run/1" },
+    "ok": { "type": "boolean" },
+    "exit": { "enum": [0, 1, 2, 3] },
+    "simulatedSeconds": { "type": "number", "minimum": 0 },
+    "boards": {
+      "type": "array",
+      "items": {
+        "type": "object", "required": ["ref", "status", "serial"], "additionalProperties": false,
+        "properties": {
+          "ref": { "type": "string" },
+          "status": { "enum": ["not-started", "starting", "running", "done", "stopped", "error"] },
+          "serial": { "type": "array", "items": { "type": "object", "required": ["t", "stream", "text"], "additionalProperties": false, "properties": { "t": { "type": "number" }, "stream": { "enum": ["out", "err", "note"] }, "text": { "type": "string" } } } }
+        }
+      }
+    },
+    "timeline": { "type": "array", "items": { "type": "object", "required": ["t", "ref", "pin", "state"], "additionalProperties": false, "properties": { "t": { "type": "number" }, "ref": { "type": "string" }, "pin": { "type": "string" }, "state": { "type": "string" } } } },
+    "findings": { "type": "array", "items": { "type": "object", "required": ["code", "severity", "message", "parts"], "properties": { "code": { "type": "string" }, "severity": { "enum": ["error", "warning", "note"] }, "message": { "type": "string" }, "parts": { "type": "array", "items": { "type": "string" } } } } },
+    "incomplete": { "type": "array", "items": { "type": "object", "required": ["ref", "why"], "additionalProperties": false, "properties": { "ref": { "type": "string" }, "why": { "type": "string" } } } },
+    "neverPauses": { "type": "array", "items": { "type": "string" } },
+    "lostPower": { "type": "array", "items": { "type": "string" } }
+  }
+}

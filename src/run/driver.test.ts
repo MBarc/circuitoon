@@ -7,12 +7,14 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { makeEngine } from '../sim/engine/engine.ts'
 import { createNodeEngineHost } from '../sim/engine/nodeEngine.ts'
 import { type DriveOptions, drive } from './driver.ts'
+import { libraryLookup } from '../agent/catalog.ts'
 import { nodePy } from './testing.ts'
+import { PY_FILES } from './pyFiles.ts'
 import { piBlink, piButton, piSwitched } from './sheets.testing.ts'
 
 const engine = makeEngine(createNodeEngineHost())
 afterAll(() => engine.dispose())
-const run = (o: Partial<DriveOptions> & Pick<DriveOptions, 'diagram'>) => drive({ boards: ['u1'], forMs: 5000, inputs: [], presses: [], engine, py: nodePy(), ...o })
+const run = (o: Partial<DriveOptions> & Pick<DriveOptions, 'diagram'>) => drive({ boards: ['u1'], forMs: 5000, inputs: [], presses: [], engine, py: nodePy(), library: libraryLookup, files: PY_FILES, ...o })
 const serial = (r: Awaited<ReturnType<typeof run>>) => r.boards[0].serial.map((s) => s.text).join('')
 
 describe('circuitoon run on the virtual clock (spec 7, 10)', () => {

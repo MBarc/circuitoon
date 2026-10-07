@@ -4,12 +4,12 @@ export interface Args {
   command?: string
   positionals: string[]
   flags: Map<string, string | true>
-  /** Flags that may repeat, each value in order (ruling R26: --probe). */
+  /** Flags that may repeat, each value in order (ruling R26: --probe; run's --input and --press). */
   lists?: Map<string, string[]>
 }
 
-const LIST_FLAGS = new Set(['--probe'])
-const VALUE_FLAGS = new Set(['--out', '--svg', '--scale', '--focus', '--search', '--keep', '--labels', '--tiles', '--spec'])
+const LIST_FLAGS = new Set(['--probe', '--input', '--press'])
+const VALUE_FLAGS = new Set(['--out', '--svg', '--scale', '--focus', '--search', '--keep', '--labels', '--tiles', '--spec', '--board', '--for', '--py-dir'])
 const BOOL_FLAGS = new Set(['--json', '--dark', '--help'])
 const ALIASES: Record<string, string> = { '-o': '--out', '-h': '--help' }
 
