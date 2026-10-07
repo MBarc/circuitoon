@@ -11,7 +11,7 @@ import { createNodeEngineHost } from '../sim/engine/nodeEngine.ts'
 import { SimSession } from '../sim/session.ts'
 import { spawnNodeCodeWorker } from '../run/node/codeWorker.ts'
 import { nodePy } from '../run/testing.ts'
-import { piBlink, piButton, piSwitched } from '../run/sheets.testing.ts'
+import { piBlink, piButton, piServo, piSwitched } from '../run/sheets.testing.ts'
 import { EditorStore } from './store.ts'
 import { deleteSelection, setPartCode, setSimValue } from './ops.ts'
 import { followStore } from './simulation.ts'
@@ -159,11 +159,36 @@ describe('the editor run controller (spec 2.1, 2.3, 4.5)', () => {
   it('says once that the code never pauses while blink() waits', async () => {
     const { store, c, close } = editor(piButton('from gpiozero import LED\nLED(17).blink()\nwhile True:\n    pass\n'))
     await c.run('u1')
+    // Python's load does not count: the 2 s note is timed from the code starting.
+    await until(() => store.getState().run.boards.u1.status === 'running')
     await until(() => store.getState().run.boards.u1.serial.some((l) => l.text.includes('never pauses')), 6000)
     expect(store.getState().run.boards.u1.serial.filter((l) => l.text.includes('never pauses'))).toEqual([
       { stream: 'note', text: "U1's code never pauses, so blink() and button callbacks can't run. Add time.sleep() in your loop." },
     ])
     await c.stop('u1')
+    close()
+  }, 60_000)
+  it("drops a board's run findings on Run and Reset, and the servo warnings when nothing runs (spec 6.3)", async () => {
+    const { store, c, close } = editor(piBlink())
+    const f = (code: 'floating-read' | 'servo-signal', part: string) => ({ code, severity: 'warning' as const, parts: [part], pins: [], message: code, key: `${code}|${part}` })
+    store.setRun({ findings: [f('floating-read', 'u1'), f('floating-read', 'u9'), f('servo-signal', 'm1')] })
+    await c.run('u1')
+    expect(store.getState().run.findings.map((x) => x.key)).toEqual(['floating-read|u9'])
+    await until(() => store.getState().run.boards.u1.status === 'running')
+    store.setRun({ findings: [...store.getState().run.findings, f('floating-read', 'u1'), f('servo-signal', 'm1')] })
+    await c.reset('u1')
+    expect(store.getState().run.findings.map((x) => x.key)).toEqual(['floating-read|u9'])
+    await c.stop('u1')
+    close()
+  }, 60_000)
+  it('clears servo motion when the last board stops (spec 2.3)', async () => {
+    // Swinging end to end every 0.2 s: 180 degrees takes 0.3 s, so the horn is always moving.
+    const { store, c, close } = editor(piServo('from gpiozero import Servo\nfrom time import sleep\ns = Servo(18)\nwhile True:\n    s.min()\n    sleep(0.2)\n    s.max()\n    sleep(0.2)\n'))
+    await c.run('u1')
+    await until(() => store.getState().run.moving.includes('m1'))
+    await c.stop('u1')
+    await sleep(100)
+    expect([store.getState().run.moving, store.getState().run.servos]).toEqual([[], {}])
     close()
   }, 60_000)
 })

@@ -26,6 +26,14 @@ describe('the code dock', () => {
     s.setDock({ tab: 'gone' })
     expect(dockTabs(s.getState())).toEqual([])
   })
+  it('keeps the tab of a board still running after its code is removed, so it can be stopped', () => {
+    const s = new EditorStore(piBlink())
+    s.commit(setPartCode(s.getState().diagram, 'u1', undefined))
+    s.setBoardRun('u1', run('running', 'a'))
+    expect(dockTabs(s.getState())).toEqual(['u1'])
+    s.setBoardRun('u1', { status: 'stopped' })
+    expect(dockTabs(s.getState())).toEqual([])
+  })
   it('forgets the board being written when another sheet is opened', () => {
     const s = new EditorStore(piBlink())
     const plain = setPartCode(s.getState().diagram, 'u1', undefined)

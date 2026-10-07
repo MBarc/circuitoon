@@ -9,7 +9,7 @@
 //   7. collapsed: the 28 px bar still shows each board's status; Ctrl+` toggles it; Escape then Tab
 //      leaves the editor.
 //   9. samples: the start screen's Raspberry Pi row; each sample opens, runs and glows (code-sample-*).
-//   8. link: code that came in a link asks once before running.
+//   8. link: code that came in a link asks once before running, from the dock's Run or the Inspector's.
 //   tabs: two boards with code from a link: a tab each, arrow keys, Home and End move between them,
 //      and Run all asks first too.
 // Every case runs at 1600 x 1000 and at 390 x 844 (the dock stacks the editor over Serial, the page
@@ -348,8 +348,15 @@ for (const scheme of ['light', 'dark']) {
   await page.goto(link.url.replace('https://mbarc.github.io/circuitoon/', base), { waitUntil: 'networkidle' })
   await page.waitForSelector('#code-dock')
   await fitNarrow()
-  await page.locator('[data-run="u1"]').click()
   const confirm = page.locator('.code-confirm')
+  // The Inspector's Run asks the same question, in the dock.
+  await selectU1()
+  await page.locator('.code-section').getByRole('button', { name: "Run U1's code" }).click()
+  await confirm.waitFor({ timeout: 5000 }).catch(() => {})
+  check((await confirm.count()) === 1 && (await status()) === 'idle', `${scheme} ${width}: the Inspector's Run of linked code asks first and runs nothing`)
+  await shot('link-inspector')
+  await confirm.getByRole('button', { name: 'Cancel' }).click()
+  await page.locator('[data-run="u1"]').click()
   check((await confirm.textContent())?.includes('This code came with the link. Run runs it in your browser, with no access to other sites.'), `${scheme} ${width}: the first Run of linked code asks`)
   check((await status()) === 'idle', `${scheme} ${width}: nothing runs before the answer`)
   await shot('link')
@@ -568,6 +575,8 @@ for (const scheme of ['light', 'dark']) {
   }
 
   // 9. the Raspberry Pi samples (firmware spec 8): the start screen's row, then each sample opened and run.
+  // From another page: a hash-only change to the open editor keeps its sheet, not the start screen.
+  await page.goto('about:blank')
   await page.goto(base + '#/editor', { waitUntil: 'networkidle' })
   await page.waitForSelector('.start-samples')
   check(await isolated(page), `${scheme} ${width}: samples: the preview is cross-origin isolated`)

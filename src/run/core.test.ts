@@ -167,5 +167,7 @@ describe('RunCore (spec 2.3, 4.4)', () => {
     expect(first.views).toEqual({})
     expect(first.findings.map((f) => f.code)).toEqual(['servo-signal'])
     expect(core.servos(d, circuit, 100).findings).toEqual([])
+    core.forgetServoWarnings()
+    expect(core.servos(d, circuit, 200).findings.map((f) => f.code)).toEqual(['servo-signal'])
   }, 60_000)
 })

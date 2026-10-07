@@ -53,6 +53,11 @@ export class RunCore {
     this.last = ''
   }
 
+  /** A fresh run with no board running: a servo's unfollowed signal is warned about again. */
+  forgetServoWarnings(): void {
+    this.warnedServos.clear()
+  }
+
   get boards(): CoreBoard[] {
     return [...this.entries.values()].map((e) => e.b)
   }

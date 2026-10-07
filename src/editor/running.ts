@@ -41,6 +41,12 @@ export function runAction(store: EditorStore, action: Action, uid = '', line = '
   })
 }
 
+/** Run or Run all, from the dock or the Inspector: code that came with a link asks first, in the dock (spec 2.6). */
+export function runOrAsk(store: EditorStore, action: 'run' | 'runAll', uid: string): void {
+  if (store.getState().linkCode) store.setDock({ open: true, tab: uid, ask: { action, uid } })
+  else runAction(store, action, uid)
+}
+
 /** Stops every board when the editor closes (only if the controller was ever loaded). */
 export function disposeRuns(store: EditorStore): void {
   if (store.activeRuns.length || Object.keys(store.getState().run.boards).length) void import('./runEngine.ts').then(({ controllerFor }) => controllerFor(store).dispose())

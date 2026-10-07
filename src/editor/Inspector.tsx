@@ -25,7 +25,7 @@ import { simOf, withLibraryData } from '../format/simModel.ts'
 import { LANGUAGE_EXT, LANGUAGE_NAMES, languagesOf } from '../format/code.ts'
 import { libraryLookup } from '../agent/catalog.ts'
 import { downloadName, readCodeFile, starterCode } from './codeFile.ts'
-import { runAction, runBlocker } from './running.ts'
+import { runAction, runBlocker, runOrAsk } from './running.ts'
 import { tabStatus } from './CodeDock.tsx'
 import { downloadText } from './files.ts'
 
@@ -951,7 +951,7 @@ function CodeSection({ store, diagram, part, m }: { store: EditorStore; diagram:
             <dt>Status</dt><dd>{st.key === 'changed' ? 'Code changed: Reset to apply' : st.text}</dd>
           </dl>
           <div className="code-section-actions">
-            <button type="button" className="tool" disabled={!live && !!blocker} title={blocker ?? undefined} aria-label={live ? `Stop ${part.designator}'s code` : `Run ${part.designator}'s code`} onClick={() => (openDock(), runAction(store, live ? 'stop' : 'run', part.uid))}>{live ? 'Stop' : 'Run'}</button>
+            <button type="button" className="tool" disabled={!live && !!blocker} title={blocker ?? undefined} aria-label={live ? `Stop ${part.designator}'s code` : `Run ${part.designator}'s code`} onClick={() => (openDock(), live ? runAction(store, 'stop', part.uid) : runOrAsk(store, 'run', part.uid))}>{live ? 'Stop' : 'Run'}</button>
             <button type="button" className="tool" onClick={() => (openDock(), focusEditor())}>Edit</button>
             <button type="button" className="tool" onClick={() => downloadText(downloadName(code, part.designator), code.source, 'text/x-python')}>Download</button>
             <button type="button" className="tool" onClick={() => (store.commit(setPartCode(diagram, part.uid, undefined)), state.dock.tab === part.uid && store.setDock({ tab: null }))}>Remove code</button>

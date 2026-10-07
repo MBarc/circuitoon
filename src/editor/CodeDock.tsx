@@ -11,7 +11,7 @@ import { libraryLookup } from '../agent/catalog.ts'
 import { downloadName, readCodeFile } from './codeFile.ts'
 import { downloadText } from './files.ts'
 import { setPartCode } from './ops.ts'
-import { codeBoards, runAction, runBlocker } from './running.ts'
+import { codeBoards, runAction, runBlocker, runOrAsk } from './running.ts'
 import { SerialPanel } from './SerialPanel.tsx'
 import { type BoardRunView, DOCK_MIN_HEIGHT, type EditorState, type EditorStore, useEditorState } from './store.ts'
 import './codeDock.css'
@@ -28,9 +28,13 @@ export function tabStatus(b: BoardRunView | undefined, code: PartCode | undefine
   return { key, text: STATUS_TEXT[key] }
 }
 
-/** The tabs (spec 6.1): every board with code, plus the dock's own tab when it is a board being written. */
+/**
+ * The tabs (spec 6.1): every board with code or still starting or running (its code removed while it
+ * runs keeps its Stop), plus the dock's own tab when it is a board being written.
+ */
 export function dockTabs(s: EditorState): string[] {
-  const tabs = codeBoards(s)
+  const live = (uid: string) => s.run.boards[uid]?.status === 'starting' || s.run.boards[uid]?.status === 'running'
+  const tabs = s.diagram.parts.filter((p) => p.code || live(p.uid)).map((p) => p.uid)
   const t = s.dock.tab
   if (t && !tabs.includes(t) && s.diagram.parts.some((p) => p.uid === t)) tabs.push(t)
   return tabs
@@ -47,20 +51,18 @@ export function CodeDock({ store }: { store: EditorStore }) {
   const tabs = dockTabs(s)
   const [goto, setGoto] = useState<{ line: number; at: number } | null>(null)
   const [refused, setRefused] = useState<string | null>(null)
-  const [asking, setAsking] = useState<'run' | 'runAll' | null>(null)
   const upload = useRef<HTMLInputElement>(null)
   const drag = useRef<{ y: number; h: number } | null>(null)
   const uid = tabs.includes(s.dock.tab ?? '') ? s.dock.tab! : (tabs[0] ?? null)
-  // A traceback jump, a refused upload and the link question belong to the board shown in this
-  // opening of the dock: switching tabs or collapsing drops them, so a remounted editor never
-  // grabs focus for an old jump (it would pull focus out of the tablist).
+  // A traceback jump and a refused upload belong to the board shown in this opening of the dock:
+  // switching tabs or collapsing drops them, so a remounted editor never grabs focus for an old jump
+  // (it would pull focus out of the tablist). The link question is in the store (setDock drops it the same way).
   const view = `${uid}:${s.dock.open}`
   const [shown, setShown] = useState(view)
   if (shown !== view) {
     setShown(view)
     setGoto(null)
     setRefused(null)
-    setAsking(null)
   }
   if (!uid) return null
   const part = s.diagram.parts.find((p) => p.uid === uid)!
@@ -72,10 +74,10 @@ export function CodeDock({ store }: { store: EditorStore }) {
   const live = b?.status === 'starting' || b?.status === 'running'
   const blocker = live ? null : runBlocker(s, uid)
   const many = codeBoards(s).length >= 2
+  const ask = s.dock.ask
   const run = () => {
     if (live) return runAction(store, 'stop', uid)
-    if (s.linkCode) return setAsking('run')
-    runAction(store, 'run', uid)
+    runOrAsk(store, 'run', uid)
   }
   // Clamped here too: a height saved in a taller window must not leave a short one without a sheet.
   const height = s.dock.open ? clampHeight(s.dock.height) : 28
@@ -136,7 +138,7 @@ export function CodeDock({ store }: { store: EditorStore }) {
         </div>
         {many && s.dock.open && (
           <div className="code-dock-all">
-            <button type="button" className="tool small" onClick={() => (s.linkCode ? setAsking('runAll') : runAction(store, 'runAll'))}>Run all</button>
+            <button type="button" className="tool small" onClick={() => runOrAsk(store, 'runAll', uid)}>Run all</button>
             <button type="button" className="tool small" onClick={() => runAction(store, 'stopAll')}>Stop all</button>
           </div>
         )}
@@ -189,12 +191,12 @@ export function CodeDock({ store }: { store: EditorStore }) {
                 </span>
               )}
             </div>
-            {asking && (
+            {ask?.uid === uid && (
               <div className="code-confirm" role="alertdialog" aria-label="Run code from a link" aria-describedby="code-confirm-text">
                 <p id="code-confirm-text">This code came with the link. Run runs it in your browser, with no access to other sites.</p>
                 <div className="code-confirm-actions">
-                  <button type="button" className="tool small primary" autoFocus onClick={() => (setAsking(null), store.confirmLinkCode(), runAction(store, asking, uid))}>Run</button>
-                  <button type="button" className="tool small" onClick={() => setAsking(null)}>Cancel</button>
+                  <button type="button" className="tool small primary" autoFocus onClick={() => (store.setDock({ ask: null }), store.confirmLinkCode(), runAction(store, ask.action, uid))}>Run</button>
+                  <button type="button" className="tool small" onClick={() => store.setDock({ ask: null })}>Cancel</button>
                 </div>
               </div>
             )}

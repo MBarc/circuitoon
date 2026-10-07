@@ -52,8 +52,11 @@ export interface RunView {
   findings: RunFinding[]
 }
 export const EMPTY_RUN: RunView = { boards: {}, pins: {}, seq: {}, moving: [], servos: {}, findings: [] }
-/** The code dock (spec 6.1): open or collapsed, the tab shown, and its height (remembered per browser). */
-export interface DockState { open: boolean; tab: string | null; height: number }
+/**
+ * The code dock (spec 6.1): open or collapsed, the tab shown, its height (remembered per browser), and
+ * the question asked before code that came with a link first runs (spec 2.6), for the board it shows.
+ */
+export interface DockState { open: boolean; tab: string | null; height: number; ask: { action: 'run' | 'runAll'; uid: string } | null }
 export const DOCK_HEIGHT_KEY = 'circuitoon.dockHeight'
 /** Below this the editor and the serial log are squeezed out; a saved height under it is discarded. */
 export const DOCK_MIN_HEIGHT = 200
@@ -122,7 +125,7 @@ export class EditorStore {
     // New wires start blue: a signal colour (red and black mean power and ground), so a plain signal
     // wire never raises wire-color-signal. Ground and supply wires still take black and red by role.
     const wireStyle: WireStyle = ends ? { color: NEW_WIRE_COLOR, gauge: 22, ends } : { color: NEW_WIRE_COLOR, gauge: 22 }
-    this.state = { diagram, selection: EMPTY_SELECTION, wireStyle, highlight: null, reveal: 0, snapObjects: loadSnapObjects(), simulate: false, simTool: 'select', sim: null, held: null, run: EMPTY_RUN, dock: { open: true, tab: null, height: loadDockHeight() }, linkCode: !!opts.linkCode }
+    this.state = { diagram, selection: EMPTY_SELECTION, wireStyle, highlight: null, reveal: 0, snapObjects: loadSnapObjects(), simulate: false, simTool: 'select', sim: null, held: null, run: EMPTY_RUN, dock: { open: true, tab: null, height: loadDockHeight(), ask: null }, linkCode: !!opts.linkCode }
   }
 
   getState = (): EditorState => this.state
@@ -323,6 +326,8 @@ export class EditorStore {
   }
   setDock(patch: Partial<DockState>) {
     const dock = { ...this.state.dock, ...patch }
+    // Switching tabs or collapsing drops the link question, unless this change asks it.
+    if (patch.ask === undefined && (dock.tab !== this.state.dock.tab || dock.open !== this.state.dock.open)) dock.ask = null
     if (patch.height !== undefined)
       try {
         globalThis.localStorage?.setItem(DOCK_HEIGHT_KEY, String(Math.round(dock.height)))
@@ -346,7 +351,7 @@ export class EditorStore {
     this.past = []
     this.future = []
     this.unsaved = false
-    this.set({ diagram, selection: EMPTY_SELECTION, highlight: null, held: null, run: EMPTY_RUN, dock: { ...this.state.dock, tab: null }, linkCode: false })
+    this.set({ diagram, selection: EMPTY_SELECTION, highlight: null, held: null, run: EMPTY_RUN, dock: { ...this.state.dock, tab: null, ask: null }, linkCode: false })
   }
 }
 

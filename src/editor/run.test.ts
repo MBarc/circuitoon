@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { EditorStore, SERIAL_MAX } from './store.ts'
 import { setPartCode } from './ops.ts'
 import { followStore, solveKey } from './simulation.ts'
+import { runOrAsk } from './running.ts'
 import { piBlink } from '../run/sheets.testing.ts'
 import { clipText, copySelection, parseClip, pasteClip } from './clipboard.ts'
 
@@ -47,6 +48,18 @@ describe('run state in the editor store', () => {
     expect(s.getState().linkCode).toBe(true)
     s.confirmLinkCode()
     expect(s.getState().linkCode).toBe(false)
+  })
+  it("asks before any Run of code from a link, the Inspector's as the dock's (spec 2.6)", async () => {
+    const s = new EditorStore(piBlink(), { linkCode: true })
+    s.setDock({ open: false })
+    runOrAsk(s, 'run', 'u1')
+    expect(s.getState().dock).toMatchObject({ open: true, tab: 'u1', ask: { action: 'run', uid: 'u1' } })
+    await new Promise((r) => setTimeout(r, 300))
+    // The controller was never asked: it would have given the board a run view.
+    expect(s.getState().run.boards).toEqual({})
+    // Another tab or collapsing drops the question.
+    s.setDock({ open: false })
+    expect(s.getState().dock.ask).toBeNull()
   })
 })
 

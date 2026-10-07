@@ -98,6 +98,13 @@ export class RunController {
     this.store.setSimulate(true)
     this.store.setBoardRun(uid, { status: 'starting', source: code.source, file: code.file ?? 'main.py', serial: [], prompt: null, progress: null, message: null })
     this.store.setDock({ open: true, tab: uid })
+    // Findings are per pin per run (spec 6.3): this run starts without the board's old ones, and with
+    // no other board running, without the servos' either.
+    const alone = !this.runs.size
+    if (alone) this.core.forgetServoWarnings()
+    const was = this.store.getState().run.findings
+    const findings = was.filter((f) => !f.parts.includes(uid) && !(alone && f.code === 'servo-signal'))
+    if (findings.length !== was.length) this.store.setRun({ findings })
     let py: { indexURL: string; lock: string }
     try {
       py = await (this.deps.prefetch ?? prefetchPy)((loaded, total) => this.store.setBoardRun(uid, { progress: { loaded, total } }))
@@ -159,6 +166,8 @@ export class RunController {
     const { [uid]: _gone, ...pins } = run.pins
     const { [uid]: _s, ...seq } = run.seq
     if (uid in run.pins || uid in run.seq) this.store.setRun({ pins, seq })
+    // The last board: no sample follows, so servo motion (and its moving draw) goes here (spec 2.3).
+    if (!this.runs.size && (run.moving.length || Object.keys(run.servos).length)) this.store.setRun({ moving: [], servos: {} })
     // After Open or New the sheet has no view of this board: none is made for it.
     if (run.boards[uid]) this.store.setBoardRun(uid, { status, prompt: null })
   }
