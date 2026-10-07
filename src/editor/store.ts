@@ -55,11 +55,13 @@ export const EMPTY_RUN: RunView = { boards: {}, pins: {}, seq: {}, moving: [], s
 /** The code dock (spec 6.1): open or collapsed, the tab shown, and its height (remembered per browser). */
 export interface DockState { open: boolean; tab: string | null; height: number }
 export const DOCK_HEIGHT_KEY = 'circuitoon.dockHeight'
+/** Below this the editor and the serial log are squeezed out; a saved height under it is discarded. */
+export const DOCK_MIN_HEIGHT = 200
 const DOCK_HEIGHT = 260
 function loadDockHeight(): number {
   try {
     const v = Number(globalThis.localStorage?.getItem(DOCK_HEIGHT_KEY))
-    return v >= 120 ? v : DOCK_HEIGHT
+    return v >= DOCK_MIN_HEIGHT ? v : DOCK_HEIGHT
   } catch {
     return DOCK_HEIGHT
   }

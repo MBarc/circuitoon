@@ -209,6 +209,11 @@ for (const scheme of ['light', 'dark']) {
   check((await page.locator('#code-dock').evaluate((el) => el.getBoundingClientRect().height)) <= 420.5, `${scheme}: the dock stays within 70 % of a shorter window`)
   await page.locator('.code-dock-handle').focus()
   for (let i = 0; i < 30; i++) await page.keyboard.press('ArrowDown')
+  // At the smallest dock the editor and the serial log keep room to be used (at least 40 px each).
+  const tall = (sel) => page.locator(sel).first().evaluate((el) => el.getBoundingClientRect().height)
+  check((await page.locator('#code-dock').evaluate((el) => el.getBoundingClientRect().height)) >= 200, `${scheme}: the dock never shrinks below 200 px`)
+  check((await tall('#code-dock .cm-content')) >= 40 && (await tall('#code-dock .serial-log')) >= 40, `${scheme}: at the minimum height the editor and serial log are each 40 px or more`)
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowUp') // back to 260 for the shots below
 
   // narrow: 390 px, the dock under the sheet, then collapsed
   await page.setViewportSize({ width: 390, height: 844 })
@@ -238,7 +243,7 @@ for (const scheme of ['light', 'dark']) {
   check((await page.locator('.code-section').textContent())?.match(/main\.py.*Raspberry Pi Python.*\d+ lines/s) !== null, `${scheme}: the section shows the file, language and line count`)
   await shot('inspector-code')
   await page.getByRole('button', { name: 'Remove code' }).click()
-  check((await page.locator('#code-dock').count()) === 0 || (await page.locator('[data-dock-tab="u1"]').count()) === 0 || (await page.locator('.code-section button', { hasText: 'Write code' }).count()) === 1, `${scheme}: Remove code removes it`)
+  check((await page.locator('#code-dock').count()) === 0 && (await page.locator('.code-section button', { hasText: 'Write code' }).count()) === 1, `${scheme}: Remove code removes it and the dock closes`)
   await page.keyboard.press('Control+z')
   check((await page.locator('.code-section').textContent())?.includes('main.py'), `${scheme}: Remove code is undone by Undo`)
   // 10. An upload with the wrong extension is refused with the reason.

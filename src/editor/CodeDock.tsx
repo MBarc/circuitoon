@@ -13,15 +13,14 @@ import { downloadText } from './files.ts'
 import { setPartCode } from './ops.ts'
 import { codeBoards, runAction, runBlocker } from './running.ts'
 import { SerialPanel } from './SerialPanel.tsx'
-import { type BoardRunView, type EditorState, type EditorStore, useEditorState } from './store.ts'
+import { type BoardRunView, DOCK_MIN_HEIGHT, type EditorState, type EditorStore, useEditorState } from './store.ts'
 import './codeDock.css'
 
 const CodeEditor = lazy(() => import('./CodeEditor.tsx'))
 const STATUS_TEXT = { idle: 'Not running', starting: 'Starting', running: 'Running', error: 'Error', changed: 'Code changed', stopped: 'Stopped', done: 'Finished' } as const
 type StatusKey = keyof typeof STATUS_TEXT
-const MIN_HEIGHT = 120
 const maxHeight = () => Math.round(window.innerHeight * 0.7)
-const clampHeight = (h: number) => Math.min(maxHeight(), Math.max(MIN_HEIGHT, h))
+const clampHeight = (h: number) => Math.min(maxHeight(), Math.max(DOCK_MIN_HEIGHT, h))
 
 export function tabStatus(b: BoardRunView | undefined, code: PartCode | undefined): { key: StatusKey; text: string } {
   const live = b?.status === 'starting' || b?.status === 'running'
@@ -88,7 +87,7 @@ export function CodeDock({ store }: { store: EditorStore }) {
         aria-orientation="horizontal"
         aria-label="Resize the code dock"
         aria-valuenow={Math.round(height)}
-        aria-valuemin={MIN_HEIGHT}
+        aria-valuemin={DOCK_MIN_HEIGHT}
         aria-valuemax={maxHeight()}
         tabIndex={s.dock.open ? 0 : -1}
         onPointerDown={(e) => {

@@ -711,7 +711,7 @@ export function Inspector({ store, onEditPart, onUpdatePart }: { store: EditorSt
           </label>
         ))}
         {m && <SimPartState store={store} diagram={diagram} part={part} m={m} />}
-        {m && <CodeSection store={store} diagram={diagram} part={part} m={m} />}
+        {m && <CodeSection key={part.uid} store={store} diagram={diagram} part={part} m={m} />}
         <p className="hint">Rotation: {part.rotation ?? 0} degrees</p>
         <button type="button" className="tool" onClick={() => store.commit(rotateParts(diagram, [part.uid]))}>Rotate 90 degrees</button>
         {remove}
@@ -907,6 +907,12 @@ function CodeSection({ store, diagram, part, m }: { store: EditorStore; diagram:
   const live = b?.status === 'starting' || b?.status === 'running'
   const st = tabStatus(b, code)
   const blocker = live || !code ? null : runBlocker(state, part.uid)
+  // The editor loads lazily: retry for a few frames until its content exists.
+  const focusEditor = (tries = 30): number => requestAnimationFrame(() => {
+    const el = document.querySelector<HTMLElement>('#code-dock .cm-content')
+    if (el) el.focus()
+    else if (tries > 0) focusEditor(tries - 1)
+  })
   const openDock = () => store.setDock({ open: true, tab: part.uid })
   return (
     <section className="code-section" aria-labelledby="code-section-title">
@@ -941,14 +947,14 @@ function CodeSection({ store, diagram, part, m }: { store: EditorStore; diagram:
           <dl className="code-facts">
             <dt>File</dt><dd>{code.file ?? 'main.py'}</dd>
             <dt>Language</dt><dd>{LANGUAGE_NAMES[code.language] ?? code.language}</dd>
-            <dt>Length</dt><dd>{code.source.split('\n').length} lines</dd>
+            <dt>Length</dt><dd>{code.source.split('\n').length - (code.source.endsWith('\n') ? 1 : 0)} lines</dd>
             <dt>Status</dt><dd>{st.key === 'changed' ? 'Code changed: Reset to apply' : st.text}</dd>
           </dl>
           <div className="code-section-actions">
             <button type="button" className="tool" disabled={!live && !!blocker} title={blocker ?? undefined} aria-label={live ? `Stop ${part.designator}'s code` : `Run ${part.designator}'s code`} onClick={() => (openDock(), runAction(store, live ? 'stop' : 'run', part.uid))}>{live ? 'Stop' : 'Run'}</button>
-            <button type="button" className="tool" onClick={() => (openDock(), requestAnimationFrame(() => document.querySelector<HTMLElement>('#code-dock .cm-content')?.focus()))}>Edit</button>
+            <button type="button" className="tool" onClick={() => (openDock(), focusEditor())}>Edit</button>
             <button type="button" className="tool" onClick={() => downloadText(downloadName(code, part.designator), code.source, 'text/x-python')}>Download</button>
-            <button type="button" className="tool" onClick={() => store.commit(setPartCode(diagram, part.uid, undefined))}>Remove code</button>
+            <button type="button" className="tool" onClick={() => (store.commit(setPartCode(diagram, part.uid, undefined)), state.dock.tab === part.uid && store.setDock({ tab: null }))}>Remove code</button>
           </div>
           {blocker && <p className="hint">{blocker}</p>}
         </>
