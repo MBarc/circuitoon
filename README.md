@@ -101,7 +101,7 @@ If `gate.json` says `"ready": false`, readability warnings remain (overlapping w
 | `check <sheet.json>` | The wiring checker, plus verify when the sheet has a netlist, plus readability warnings. |
 | `gate <sheet.json> -o <dir>` | Everything: checks, renders, bill of materials, link and `gate.json`. Exits 0 only when nothing blocks. |
 | `sim <sheet.json\|netlist.json> [--probe <ref[.pin]\|net:NAME>]` | A DC simulation of the sheet in its current switch and GPIO states: voltages, currents, supply budgets and simulation findings (shorts, overcurrent, brownout). JSON on stdout, a short summary on stderr. `gate` runs it too. |
-| `run <sheet.json> [--board <ref>\|all] [--for 5s] [--press S1@1.5s[:0.2s]] [--input "line"] [--py-dir <dir>]` | Runs the Raspberry Pi Python on the sheet's boards on a virtual clock, with the live simulation. Prints Serial, a timeline of pin changes and the findings; exits 0 when the code ran and nothing blocks. The first run downloads Python (about 6 MB) and caches it, so it needs the network once. For offline use, point `--py-dir` at a folder with the Pyodide files (the `py/<version>` folder of a built site). |
+| `run <sheet.json> [--board <ref>\|all] [--for 5s] [--press S1@1.5s[:0.2s]] [--input "line"] [--json] [--py-dir <dir>]` | Runs the Raspberry Pi Python on the sheet's boards on a virtual clock, with the live simulation. Prints Serial, a timeline of pin changes and the findings; `--json` prints the result as `circuitoon-cli/run/1`. Exit codes: 0 ran clean; 1 a Python error, a blocking finding, lost power or code that never pauses; 2 usage; 3 a board that could not start, a sheet with no board with code, or no Python runtime. The first run downloads Python (about 6 MB) and caches it, so it needs the network once. For offline use, point `--py-dir` at a folder with the Pyodide files (the `py/<version>` folder of a built site). |
 | `link <sheet.json>` | A link that opens the sheet in the editor. Past 64 KB of payload it writes the sheet file instead. |
 | `bom <sheet.json> [-o bom.csv]` | The bill of materials: parts, wires by cable, gauge and color, and connectors. |
 | `netlist <sheet.json>` | The `circuitoon-netlist/1` of any drawn sheet, read from what actually conducts on it. |
@@ -232,9 +232,9 @@ What you can do in it:
 
 ### Code on boards
 
-A Raspberry Pi 4, Pi 5 or Pi Zero 2 W on the sheet can carry a Python script. Select the board and use Upload code in the Inspector, or Write code to type one in the dock under the sheet. Press Run and the script drives the board's pins, with Simulate solving the circuit around it. LEDs glow, probes read, and a press on a button on the sheet reaches the code as an input. `print()` output shows in Serial next to the code.
+A Raspberry Pi 4, Pi 5 or Pi Zero 2 W on the sheet can carry a Python script. Select the board and use Upload code in the Inspector, or Write code to type one in the dock under the sheet. Press Run and the script drives the board's pins, with Simulate solving the circuit around it. LEDs glow and probes read. A press on a button on the sheet reaches the code as an input. `print()` output shows in Serial next to the code.
 
-There are two samples in the Raspberry Pi row on the start screen. "Blink on a Raspberry Pi" blinks an LED with `gpiozero`. "Button lights an LED on a Pi" reads a button on GPIO27 with the internal pull-up and lights the LED from `when_pressed`. The script is stored in the sheet (the part's `code` key), so it travels in exports and links. Code that arrives in a link asks before it runs the first time.
+There are two samples in the Raspberry Pi row on the start screen. "Blink on a Raspberry Pi" blinks an LED with `gpiozero`. "Button lights an LED on a Pi" reads a button on GPIO27 with the internal pull-up and lights the LED from `when_pressed`. Both samples power the Pi's 5V pin from an 18650 cell and a charge-and-boost module, so the checker lists one warning that 5V and USB-C should not both be powered; that holds while nothing is plugged into USB-C. The script is stored in the sheet (the part's `code` key), so it travels in exports and links. Code that arrives in a link asks before it runs the first time.
 
 What runs:
 
@@ -311,7 +311,7 @@ The CLI bundle `plugin/dist-cli/circuitoon.mjs` is committed. After any change u
 
 ## Status and roadmap
 
-Early development. The editor, the wiring checker, the part maker and the agent toolkit (plugin 0.10.0) and live DC simulation work today. Still to come in V1: saving sheets in the browser, PDF export, and an art studio for drawing a part's artwork by hand.
+Early development. The editor, the wiring checker, the part maker and the agent toolkit (plugin 0.11.0) and live DC simulation work today. Still to come in V1: saving sheets in the browser, PDF export, and an art studio for drawing a part's artwork by hand.
 
 - V2 (shipped): live DC simulation in the editor and in `circuitoon sim`, with voltages, currents, supply budgets and overcurrent.
 - V3: animation driven by that simulation. LEDs light up, switches flip.

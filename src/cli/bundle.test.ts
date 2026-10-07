@@ -8,6 +8,8 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { ledNetlist } from '../agent/fixtures.testing.ts'
 import { netSheet } from '../sim/testing.ts'
+import { serializeDiagram } from '../format/diagram.ts'
+import { piBlinkSample } from '../samples/piSamples.ts'
 
 /**
  * Module specifiers of real import and export statements and dynamic imports (amendment A12): the
@@ -75,6 +77,20 @@ describe('CLI bundle', () => {
     expect(JSON.parse(r.stdout).status).toBe('ok')
     expect(ms).toBeLessThanOrEqual(2000)
   }, 60_000)
+  it('runs blink for 5 s from a copy of the plugin folder within 4 s, Python cached (spec 9)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'circuitoon-plugin-'))
+    cpSync(resolve('plugin/bin'), join(dir, 'bin'), { recursive: true })
+    cpSync(resolve('plugin/dist-cli'), join(dir, 'dist-cli'), { recursive: true })
+    writeFileSync(join(dir, 'blink.json'), serializeDiagram(piBlinkSample))
+    const args = [join(dir, 'bin', 'circuitoon.mjs'), 'run', 'blink.json', '--for', '5s', '--py-dir', resolve('node_modules/pyodide'), '--json']
+    spawnSync(process.execPath, args, { encoding: 'utf8', cwd: dir }) // warm the OS file cache once
+    const t0 = performance.now()
+    const r = spawnSync(process.execPath, args, { encoding: 'utf8', cwd: dir })
+    const ms = performance.now() - t0
+    expect(r.status, r.stderr).toBe(0)
+    expect(JSON.parse(r.stdout)).toMatchObject({ format: 'circuitoon-cli/run/1', simulatedSeconds: 5 })
+    expect(ms).toBeLessThanOrEqual(4000)
+  }, 120_000)
   it('finds real imports and ignores import-like text inside strings', () => {
     const code = [
       `import { a } from "node:fs";`,
