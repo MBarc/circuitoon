@@ -4,12 +4,12 @@
 // confines (no reads outside the code and Pyodide folders, no writes, no processes, no code from
 // strings).
 import { describe, expect, it } from 'vitest'
-import { writeFileSync } from 'node:fs'
+import { rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { serializeDiagram } from '../format/diagram.ts'
 import { libraryLookup } from '../agent/catalog.ts'
-import { piBlink, piButton } from '../run/sheets.testing.ts'
+import { piBareLed, piBlink, piButton } from '../run/sheets.testing.ts'
 import { nodePy } from '../run/testing.ts'
 import { PY_FILES } from '../run/pyFiles.ts'
 import { runIsolated } from '../run/node/runProcess.ts'
@@ -55,6 +55,10 @@ describe('circuitoon run (spec 7)', () => {
   }, 120_000)
   it('exits 1 on a Python error, 3 with no code or no power, 2 on bad usage', async () => {
     expect((await run(sheet(piButton("raise ValueError('x')\n")))).code).toBe(1)
+    // A blocking finding in the saved state still counts when the code ends before any solve while it runs.
+    const bare = await run(sheet(piBareLed("print('hi')\n")), '--json')
+    const bareDoc = JSON.parse(bare.out)
+    expect([bare.code, bareDoc.exit, bareDoc.findings.some((f: { severity: string }) => f.severity === 'error')]).toEqual([1, 1, true])
     const none = piBlink()
     none.parts = none.parts.map((p) => (p.uid === 'u1' ? { ...p, code: undefined } : p))
     const n = await run(sheet(none))
@@ -81,22 +85,27 @@ describe('circuitoon run (spec 7)', () => {
 `), e.code))
     expect([code, err]).toEqual([3, `${NO_LONGER_PUBLISHED}\n`])
   }, 60_000)
-  // Node's permission model confines reads on the child's main thread only, not in worker threads:
-  // the code threads deny writes, processes, addons, WASI and code generation, and their reads rely on
-  // the in-worker sandbox, so a code thread's home-folder read is recorded here, never asserted.
-  it('runs the code in a child process that denies writes, processes, addons, WASI and code from strings, in the code thread too', async () => {
+  // Node lets worker threads read their process's working folder on top of the allow list, so the
+  // child starts in its own code folder; no thread of it may read the home folder or this test's cwd.
+  it('runs the code in a child process that reads only its folders and denies writes, processes, addons, WASI and code from strings, in the code thread too', async () => {
     const outside = join(tempDir(), 'secret.txt')
     writeFileSync(outside, 'not for the sheet')
-    const d = piBlink()
-    const modules = Object.fromEntries(Object.keys(d.modules).flatMap((id) => (libraryLookup(id) ? [[id, libraryLookup(id)!]] : [])))
-    const r = await runIsolated({ diagram: d, boards: ['u1'], forMs: 1500, inputs: [], presses: [], py: nodePy(), modules, files: PY_FILES, probe: [outside, homedir(), join(PY, 'pyodide.mjs')] }, [PY])
-    // The child's main thread: reads confined to its folders.
-    expect(r.probe).toEqual({ permission: true, codeFromStrings: false, read: [false, false, true], write: false, childProcess: false, addons: false, wasi: false })
-    // The code thread, probed after Pyodide loads and before the script.
-    const worker = r.result.boards[0].probe!
-    expect({ ...worker, read: undefined }).toEqual({ permission: true, codeFromStrings: false, read: undefined, write: false, childProcess: false, addons: false, wasi: false })
-    expect(typeof worker.read[0]).toBe("boolean")
-    expect(r.result.boards[0].status).toBe('stopped')
-    expect(r.result.timeline.filter((e) => e.pin === 'GPIO17').map((e) => e.state)).toEqual(['high', 'low'])
+    const inHome = join(homedir(), `.circuitoon-probe-${process.pid}.txt`)
+    writeFileSync(inHome, 'not for the sheet')
+    const inCwd = resolve('package.json')
+    try {
+      const d = piBlink()
+      const modules = Object.fromEntries(Object.keys(d.modules).flatMap((id) => (libraryLookup(id) ? [[id, libraryLookup(id)!]] : [])))
+      const r = await runIsolated({ diagram: d, boards: ['u1'], forMs: 1500, inputs: [], presses: [], py: nodePy(), modules, files: PY_FILES, probe: [outside, inHome, inCwd] }, [PY])
+      // The probed paths: the home folder and the CLI's cwd (added by runIsolated), then the three files.
+      const sealed = { permission: true, codeFromStrings: false, read: [false, false, false, false, false], write: false, childProcess: false, addons: false, wasi: false }
+      expect(r.probe).toEqual(sealed)
+      // The code thread, probed after Pyodide loads and before the script (the home folder first).
+      expect(r.result.boards[0].probe).toEqual({ ...sealed, read: [false, ...sealed.read] })
+      expect(r.result.boards[0].status).toBe('stopped')
+      expect(r.result.timeline.filter((e) => e.pin === 'GPIO17').map((e) => e.state)).toEqual(['high', 'low'])
+    } finally {
+      rmSync(inHome, { force: true })
+    }
   }, 120_000)
 })

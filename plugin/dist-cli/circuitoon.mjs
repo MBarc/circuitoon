@@ -97891,9 +97891,12 @@ function probeSandbox(paths) {
 		wasi: p ? p.has("wasi") : true
 	};
 }
+/** The paths a code thread in the run's process must not read (runProcess.ts sets it, as JSON). */
+var PROBE_ENV = "CIRCUITOON_RUN_PROBE";
 /** Why a process under the permission model is not confined as it should be, or null. */
 function sandboxHole(p) {
 	if (p.codeFromStrings) return "it can build code from strings";
+	if (p.permission && p.read.some(Boolean)) return "it can read outside its folders";
 	if (p.permission && (p.write || p.childProcess || p.addons || p.wasi)) return "it can write files, start processes, or load addons or WASI";
 	return null;
 }
@@ -97909,7 +97912,7 @@ if (!isMainThread && workerData?.circuitoonCode) serveCode((m) => parentPort.pos
 		jsglobals: Object.fromEntries(PY_JSGLOBALS.map((n) => [n, g[n]]))
 	});
 	if (process.permission) {
-		const probe = probeSandbox([homedir()]);
+		const probe = probeSandbox([homedir(), ...JSON.parse(process.env["CIRCUITOON_RUN_PROBE"] ?? "[]")]);
 		parentPort.postMessage({
 			type: "probe",
 			probe
@@ -97990,6 +97993,7 @@ async function drive(o) {
 	let seq = {};
 	let moving = [];
 	const findingsOf = (x) => x.status === "ok" ? x.result.findings : x.status === "failed" ? [x.finding, ...x.findings] : x.findings;
+	let kept = false;
 	const solveAt = async (t, keep = true) => {
 		last = await solve(sheet, o.engine, ++revision, {
 			library,
@@ -98002,7 +98006,7 @@ async function drive(o) {
 			t,
 			outcome: last.outcome
 		});
-		if (keep) addFindings(findingsOf(last.outcome));
+		if (keep) kept = true, addFindings(findingsOf(last.outcome));
 		return last;
 	};
 	let notify = () => {};
@@ -98080,7 +98084,6 @@ async function drive(o) {
 		entry.run.memory.f64[F.horizonMs] = Math.min(16, events[0]?.atMs ?? Infinity, o.forMs);
 		entry.run.start();
 	}
-	if (!live.length) addFindings(findingsOf(first.outcome));
 	/** Resolves when every live board waits or has ended; stops a board that never pauses. */
 	const settle = () => new Promise((resolve) => {
 		const check = () => {
@@ -98193,6 +98196,7 @@ async function drive(o) {
 		}
 	}
 	await Promise.all(live.map((e) => e.run.done));
+	if (!kept) addFindings(findingsOf(first.outcome));
 	for (const e of live) e.b.status = res.neverPauses.includes(e.b.uid) ? "error" : e.run.status;
 	res.simulatedMs = Math.min(T, o.forMs);
 	return res;
@@ -98202,7 +98206,7 @@ async function drive(o) {
 var CHILD = "--circuitoon-run-child";
 /** Node 22.13 and newer: the permission model without the experimental flag. */
 var PERMISSION = process.allowedNodeEnvironmentFlags.has("--permission");
-/** A run's real-time cap whatever --for says, on top of the never-pauses limit: the child is killed past it. */
+/** A run's real-time cap: at least 120 s, or --for if longer, plus the never-pauses limit; the child is killed past it. */
 var RUN_REAL_CAP_MS = 12e4;
 /** Why the child is not confined as it should be, or null. */
 function hole(p) {
@@ -98219,6 +98223,15 @@ async function runIsolated(job, readPaths) {
 		engineDir(),
 		...readPaths
 	].filter((p) => !!p);
+	const inside = (p) => read.some((r) => {
+		const rel = relative(r, p);
+		return rel === "" || !rel.startsWith("..") && !isAbsolute(rel);
+	});
+	const probe = [
+		homedir(),
+		process.cwd(),
+		...job.probe ?? []
+	].filter((p) => !inside(p));
 	const execArgv = [
 		"--disallow-code-generation-from-strings",
 		"--disable-warning=SecurityWarning",
@@ -98231,6 +98244,7 @@ async function runIsolated(job, readPaths) {
 	];
 	const { NODE_OPTIONS: _, ...env } = process.env;
 	const child = fork(file, [CHILD], {
+		cwd: here,
 		execArgv,
 		env,
 		serialization: "advanced",
@@ -98248,9 +98262,12 @@ async function runIsolated(job, readPaths) {
 			child.once("message", (m) => ok(m));
 			child.once("error", fail);
 			child.once("exit", (code) => fail(/* @__PURE__ */ new Error(`the run's process ended early (exit ${code})${err.trim() ? `: ${err.trim()}` : ""}`)));
-			const cap = RUN_REAL_CAP_MS + (job.realLimitMs ?? 5e3);
+			const cap = Math.max(RUN_REAL_CAP_MS, job.forMs) + (job.realLimitMs ?? 5e3);
 			setTimeout(() => fail(/* @__PURE__ */ new Error(`the run took more than ${cap / 1e3} s of real time and was stopped`)), cap).unref();
-			child.send(job);
+			child.send({
+				...job,
+				probe
+			});
 		});
 		const why = hole(reply.probe);
 		if (why) throw new Error(`the run's sandbox did not hold (${why}); not running the code`);
@@ -98268,6 +98285,7 @@ if (isMainThread && process.argv.includes(CHILD) && process.send) {
 	process.once("message", (job) => {
 		const { modules, probe, ...o } = job;
 		const sandbox = probeSandbox(probe ?? []);
+		process.env[PROBE_ENV] = JSON.stringify(probe ?? []);
 		const send = (r) => process.send(r, () => process.exit(0));
 		if (hole(sandbox)) return send({
 			ok: false,

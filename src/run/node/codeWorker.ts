@@ -48,9 +48,13 @@ export function probeSandbox(paths: string[]): SandboxProbe {
   }
 }
 
+/** The paths a code thread in the run's process must not read (runProcess.ts sets it, as JSON). */
+export const PROBE_ENV = 'CIRCUITOON_RUN_PROBE'
+
 /** Why a process under the permission model is not confined as it should be, or null. */
 export function sandboxHole(p: SandboxProbe): string | null {
   if (p.codeFromStrings) return 'it can build code from strings'
+  if (p.permission && p.read.some(Boolean)) return 'it can read outside its folders'
   if (p.permission && (p.write || p.childProcess || p.addons || p.wasi)) return 'it can write files, start processes, or load addons or WASI'
   return null
 }
@@ -70,11 +74,11 @@ if (!isMainThread && data?.circuitoonCode) {
       const g = globalThis as unknown as Record<string, unknown>
       const py = await mod.loadPyodide({ indexURL, lockFileContents: lock, jsglobals: Object.fromEntries(PY_JSGLOBALS.map((n) => [n, g[n]])) })
       // In the run's confined process, the code thread checks its own confinement before any user
-      // code: Node's permission model denies writes, processes, addons and WASI here, and the V8 flag
-      // code from strings, but it does not confine reads in worker threads, so reads rely on the
-      // in-worker sandbox (serve.ts). The home folder's readability is recorded, not required.
+      // code: no reads of the home folder, the CLI's working folder or the test paths (Node grants a
+      // worker thread its process's working folder; runProcess.ts starts the child in an allowed one),
+      // no writes, processes, addons or WASI, and no code from strings.
       if (process.permission) {
-        const probe = probeSandbox([homedir()])
+        const probe = probeSandbox([homedir(), ...(JSON.parse(process.env[PROBE_ENV] ?? '[]') as string[])])
         parentPort!.postMessage({ type: 'probe', probe } satisfies FromCode)
         const hole = sandboxHole(probe)
         if (hole) throw new Error(`the code's sandbox did not hold (${hole}); not running the code`)

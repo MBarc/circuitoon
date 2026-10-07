@@ -16,6 +16,8 @@ function pi(extra: Parameters<typeof sheet>[0] = [], wires: [string, string][] =
 
 export const piBlink = (source = BLINK): Diagram => withCode(pi([], [['bt1.+', 'u1.5V']]), source, 'blink.py')
 export const piButton = (source: string): Diagram => withCode(pi([], [['bt1.+', 'u1.5V']]), source)
+/** A second LED straight across the 5 V supply, with no resistor (a blocking finding in any state). */
+export const piBareLed = (source: string): Diagram => withCode(pi([{ uid: 'd2', module: 'led' }], [['bt1.+', 'u1.5V'], ['bt1.+', 'd2.A'], ['d2.K', 'bt1.-']]), source)
 /** The supply reaches the Pi through a closed rocker switch (SW1, uid sw1), so a press can cut it. */
 export const piSwitched = (source: string): Diagram =>
   withCode(pi([{ uid: 'sw1', module: 'rocker-switch-kcd1', values: { 'contact.s': 'closed' } }], [['bt1.+', 'sw1.1'], ['sw1.2', 'u1.5V']]), source)

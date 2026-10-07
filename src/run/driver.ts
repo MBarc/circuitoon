@@ -101,18 +101,20 @@ export async function drive(o: DriveOptions): Promise<DriveResult> {
   let seq: Record<string, number> = {}
   let moving: string[] = []
   const findingsOf = (x: SimOutcome) => (x.status === 'ok' ? x.result.findings : x.status === 'failed' ? [x.finding, ...x.findings] : x.findings)
+  // Whether any solve's findings were kept (the saved-state solve's count only if none was).
+  let kept = false
   const solveAt = async (t: number, keep = true) => {
     last = await solve(sheet, o.engine, ++revision, { library, held, runPins: pins, moving, runSeq: seq })
     res.solves.push({ t, outcome: last.outcome })
-    if (keep) addFindings(findingsOf(last.outcome))
+    if (keep) (kept = true), addFindings(findingsOf(last.outcome))
     return last
   }
 
   // A message from a board re-runs the settle check (set while settling).
   let notify = () => {}
   // Which boards can start (spec 7 exit 3): code, a language they run, sim data, and power.
-  // In the saved state, before the code sets its pins: its findings count only if no board starts
-  // (a started board's first solve, due at once, reports what persists).
+  // In the saved state, before the code sets its pins: its findings count only if no solve while
+  // the code ran reported (no board started, or every board ended before the first one).
   const first = await solveAt(0, false)
   const live: Live[] = []
   const core = new RunCore()
@@ -154,7 +156,6 @@ export async function drive(o: DriveOptions): Promise<DriveResult> {
     entry.run.memory.f64[F.horizonMs] = Math.min(16, events[0]?.atMs ?? Infinity, o.forMs)
     entry.run.start()
   }
-  if (!live.length) addFindings(findingsOf(first.outcome))
 
   /** Resolves when every live board waits or has ended; stops a board that never pauses. */
   const settle = () => new Promise<void>((resolve) => {
@@ -262,6 +263,7 @@ export async function drive(o: DriveOptions): Promise<DriveResult> {
     }
   }
   await Promise.all(live.map((e) => e.run.done))
+  if (!kept) addFindings(findingsOf(first.outcome))
   for (const e of live) e.b.status = res.neverPauses.includes(e.b.uid) ? 'error' : e.run.status
   // A board stepping 10 us at a time can sync a hair past the end.
   res.simulatedMs = Math.min(T, o.forMs)
