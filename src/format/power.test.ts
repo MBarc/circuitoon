@@ -27,6 +27,12 @@ const power: Record<string, Want> = {
     sides: { left: ['IN+', null, null, null, null, null, 'IN-'], right: ['OUT+', null, null, null, null, null, 'OUT-'] },
     internal: [['IN-', 'OUT-']],
   },
+  // Component side as in Pololu's pinout diagram, ENABLE end at the left: the five 0.1 in holes below
+  // the top-left mounting hole, the four at the far end above the bottom-right one.
+  'pololu-u3v70f5-boost.json': {
+    sides: { left: [null, 'ENABLE', 'GND', 'GND 2', 'VIN', 'VIN 2'], right: ['GND 3', 'GND 4', 'VOUT', 'VOUT 2', null, null] },
+    internal: [['GND', 'GND 2', 'GND 3', 'GND 4'], ['VIN', 'VIN 2'], ['VOUT', 'VOUT 2']],
+  },
 }
 
 describe('built-in power modules keep the physical pad order', () => {
@@ -69,6 +75,15 @@ describe('built-in power modules keep the physical pad order', () => {
     expect(pin(lm, 'OUT+')).toMatchObject({ type: 'power_out', supply: 'ADJ' })
     expect(pin(lm, 'IN+')?.supply?.split('/')).toContain('7.4V')
     for (const m of [ip, tp, ams, lm]) for (const p of pinsOf(m)) if (/-$|^GND$/.test(p.name)) expect(p.type).toBe('ground')
+  })
+
+  it('the U3V70F5 takes a 1S cell on VIN and gives 5 V on VOUT, with ENABLE an input and every GND labelled GND', () => {
+    const u = load('pololu-u3v70f5-boost.json')
+    expect(pin(u, 'VIN')).toMatchObject({ type: 'power_in', supply: '3V3/3.7V/5V' })
+    expect(pin(u, 'VOUT 2')).toMatchObject({ type: 'power_out', supply: '5V', label: 'VOUT' })
+    expect(pin(u, 'ENABLE')).toMatchObject({ type: 'input' })
+    for (const n of ['GND', 'GND 2', 'GND 3', 'GND 4']) expect(pin(u, n)?.type).toBe('ground')
+    expect(pin(u, 'GND 3')?.label).toBe('GND')
   })
 
   it('the LM2596 output voltage is its editable value', () => {

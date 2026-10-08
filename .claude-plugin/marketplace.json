@@ -6,7 +6,7 @@
     {
       "name": "circuitoon",
       "source": "./plugin",
-      "version": "0.14.1",
+      "version": "0.15.0",
       "description": "Design, verify and render Circuitoon wiring diagrams from a netlist: the circuitoon CLI (layout, verify, check, render, link, gate, sim, run, kicad, module) and the circuitoon-design and circuitoon-custom-part skills."
     }
   ]

@@ -121,6 +121,10 @@ describe('the IP5306 and AMS1117 modules (spec 3.4)', () => {
     expect(r.minLoad?.note).toBeTruthy()
     expect(r.efficiency!.note).toBeTruthy()
   })
+  it('models the Pololu U3V70F5 as a boost with a true shutdown and its current rating at the 2.9 V minimum input', () => {
+    const r = simOf(load('pololu-u3v70f5-boost'))!.power!.rails![0]
+    expect([r.kind, r.output, r.vout?.value, r.vinMin?.value, r.vinMax?.value, r.ioutMax?.value, r.efficiency?.value, r.offPath]).toEqual(['boost', 'OUT', 5, 2.9, 5, 2.9, 0.88, 'open'])
+  })
   it('models the AMS1117 as an LDO from VIN to OUT', () => {
     const r = simOf(load('ams1117-33-module'))!.power!.rails![0]
     expect([r.kind, r.output, r.vout?.value]).toEqual(['ldo', 'OUT', 3.3])

@@ -1,5 +1,6 @@
 // Generates the built-in power modules: the IP5306 USB-C charge/boost board, the TP4056 USB-C
-// charger with protection, the 3-pin AMS1117 3.3 V regulator and the LM2596 buck converter.
+// charger with protection, the 3-pin AMS1117 3.3 V regulator, the LM2596 buck converter and the
+// Pololu U3V70F5 5 V step-up regulator.
 // Pad names and positions are transcribed from the sources cited on each part below (vendor
 // photos with legible silkscreen, cross-checked against a second, independent source).
 //
@@ -188,6 +189,54 @@ function sop(x, y, w, h, n, label, labelSize = 5) {
     source: 'https://www.amazon.com/dp/B08NV3JCBC https://www.instructables.com/How-to-Use-DC-to-DC-Buck-Converter-LM2596/',
     pins: [...left.pins, ...right.pins], internal: [['IN-', 'OUT-']], wu, hu,
     electrical: { model: 'buck_converter', params: { voltage: { unit: 'V', default: 5 } } }, shapes,
+  }))
+}
+
+// ---------------------------------------------------------------------------------------------
+// 5. Pololu U3V70F5 5 V step-up regulator (item #2891, the green 40.6 x 15.2 mm board, PCB reg21a).
+//    Seen from the component side as in Pololu's pinout diagram (0J9098), the ENABLE/GND/VIN end at
+//    the left: five 0.1 in holes top to bottom ENABLE, GND, GND, VIN, VIN, below the mounting hole in
+//    the top left corner. At the right end, four 0.1 in holes top to bottom GND, GND, VOUT, VOUT, above
+//    the mounting hole in the bottom right corner. The bottom silkscreen (Pololu's dimensioned bottom
+//    photo 0J9082) and the dimension diagram (file 0J1560: 9 holes of 1.02 mm on 2.54 mm, five at one
+//    end and four at the other) agree. The larger terminal-block holes beside them carry the same nets
+//    and are not separate pins. "a 100 kOhm pull-up resistor on the board connects the ENABLE pin to
+//    reverse-protected VIN" (product page): input and output share GND.
+//    Ratings (product page, Features and specifications): input 2.9 V to 5 V ("should not exceed the
+//    output voltage"), output 5 V with 4% accuracy, true shutdown on ENABLE low (< 0.4 V). The output
+//    current, efficiency and their sources are in scripts/sim-data/pololu-u3v70f5-boost.json.
+{
+  const wu = 16, hu = 8, W = wu * 10, H = hu * 10
+  const GREEN = '#2F9E6E'
+  const types = {
+    ENABLE: { type: 'input', caps: { note: 'Pulled up to VIN by 100 kOhm on the board, so the regulator runs with ENABLE left open; drive it below 0.4 V to switch the 5 V output fully off.' } },
+    GND: { type: 'ground' }, VIN: { type: 'power_in', supply: '3V3/3.7V/5V' }, VOUT: { type: 'power_out', supply: '5V' },
+  }
+  const left = side('left', [null, 'ENABLE', 'GND', 'GND 2|GND', 'VIN', 'VIN 2|VIN'], types, hu)
+  const right = side('right', ['GND 3|GND', 'GND 4|GND', 'VOUT', 'VOUT 2|VOUT', null, null], types, hu)
+  const smd = (x, y, w = 6, h = 4) => r(x, y, w, h, SMD, { radius: 1, outline: false })
+  const shapes = [
+    r(0, 0, W, H, GREEN, { radius: 3 }),
+    // Mounting holes (#2 / M2), top left and bottom right.
+    r(4, 3, 9, 9, MOUNT, { radius: 4.5, outline: false }),
+    r(W - 13, H - 12, 9, 9, MOUNT, { radius: 4.5, outline: false }),
+    // Row of ceramic capacitors along the top, the 2.2 uH inductor, the controller and the two MOSFETs.
+    ...[49, 57, 65, 73].map((x) => smd(x, 6)),
+    r(47, 17, 30, 34, '#5A6068', { radius: 4, label: '2R2', labelColor: '#E6E9ED', labelSize: 8 }),
+    r(84, 31, 14, 14, CHIP, { radius: 1 }),
+    r(98, 8, 14, 16, CHIP, { radius: 1, label: 'S36', labelColor: METAL, labelSize: 4 }),
+    r(47, 59, 14, 12, CHIP, { radius: 1, label: 'S36', labelColor: METAL, labelSize: 4 }),
+    ...[116, 124].map((x) => smd(x, 7)),
+    ...[100, 108].flatMap((x) => [smd(x, 52), smd(x, 60)]),
+    smd(68, 62), smd(78, 62), smd(88, 54),
+    ...left.at.flatMap((y) => pad(7, y)), ...right.at.flatMap((y) => pad(W - 7, y)),
+  ]
+  write('pololu-u3v70f5-boost.json', moduleJson({
+    category: 'Power', inside: true, id: 'pololu-u3v70f5-boost', name: 'Pololu U3V70F5 5 V step-up regulator (from 1S Li-ion)',
+    source: 'https://www.pololu.com/product/2891 https://a.pololu-files.com/picture/0J9098.1200.jpg https://a.pololu-files.com/picture/0J9082.1200.jpg https://www.pololu.com/file/0J1560/step-up-voltage-regulator-u3v70x-dimensions.pdf',
+    pins: [...left.pins, ...right.pins],
+    internal: [['GND', 'GND 2', 'GND 3', 'GND 4'], ['VIN', 'VIN 2'], ['VOUT', 'VOUT 2']], wu, hu,
+    electrical: { model: 'boost_converter', params: {} }, shapes,
   }))
 }
 
