@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Cross-origin isolation for SharedArrayBuffer (firmware spec 2.5): the config, then the
+         service worker, first in <head> so its one reload happens before the app boots and a
+         share link's hash survives. doReload never reloads over an unsaved diagram (src/isolation.ts);
+         Run then stays disabled until the next load. The reload is asynchronous, so the app may
+         already have read a share link and cleared its hash: doReload restores the URL from head time.
+         It reloads at most once per 10 s per tab (none if sessionStorage throws): a window that bypasses
+         the worker (DevTools "Bypass for network") is never controlled and would otherwise reload forever.
+         It waits for an active worker (serviceWorker.ready): the worker's "updatefound" fires while the
+         new worker is still installing, and a reload then loads the page uncontrolled, after which the
+         10 s guard would leave it that way. -->
+    <script>window.coi = ((u) => ({ coepCredentialless: () => false, quiet: true, doReload: () => navigator.serviceWorker.ready.then(() => { if (window.__circuitoonUnsaved) return; try { var k = 'circuitoon.coiReload', t = +sessionStorage.getItem(k) || 0; if (Date.now() - t < 10000) return; sessionStorage.setItem(k, Date.now()) } catch (e) { return } window.history.replaceState(null, '', u); window.location.reload() }) }))(window.location.href)</script>
+    <script src="/circuitoon/coi-serviceworker.js"></script>
+    <meta name="description" content="Circuit diagrams AI agents can design, check and hand you." />
+    <meta name="theme-color" content="#E9EEE6" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1B1D20" media="(prefers-color-scheme: dark)" />
+    <!-- The chosen theme, applied before first paint so the page never flashes the other one (src/theme.ts applyTheme). -->
+    <script>try{var t=localStorage.getItem('circuitoon.theme');if(t==='light'||t==='dark'){document.documentElement.setAttribute('data-theme',t);document.querySelectorAll('meta[name="theme-color"]').forEach(function(m){m.setAttribute('content',t==='dark'?'#1B1D20':'#E9EEE6')})}}catch(e){}</script>
+    <link rel="icon" href="/circuitoon/favicon.ico?v=2" sizes="16x16 32x32 48x48" />
+    <link rel="icon" href="/circuitoon/favicon.svg?v=2" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/circuitoon/apple-touch-icon.png?v=2" />
+    <link rel="manifest" href="/circuitoon/site.webmanifest?v=2" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Circuitoon" />
+    <meta property="og:url" content="https://mbarc.github.io/circuitoon/" />
+    <meta property="og:title" content="Circuitoon" />
+    <meta property="og:description" content="Circuit diagrams AI agents can design, check and hand you." />
+    <meta property="og:image" content="https://mbarc.github.io/circuitoon/og-card.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="The Circuitoon logo, a cartoon chip, beside a wiring sheet of a 9 volt battery, push button, resistor and LED." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Circuitoon" />
+    <meta name="twitter:description" content="Circuit diagrams AI agents can design, check and hand you." />
+    <meta name="twitter:image" content="https://mbarc.github.io/circuitoon/og-card.png" />
+    <meta name="twitter:image:alt" content="The Circuitoon logo, a cartoon chip, beside a wiring sheet of a 9 volt battery, push button, resistor and LED." />
+    <!-- Self-hosted fonts (firmware spec 2.5): nothing cross-origin, so COEP require-corp loads the page. -->
+    <link rel="preload" href="/circuitoon/fonts/atkinson-hyperlegible-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/circuitoon/fonts/fredoka-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <title>Circuitoon: circuit diagrams for AI agents</title>
+    <script type="module" crossorigin src="/circuitoon/assets/index-DXQDbhey.js"></script>
+    <link rel="stylesheet" crossorigin href="/circuitoon/assets/index-Dmq4i0UQ.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
