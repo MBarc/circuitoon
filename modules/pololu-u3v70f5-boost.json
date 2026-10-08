@@ -1,0 +1,594 @@
+{
+  "format": "circuitoon-module/1",
+  "id": "pololu-u3v70f5-boost",
+  "version": 1,
+  "name": "Pololu U3V70F5 5 V step-up regulator (from 1S Li-ion)",
+  "category": "Power",
+  "source": "https://www.pololu.com/product/2891 https://a.pololu-files.com/picture/0J9098.1200.jpg https://a.pololu-files.com/picture/0J9082.1200.jpg https://www.pololu.com/file/0J1560/step-up-voltage-regulator-u3v70x-dimensions.pdf",
+  "pins": [
+    {
+      "spacer": true,
+      "side": "left"
+    },
+    {
+      "name": "ENABLE",
+      "side": "left",
+      "type": "input",
+      "caps": {
+        "note": "Pulled up to VIN by 100 kOhm on the board, so the regulator runs with ENABLE left open; drive it below 0.4 V to switch the 5 V output fully off."
+      }
+    },
+    {
+      "name": "GND",
+      "side": "left",
+      "type": "ground"
+    },
+    {
+      "name": "GND 2",
+      "side": "left",
+      "label": "GND",
+      "type": "ground"
+    },
+    {
+      "name": "VIN",
+      "side": "left",
+      "type": "power_in",
+      "supply": "3V3/3.7V/5V"
+    },
+    {
+      "name": "VIN 2",
+      "side": "left",
+      "label": "VIN",
+      "type": "power_in",
+      "supply": "3V3/3.7V/5V"
+    },
+    {
+      "name": "GND 3",
+      "side": "right",
+      "label": "GND",
+      "type": "ground"
+    },
+    {
+      "name": "GND 4",
+      "side": "right",
+      "label": "GND",
+      "type": "ground"
+    },
+    {
+      "name": "VOUT",
+      "side": "right",
+      "type": "power_out",
+      "supply": "5V"
+    },
+    {
+      "name": "VOUT 2",
+      "side": "right",
+      "label": "VOUT",
+      "type": "power_out",
+      "supply": "5V"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    },
+    {
+      "spacer": true,
+      "side": "right"
+    }
+  ],
+  "internal": [
+    [
+      "GND",
+      "GND 2",
+      "GND 3",
+      "GND 4"
+    ],
+    [
+      "VIN",
+      "VIN 2"
+    ],
+    [
+      "VOUT",
+      "VOUT 2"
+    ]
+  ],
+  "size": {
+    "w": 16,
+    "h": 8
+  },
+  "electrical": {
+    "model": "boost_converter",
+    "params": {},
+    "sim": {
+      "power": {
+        "domains": [
+          {
+            "name": "IN",
+            "pin": "VIN",
+            "ret": "GND",
+            "nominal": 3.7
+          },
+          {
+            "name": "OUT",
+            "pin": "VOUT",
+            "ret": "GND 3",
+            "nominal": 5
+          }
+        ],
+        "rails": [
+          {
+            "id": "boost",
+            "inputs": [
+              {
+                "domain": "IN",
+                "via": "direct"
+              }
+            ],
+            "output": "OUT",
+            "kind": "boost",
+            "vout": {
+              "value": 5,
+              "unit": "V",
+              "source": "https://www.pololu.com/product/2891",
+              "provenance": "datasheet",
+              "note": "Output voltage: 5 V with 4% accuracy (product page, Features and specifications), so 4.8 to 5.2 V."
+            },
+            "efficiency": {
+              "value": 0.88,
+              "unit": "1",
+              "source": "https://www.pololu.com/product/2891 https://a.pololu-files.com/picture/0J9083.1200.png",
+              "provenance": "datasheet",
+              "note": "Read off Pololu's 'Typical efficiency, Vout = 5 V' graph at 3 A out from a 3.3 V input: about 88%. The same graph gives about 93% at 2 A and 95% at 1 A from 3.3 V, and about 93% at 3 A and 95% at 2 A from 4 V; the page sums it up as 'Typical efficiency of 80% to 95%, depending on input voltage and load'. One point is used for every load and input: the low-cell, high-load corner, so a lighter load or a fuller cell draws a little less than modelled. No curve is given for 3.6 V."
+            },
+            "vinMin": {
+              "value": 2.9,
+              "unit": "V",
+              "source": "https://www.pololu.com/product/2891",
+              "provenance": "datasheet",
+              "note": "'The input voltage, VIN, must be at least 2.9 V' (product page, connections). Under-voltage lockout: typical thresholds 2.4 V falling, 2.8 V rising (Features and specifications)."
+            },
+            "vinMax": {
+              "value": 5,
+              "unit": "V",
+              "source": "https://www.pololu.com/product/2891",
+              "provenance": "datasheet",
+              "note": "Input voltage 2.9 V to 5 V; VIN 'should not exceed the output voltage, VOUT. (If VIN is higher than VOUT, the higher input voltage will show up on the output, which is potentially dangerous for your connected load and could also damage the regulator.)' (product page)."
+            },
+            "ioutMax": {
+              "value": 3.4,
+              "unit": "A",
+              "source": "https://www.pololu.com/product/2891 https://a.pololu-files.com/picture/0J9089.1200.png",
+              "provenance": "datasheet",
+              "note": "Read off Pololu's 'Typical maximum continuous output current' graph, Vout = 5 V line, at room temperature with no forced airflow or heat sinking: about 3.4 A at 3.3 V in. The same line gives about 3.0 A at 2.9 V, 3.7 A at 3.6 V, 4.3 A at 4.2 V and 5.2 A at 5 V; output current falls with input voltage, so 3.4 A covers a 1S cell down to 3.3 V. The input side is limited cycle by cycle to 10 A, and about 6 A in can be held for many minutes (product page)."
+            },
+            "reverse": "blocks",
+            "offPath": "open"
+          }
+        ]
+      },
+      "unaccounted": [
+        "Quiescent current with no load, under 1 mA typical (about 0.6 mA at 3 V in, falling with input voltage, on Pololu's quiescent current graph), is left out: it is a small fraction of any real load and is counted only while the regulator runs.",
+        "Efficiency variation with load and input voltage: one point (88%, 3 A from 3.3 V) is used for the whole range.",
+        "The maximum output current depends on ambient temperature and airflow; 3.4 A is the room-temperature, still-air figure at 3.3 V in."
+      ]
+    }
+  },
+  "art": {
+    "w": 160,
+    "h": 80,
+    "pinLabels": "inside",
+    "shapes": [
+      {
+        "type": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 160,
+        "h": 80,
+        "fill": "#2F9E6E",
+        "radius": 3
+      },
+      {
+        "type": "rect",
+        "x": 4,
+        "y": 3,
+        "w": 9,
+        "h": 9,
+        "fill": "#123356",
+        "radius": 4.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 147,
+        "y": 68,
+        "w": 9,
+        "h": 9,
+        "fill": "#123356",
+        "radius": 4.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 49,
+        "y": 6,
+        "w": 6,
+        "h": 4,
+        "fill": "#C8A27A",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 57,
+        "y": 6,
+        "w": 6,
+        "h": 4,
+        "fill": "#C8A27A",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 65,
+        "y": 6,
+        "w": 6,
+        "h": 4,
+        "fill": "#C8A27A",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 73,
+        "y": 6,
+        "w": 6,
+        "h": 4,
+        "fill": "#C8A27A",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 47,
+        "y": 17,
+        "w": 30,
+        "h": 34,
+        "fill": "#5A6068",
+        "radius": 4,
+        "label": "2R2",
+        "labelColor": "#E6E9ED",
+        "labelSize": 8
+      },
+      {
+        "type": "rect",
+        "x": 84,
+        "y": 31,
+        "w": 14,
+        "h": 14,
+        "fill": "#1E2126",
+        "radius": 1
+      },
+      {
+        "type": "rect",
+        "x": 98,
+        "y": 8,
+        "w": 14,
+        "h": 16,
+        "fill": "#1E2126",
+        "radius": 1,
+        "label": "S36",
+        "labelColor": "#C9CED6",
+        "labelSize": 4
+      },
+      {
+        "type": "rect",
+        "x": 47,
+        "y": 59,
+        "w": 14,
+        "h": 12,
+        "fill": "#1E2126",
+        "radius": 1,
+        "label": "S36",
+        "labelColor": "#C9CED6",
+        "labelSize": 4
+      },
+      {
+        "type": "rect",
+        "x": 116,
+        "y": 7,
+        "w": 6,
+        "h": 4,
+        "fill": "#C8A27A",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 124,
+        "y": 7,
+        "w": 6,
+        "h": 4,
+        "fill": "#C8A27A",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 100,
+        "y": 52,
+        "w": 6,
+        "h": 4,
+        "fill": "#C8A27A",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 100,
+        "y": 60,
+        "w": 6,
+        "h": 4,
+        "fill": "#C8A27A",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 108,
+        "y": 52,
+        "w": 6,
+        "h": 4,
+        "fill": "#C8A27A",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 108,
+        "y": 60,
+        "w": 6,
+        "h": 4,
+        "fill": "#C8A27A",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 68,
+        "y": 62,
+        "w": 6,
+        "h": 4,
+        "fill": "#C8A27A",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 78,
+        "y": 62,
+        "w": 6,
+        "h": 4,
+        "fill": "#C8A27A",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 88,
+        "y": 54,
+        "w": 6,
+        "h": 4,
+        "fill": "#C8A27A",
+        "radius": 1,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 3,
+        "y": 26,
+        "w": 8,
+        "h": 8,
+        "fill": "#D5DAE1",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 5.5,
+        "y": 28.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 3,
+        "y": 36,
+        "w": 8,
+        "h": 8,
+        "fill": "#D5DAE1",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 5.5,
+        "y": 38.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 3,
+        "y": 46,
+        "w": 8,
+        "h": 8,
+        "fill": "#D5DAE1",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 5.5,
+        "y": 48.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 3,
+        "y": 56,
+        "w": 8,
+        "h": 8,
+        "fill": "#D5DAE1",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 5.5,
+        "y": 58.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 3,
+        "y": 66,
+        "w": 8,
+        "h": 8,
+        "fill": "#D5DAE1",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 5.5,
+        "y": 68.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 149,
+        "y": 16,
+        "w": 8,
+        "h": 8,
+        "fill": "#D5DAE1",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 151.5,
+        "y": 18.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 149,
+        "y": 26,
+        "w": 8,
+        "h": 8,
+        "fill": "#D5DAE1",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 151.5,
+        "y": 28.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 149,
+        "y": 36,
+        "w": 8,
+        "h": 8,
+        "fill": "#D5DAE1",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 151.5,
+        "y": 38.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 149,
+        "y": 46,
+        "w": 8,
+        "h": 8,
+        "fill": "#D5DAE1",
+        "radius": 4,
+        "outline": false
+      },
+      {
+        "type": "rect",
+        "x": 151.5,
+        "y": 48.5,
+        "w": 3,
+        "h": 3,
+        "fill": "#6B727C",
+        "radius": 1.5,
+        "outline": false
+      }
+    ]
+  },
+  "kicad": {
+    "headers": [
+      {
+        "name": "input end, pin 1 ENABLE",
+        "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x05_P2.54mm_Vertical",
+        "pins": {
+          "ENABLE": "1",
+          "GND": "2",
+          "GND 2": "3",
+          "VIN": "4",
+          "VIN 2": "5"
+        }
+      },
+      {
+        "name": "output end, pin 1 GND",
+        "footprint": "Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical",
+        "pins": {
+          "GND 3": "1",
+          "GND 4": "2",
+          "VOUT": "3",
+          "VOUT 2": "4"
+        }
+      }
+    ],
+    "value": "Pololu U3V70F5",
+    "note": "Each end is its own socket strip: place them at the board's real spacing (Pololu dimension diagram), or wire the terminal-block holes instead."
+  }
+}

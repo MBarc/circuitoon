@@ -276,6 +276,16 @@ const KICAD = {
     note: WIRE_PADS,
   }),
   'ams1117-33-module': (m) => ({ ...oneRow(m, 'bottom'), value: 'AMS1117-3.3 module' }),
+  // Pololu U3V70F5: nine 0.1 in holes, five at the ENABLE/GND/VIN end and four at the GND/VOUT end
+  // (dimension diagram 0J1560); header pins soldered into them plug into these sockets.
+  'pololu-u3v70f5-boost': (m) => ({
+    ...groups([
+      ['input end, pin 1 ENABLE', names(m, 'left'), socket],
+      ['output end, pin 1 GND', names(m, 'right'), socket],
+    ]),
+    value: 'Pololu U3V70F5',
+    note: 'Each end is its own socket strip: place them at the board\'s real spacing (Pololu dimension diagram), or wire the terminal-block holes instead.',
+  }),
 
   // Motors and actuators
   'servo-sg90': (m) => ({ ...oneRow(m, 'left', pinHeader), value: 'SG90', note: 'The servo cable plugs onto this header.' }),

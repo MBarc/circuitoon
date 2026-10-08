@@ -1,0 +1,88 @@
+{
+  "id": "pololu-u3v70f5-boost",
+  "researched": "2026-10-07",
+  "sim": {
+    "power": {
+      "domains": [
+        { "name": "IN", "pin": "VIN", "ret": "GND", "nominal": 3.7 },
+        { "name": "OUT", "pin": "VOUT", "ret": "GND 3", "nominal": 5 }
+      ],
+      "rails": [
+        {
+          "id": "boost",
+          "inputs": [{ "domain": "IN", "via": "direct" }],
+          "output": "OUT",
+          "kind": "boost",
+          "vout": {
+            "value": 5.0,
+            "unit": "V",
+            "source": "https://www.pololu.com/product/2891",
+            "provenance": "datasheet",
+            "note": "Output voltage: 5 V with 4% accuracy (product page, Features and specifications), so 4.8 to 5.2 V."
+          },
+          "efficiency": {
+            "value": 0.88,
+            "unit": "1",
+            "source": "https://www.pololu.com/product/2891 https://a.pololu-files.com/picture/0J9083.1200.png",
+            "provenance": "datasheet",
+            "note": "Read off Pololu's 'Typical efficiency, Vout = 5 V' graph at 3 A out from a 3.3 V input: about 88%. The same graph gives about 93% at 2 A and 95% at 1 A from 3.3 V, and about 93% at 3 A and 95% at 2 A from 4 V; the page sums it up as 'Typical efficiency of 80% to 95%, depending on input voltage and load'. One point is used for every load and input: the low-cell, high-load corner, so a lighter load or a fuller cell draws a little less than modelled. No curve is given for 3.6 V."
+          },
+          "vinMin": {
+            "value": 2.9,
+            "unit": "V",
+            "source": "https://www.pololu.com/product/2891",
+            "provenance": "datasheet",
+            "note": "'The input voltage, VIN, must be at least 2.9 V' (product page, connections). Under-voltage lockout: typical thresholds 2.4 V falling, 2.8 V rising (Features and specifications)."
+          },
+          "vinMax": {
+            "value": 5.0,
+            "unit": "V",
+            "source": "https://www.pololu.com/product/2891",
+            "provenance": "datasheet",
+            "note": "Input voltage 2.9 V to 5 V; VIN 'should not exceed the output voltage, VOUT. (If VIN is higher than VOUT, the higher input voltage will show up on the output, which is potentially dangerous for your connected load and could also damage the regulator.)' (product page)."
+          },
+          "ioutMax": {
+            "value": 3.4,
+            "unit": "A",
+            "source": "https://www.pololu.com/product/2891 https://a.pololu-files.com/picture/0J9089.1200.png",
+            "provenance": "datasheet",
+            "note": "Read off Pololu's 'Typical maximum continuous output current' graph, Vout = 5 V line, at room temperature with no forced airflow or heat sinking: about 3.4 A at 3.3 V in. The same line gives about 3.0 A at 2.9 V, 3.7 A at 3.6 V, 4.3 A at 4.2 V and 5.2 A at 5 V; output current falls with input voltage, so 3.4 A covers a 1S cell down to 3.3 V. The input side is limited cycle by cycle to 10 A, and about 6 A in can be held for many minutes (product page)."
+          },
+          "reverse": "blocks",
+          "offPath": "open"
+        }
+      ]
+    }
+  },
+  "notes": [
+    "offPath 'open' is the maker's: 'unlike most boost regulators, these units offer a true shutdown option that turns off power to the load (with typical boost regulators, the input voltage will pass directly through to the output when they are disabled)' (product page). The page states it for ENABLE driven low; that the output is also cut below the 2.4 V lockout is assumed, not stated.",
+    "reverse 'blocks': a regulator with a true output disconnect has no path from VOUT back to VIN while it is off; the page says nothing about back-feeding the output, so this is a reading of the true-shutdown statement, not a stated figure.",
+    "ENABLE is not modelled: it is pulled up to VIN by 100 kOhm on the board (enabled by default) and turns the output off below 0.4 V (product page). The rail is always on within its input range.",
+    "Input and output GND are one net: the page puts the reverse-voltage protection on VIN ('reverse-protected VIN') and nothing on GND, and the bottom silkscreen labels both ends GND."
+  ],
+  "unaccounted": [
+    "Quiescent current with no load, under 1 mA typical (about 0.6 mA at 3 V in, falling with input voltage, on Pololu's quiescent current graph), is left out: it is a small fraction of any real load and is counted only while the regulator runs.",
+    "Efficiency variation with load and input voltage: one point (88%, 3 A from 3.3 V) is used for the whole range.",
+    "The maximum output current depends on ambient temperature and airflow; 3.4 A is the room-temperature, still-air figure at 3.3 V in."
+  ],
+  "review": [
+    {
+      "date": "2026-10-07",
+      "reviewer": "author self-check 1 (not independent)",
+      "checked": 5,
+      "corrected": [],
+      "disputed": [
+        "Graph values were read by locating the plotted line's pixels and the axis tick marks in Pololu's PNGs (0J9089 current, 0J9083 efficiency), accurate to about 0.1 A and 1 percentage point. An independent reviewer still has to check every value against the product page and graphs."
+      ]
+    },
+    {
+      "date": "2026-10-07",
+      "reviewer": "author self-check 2 (not independent)",
+      "checked": 5,
+      "corrected": [],
+      "disputed": [
+        "Re-read against the product page text (Features and specifications, connections) and the graphs by eye: vout 5 V 4%, vinMin 2.9 V, vinMax 5 V, true shutdown confirmed in the page text; 3.4 A at 3.3 V and 88% at 3 A from 3.3 V agree with the plotted lines. This is the authoring agent's own re-check: two independent reviews (spec 3.4) are still owed."
+      ]
+    }
+  ]
+}

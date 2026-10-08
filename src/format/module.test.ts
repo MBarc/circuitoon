@@ -319,7 +319,7 @@ describe('usesInsideLabels', () => {
       'tft-st7789-154-spi.json', 'oled-ssd1306-091-i2c.json', 'oled-ssd1306-096-i2c.json', 'oled-ssd1306-096-i2c-vcc-gnd.json',
       'oled-sh1106-13-i2c.json', 'oled-sh1106-13-i2c-vcc-gnd.json',
       'microsd-spi-3v3.json', 'microsd-spi-5v.json',
-      'ip5306-usbc-module.json', 'tp4056-module.json', 'ams1117-33-module.json', 'lm2596-buck-module.json',
+      'ip5306-usbc-module.json', 'tp4056-module.json', 'ams1117-33-module.json', 'lm2596-buck-module.json', 'pololu-u3v70f5-boost.json',
       'ws2812b-strip.json', 'ws2812d-5mm.json', 'dht22-module.json', 'dht22-bare.json',
       'bme280-module-4pin.json', 'bme280-module-6pin.json', 'pir-hc-sr501.json', 'ultrasonic-hc-sr04.json',
       'arduino-nano.json', 'wemos-d1-mini.json', 'relay-module-1ch-5v.json', 'l298n-module.json',
