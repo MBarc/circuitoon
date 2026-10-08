@@ -1063,7 +1063,7 @@
     ]
   },
   "pololu-u3v70f5-boost": {
-    "description": "Pololu U3V70F5 step-up regulator that boosts a single lithium cell (2.9 to 5 V in) to 5 V, about 3.4 A from a 3.3 V cell, with an enable pin that fully cuts the output.",
+    "description": "Pololu U3V70F5 step-up regulator that boosts a single lithium cell (2.9 to 5 V in) to 5 V, about 3 A from a nearly flat cell and 3.7 A from a 3.6 V cell, with an enable pin that fully cuts the output.",
     "uses": [
       "5V from an 18650 or LiPo",
       "powering a Raspberry Pi from a battery",
